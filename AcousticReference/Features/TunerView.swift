@@ -48,6 +48,7 @@ struct TunerView: View {
     @State private var targetChipFrames: [String: CGRect] = [:]
     @State private var targetContentMinX: CGFloat = 0
     @State private var glideActive = false
+    @State private var glideEngaged = false
     @State private var glideBlocked = false
     @State private var glideStartMinX: CGFloat = 0
     @State private var lastGlideChipId: String?
@@ -103,11 +104,12 @@ struct TunerView: View {
                             .padding(.top, 2)
                     }
                     .overlay(alignment: .topLeading) {
-                        HStack(spacing: 6) {
-                            performanceToggle(theme: theme)
-                            immersiveButton(theme: theme)
-                        }
-                        .padding(.top, 2)
+                        // 【返修批2】演奏態符號圓鈕經 Laurent
+                        // 指示去掉（「全螢幕左邊那個符號去掉」）；
+                        // performanceMode 旗標自此恆 false，
+                        // 相關版面分支保留為惰性（零回退風險）。
+                        immersiveButton(theme: theme)
+                            .padding(.top, 2)
                     }
                     .overlay {
                         if viewModel.clipWarning {
@@ -165,9 +167,12 @@ struct TunerView: View {
         }
         .sheet(isPresented: $showLibrary) {
             InstrumentLibraryView(store: store)
+                .preferredColorScheme(store.effectiveForcedColorScheme)
+                .presentationBackground { theme.background }
         }
         .fullScreenCover(isPresented: $showImmersive) {
             ImmersiveTunerView(viewModel: viewModel, engine: engine, store: store)
+                .presentationBackground(.black)
         }
         // 沉浸中被切離調音模式（深連結／外部路徑）：立即關閉
         // cover，方向鎖隨 onDisappear 還原豎屏（防漏）。
@@ -268,27 +273,6 @@ struct TunerView: View {
         .accessibilityLabel(L10n.t("进入极简全屏调音"))
     }
 
-    /// 演奏態開關（補強段）：開啟隱藏收藏／A4／目標音／Drone
-    /// 列、主顯示放大；與暗紅模式、防誤觸鎖正交可疊加。
-    private func performanceToggle(theme: TunerTheme) -> some View {
-        Button {
-            withAnimation(.easeOut(duration: 0.25)) {
-                store.performanceMode.toggle()
-            }
-            HapticsEngine.shared.tap(milliseconds: 6)
-        } label: {
-            Image(systemName: store.performanceMode
-                  ? "arrow.down.right.and.arrow.up.left"
-                  : "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(theme.textSecondary)
-                .frame(width: 26, height: 26)
-                .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
-        }
-        .buttonStyle(GlassPressButtonStyle())
-        .accessibilityLabel(store.performanceMode ? L10n.t("退出演奏态") : L10n.t("演奏态"))
-    }
-
     // MARK: - Row 1：樂器觸發鈕＋記譜/實音分段（母本行 5231）
 
     private func headerRow(theme: TunerTheme) -> some View {
@@ -343,6 +327,7 @@ struct TunerView: View {
                 set: { store.pitchMode = $0 }),
             theme: theme, glassOpacity: store.glassOpacity,
             fontSize: 13, height: 30)
+            .frame(width: 148)
     }
 
     // MARK: - 主顯示模式切換（頻閃主模式段新增）
@@ -361,6 +346,7 @@ struct TunerView: View {
                 set: { store.tunerDisplayMode = $0 }),
             theme: theme, glassOpacity: store.glassOpacity,
             fontSize: 12, height: 26)
+            .frame(width: 124)
     }
 
     // MARK: - Row 2：收藏晶片列＋A4 步進器（母本行 5252）
@@ -749,9 +735,23 @@ struct TunerView: View {
                 if !glideActive {
                     glideActive = true
                     glideBlocked = false
+                    glideEngaged = false
                     glideStartMinX = targetContentMinX
                     lastGlideChipId = glideChipId(at: value.startLocation)
-                    if lastGlideChipId != nil {
+                }
+                // 【返修批2・按鍵審計】滑奏旗標改「真移動才
+                // 置位」：舊版觸下即 setGliding(true)，純點按
+                // 已鎖定晶片時 Button action 讀到 isGliding
+                // == true、解除鎖定條件恆假（點了只能重鎖、
+                // 解不掉）。現以位移 >8pt 或滑入另一晶片為
+                // 置位門檻，純點按不再污染旗標。
+                if !glideEngaged {
+                    let moved = abs(value.translation.width) > 8
+                        || abs(value.translation.height) > 8
+                    let crossed = glideChipId(at: value.location) != nil
+                        && glideChipId(at: value.location) != lastGlideChipId
+                    if moved || crossed {
+                        glideEngaged = true
                         viewModel.setGliding(true)
                     }
                 }
@@ -778,6 +778,7 @@ struct TunerView: View {
             .onEnded { _ in
                 glideActive = false
                 glideBlocked = false
+                glideEngaged = false
                 lastGlideChipId = nil
                 viewModel.setGliding(false)
             }

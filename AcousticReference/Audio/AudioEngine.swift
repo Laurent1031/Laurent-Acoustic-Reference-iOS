@@ -302,6 +302,12 @@ final class AudioEngine: ObservableObject {
             if !sessionAcquired {
                 AudioSessionCoordinator.shared.acquire(.tuner)
                 sessionAcquired = true
+                // 【返修批2・增益審計】acquire 後須 applyProfile
+                // （與 stop 對稱）：此前漏呼叫——節拍器／Drone
+                // 已在播放中才開麥時，型態觀察者收不到 .record
+                // 通知、三路播放增益補償永不生效（疊加聽筒
+                // 路由為最壞組合，審計根因 #2）。
+                AudioSessionCoordinator.shared.applyProfile()
             }
         } catch {
             lastError = error.localizedDescription
@@ -375,7 +381,13 @@ final class AudioEngine: ObservableObject {
 
     private func configureSessionAndStart(_ session: AVAudioSession,
                                           mode: AVAudioSession.Mode) throws {
-        try session.setCategory(.playAndRecord, mode: mode, options: [])
+        // 【返修批2】options 恆含 .defaultToSpeaker：與
+        // AudioSessionCoordinator 的錄音型裁決一致——
+        // .playAndRecord 預設把播放導向聽筒，本函數若以
+        // 空 options 重設 category 會把協調器的揚聲器
+        // 路由蓋掉（基準音聽不見／節拍器小聲的根因鏈）。
+        try session.setCategory(.playAndRecord, mode: mode,
+                                options: [.defaultToSpeaker])
         // IO buffer 壓向硬體下限（規格書 §3.1）：先請求 3 ms，
         // 失敗退 5 ms；實際生效值以 session.ioBufferDuration 為準（診斷顯示）。
         if (try? session.setPreferredIOBufferDuration(0.003)) == nil {

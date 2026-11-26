@@ -30,9 +30,6 @@ struct ContentView: View {
     /// 頂欄喚出的 sheet（診斷／偏好／系統設定，階段 5 統一以
     /// item 呈現，避免多個 .sheet 修飾器互相衝突）。
     @State private var activeSheet: TopSheet?
-    /// 排練防誤觸鎖（補強段）：僅執行期狀態，不落盤——重啟 App
-    /// 恆為未鎖定，避免「開機即鎖死」的困惑（取捨註明於報告）。
-    @State private var rehearsalLocked = false
     @Environment(\.colorScheme) private var colorScheme
 
     init() {
@@ -85,12 +82,6 @@ struct ContentView: View {
                     .opacity(mode == .metronome ? 1 : 0)
                     .allowsHitTesting(mode == .metronome)
                     .accessibilityHidden(mode != .metronome)
-                DualModeView(engine: engine, store: store,
-                             drone: droneEngine,
-                             metronomeViewModel: metronomeViewModel)
-                    .opacity(mode == .dual ? 1 : 0)
-                    .allowsHitTesting(mode == .dual)
-                    .accessibilityHidden(mode != .dual)
             }
         }
         // 【裝機返修】根層背景：頂欄區與狀態欄區一律鋪當前
@@ -109,35 +100,40 @@ struct ContentView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        // 防誤觸鎖遮罩（最外層，蓋住頂欄與背景膠囊）：鎖定時
-        // 凍結全部控件，僅保留長按解鎖；音訊引擎不受影響
-        // （節拍器／Drone／調音照常運行，只是碰不到）。
-        .overlay {
-            if rehearsalLocked {
-                lockOverlay(theme: theme)
-                    .transition(.opacity)
-            }
-        }
         .animation(.spring(response: 0.32, dampingFraction: 0.9),
                    value: metronomeViewModel.capsuleVisible)
-        .animation(.easeOut(duration: 0.2), value: rehearsalLocked)
         .preferredColorScheme(store.effectiveForcedColorScheme)
         .sheet(item: $activeSheet) { sheet in
-            switch sheet {
-            case .debug:
-                TunerDebugView(engine: engine,
-                               metronomeEngine: metronomeEngine,
-                               metronomeViewModel: metronomeViewModel,
-                               store: store)
-            case .preferences:
-                PreferencesView(store: store,
-                                currentMetronomeSettings: metronomeViewModel.settings)
-            case .systemSettings:
-                SystemSettingsView(store: store,
-                                   metronomeViewModel: metronomeViewModel)
+            // 【返修批2】sheet 內強制套 App 主題外觀＋以主題
+            // 背景作呈現底：此前 sheet 的 glassEffect 與導航
+            // 鉻件跟隨「裝置」外觀渲染，裝置淺色＋App 深色
+            // 時整頁玻璃變灰白扁平、標題變黑字、選中字被
+            // 淺色鏡片吃掉（Laurent 實機點名設定／偏好／
+            // 診斷三頁）。根視圖的 preferredColorScheme 不
+            // 保證傳進 sheet 呈現層，故在 sheet 內容根部
+            // 再套一次，雙保險。
+            Group {
+                switch sheet {
+                case .debug:
+                    TunerDebugView(engine: engine,
+                                   metronomeEngine: metronomeEngine,
+                                   metronomeViewModel: metronomeViewModel,
+                                   store: store)
+                case .preferences:
+                    PreferencesView(store: store,
+                                    currentMetronomeSettings: metronomeViewModel.settings)
+                case .systemSettings:
+                    SystemSettingsView(store: store,
+                                       metronomeViewModel: metronomeViewModel)
+                }
             }
+            .preferredColorScheme(store.effectiveForcedColorScheme)
+            .presentationBackground { theme.background }
         }
         .onAppear {
+            // 同屏模式已取消（2026-11-26 Laurent 指示）：舊存檔
+            // 若停在 .dual 就地收斂為調音頁，避免落入無入口頁面。
+            if store.appMode == .dual { store.appMode = .tuner }
             HapticsEngine.shared.isEnabled = engine.settings.hapticsOn
             UISoundEngine.shared.isEnabled = engine.settings.soundsOn
             updateIdleTimer()
@@ -166,6 +162,8 @@ struct ContentView: View {
         // 共用此 sheet；確認才套用、取消零副作用。
         .sheet(item: $store.pendingImportPlan) { plan in
             BackupImportSheet(store: store, plan: plan)
+                .preferredColorScheme(store.effectiveForcedColorScheme)
+                .presentationBackground { theme.background }
         }
         // 語言唯一真源在 store；變更單向同步進 L10n（所有
         // @ObservedObject store 的視圖隨 @Published 變更重繪，
@@ -245,19 +243,6 @@ struct ContentView: View {
                 }
 
                 Button {
-                    rehearsalLocked = true
-                    HapticsEngine.shared.tap(milliseconds: 12)
-                } label: {
-                    Image(systemName: "lock.open")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 32, height: 32)
-                        .glassEffect(theme.glass(store.glassOpacity, interactive: true), in: Circle())
-                }
-                .buttonStyle(GlassPressButtonStyle())
-                .foregroundStyle(theme.textSecondary)
-                .accessibilityLabel(L10n.t("排练锁定"))
-
-                Button {
                     activeSheet = .debug
                 } label: {
                     Image(systemName: "waveform.path.ecg")
@@ -274,7 +259,6 @@ struct ContentView: View {
             GlassSegmentedControl(
                 options: [
                     (option: AppMode.tuner, title: L10n.t("调音"), symbol: "tuningfork"),
-                    (option: AppMode.dual, title: L10n.t("同屏"), symbol: "rectangle.split.2x1"),
                     (option: AppMode.metronome, title: L10n.t("节拍"), symbol: "metronome"),
                 ],
                 selection: Binding(
@@ -305,48 +289,6 @@ struct ContentView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(GlassPressButtonStyle())
-    }
-
-    // MARK: - 防誤觸鎖遮罩（補強段）
-
-    /// 鎖定遮罩：半透明壓暗＋底部低調指示膠囊。整層攔截全部
-    /// 觸控（下層控件凍結）；解鎖 = 長按指示膠囊 0.8 s（防口袋
-    /// 與譜架誤觸，單擊不解）。鎖定指示刻意低調（muted 色、
-    /// 小字），舞台／樂池環境不搶眼；暗紅模式下同樣走 token。
-    private func lockOverlay(theme: TunerTheme) -> some View {
-        ZStack {
-            Color.black.opacity(theme.isDark ? 0.55 : 0.35)
-                .ignoresSafeArea()
-
-            VStack {
-                Spacer()
-                HStack(spacing: 7) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(L10n.t("排练锁定 · 长按解锁"))
-                        .font(.system(size: 12.5, weight: .semibold))
-                }
-                .foregroundStyle(theme.textSecondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-                .overlay {
-                    Capsule().strokeBorder(
-                        theme.isDark ? Color.white.opacity(0.14) : Color.black.opacity(0.08),
-                        lineWidth: 1)
-                }
-                .padding(.bottom, 26)
-                .contentShape(Capsule())
-                .gesture(
-                    LongPressGesture(minimumDuration: 0.8, maximumDistance: 12)
-                        .onEnded { _ in
-                            rehearsalLocked = false
-                            HapticsEngine.shared.tap(milliseconds: 12)
-                        }
-                )
-                .accessibilityLabel(L10n.t("排练锁定中，长按解锁"))
-            }
-        }
     }
 
     // MARK: - 背景膠囊（母本 #9 metroCapsule）

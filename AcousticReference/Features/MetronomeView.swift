@@ -20,40 +20,46 @@ struct MetronomeView: View {
     @State private var showDeletePreset = false
     @State private var showCustomRamp = false
     @State private var showGrouping = false
-    @State private var showGapClick = false
     @State private var faderRubber: Double = 0
 
     var body: some View {
         let theme = store.resolvedTheme(system: colorScheme)
         GeometryReader { geo in
-            // 【裝機返修】尺寸改由寬度驅動、整頁入 ScrollView：
-            // 舊版以高度分數定尺寸＋定高 VStack，列寬可被舞台
-            // 列的 Spacer 撐出畫面（預置晶片列右側被裁的成因）。
-            // 現每列寬恆 = 視口寬 − 32；錶盤與推子同高（舞台
-            // 比例對齊母本），內容超高時捲動而非裁切。錶盤／
-            // 推子的豎拖以 highPriorityGesture 壓過捲動平移。
+            // 【返修批2】整頁固定一屏、不捲動（Laurent 指示：
+            // 「我要一整頁剛剛好，不要讓我往下拉」）。返修批1
+            // 的 ScrollView 版面撤除：各列定高，舞台列以
+            // maxHeight 吸收全部剩餘高度、錶盤尺寸隨之伸縮
+            // （下限 120、上限 208）。附帶收益：推子／轉盤的
+            // 拖動不再被捲動手勢半路取消——返修批1 實機
+            // 「推桿中途數字卡在中間」正是捲動取消 onEnded、
+            // 里程表凍結在小數位置；VM 另有看門狗雙保險。
             let contentWidth = geo.size.width - 32
-            let dialSize = min(190, max(140, contentWidth * 0.52))
 
             ZStack {
                 theme.background.ignoresSafeArea()
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 10) {
-                        hintRow(theme: theme)
-                        controlRow(theme: theme)
-                        dotsRow(theme: theme, width: contentWidth)
-                        stageRow(theme: theme, dialSize: dialSize, railHeight: dialSize)
-                        steppersRow(theme: theme)
-                        if showEditor { editorRow(theme: theme) }
-                        tempoPresetRow(theme: theme)
-                        bentoGrid(theme: theme)
-                        startButton(theme: theme)
+                VStack(spacing: 9) {
+                    hintRow(theme: theme)
+                    controlRow(theme: theme)
+                    dotsRow(theme: theme, width: contentWidth)
+                    GeometryReader { stageGeo in
+                        let dialSize = min(208, max(120, min(stageGeo.size.height,
+                                                             contentWidth * 0.56)))
+                        stageRow(theme: theme, dialSize: dialSize,
+                                 railHeight: dialSize)
+                            .frame(width: stageGeo.size.width,
+                                   height: stageGeo.size.height)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 2)
-                    .padding(.bottom, 10)
+                    .frame(maxHeight: .infinity)
+                    steppersRow(theme: theme)
+                    if showEditor { editorRow(theme: theme) }
+                    tempoPresetRow(theme: theme)
+                    bentoGrid(theme: theme)
+                    startButton(theme: theme)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 2)
+                .padding(.bottom, 8)
             }
         }
         .onChange(of: engine.lastError) { _, error in
@@ -71,6 +77,9 @@ struct MetronomeView: View {
                     .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
                     .padding(.bottom, 74)
                     .transition(.opacity)
+                    // 【返修批2・按鍵審計】Toast 純顯示，關命中
+                    // 測試避免吞掉底部區域的點按。
+                    .allowsHitTesting(false)
             }
         }
         .alert(L10n.t("保存预设"), isPresented: $showSavePreset) {
@@ -87,12 +96,13 @@ struct MetronomeView: View {
         }
         .sheet(isPresented: $showCustomRamp) {
             CustomRampSheet(viewModel: viewModel, isPresented: $showCustomRamp)
+                .preferredColorScheme(store.effectiveForcedColorScheme)
+                .presentationBackground { theme.background }
         }
         .sheet(isPresented: $showGrouping) {
             GroupingSheet(viewModel: viewModel, isPresented: $showGrouping)
-        }
-        .sheet(isPresented: $showGapClick) {
-            GapClickSheet(viewModel: viewModel, isPresented: $showGapClick)
+                .preferredColorScheme(store.effectiveForcedColorScheme)
+                .presentationBackground { theme.background }
         }
     }
 
@@ -192,12 +202,22 @@ struct MetronomeView: View {
             : (lvl == 3 ? theme.beatStrongGradient : theme.beatNormalGradient)
         return VStack(spacing: 3) {
             ZStack {
-                // 光暈（母本 ::before：60×102、accent-soft 徑向；
-                // 純裝飾、不攔截點按，避免溢出區擋住鄰列）。
-                Ellipse()
-                    .fill((lvl == 3 && !viewModel.pulseIsCountIn
-                           ? theme.ok : theme.accent).opacity(0.30 * p))
-                    .frame(width: 60, height: 102)
+                // 光暈（母本 ::before 的徑向柔光）：正圓、
+                // accent 色徑向漸層至全透明、隨脈衝放大。
+                // 【返修批2】舊版以 60×102 實心橢圓＋強拍綠
+                // 呈現，實機成一團橢圓綠暈（Laurent 點名
+                // 「外圍那圈不對」）；母本原式即徑向漸層，
+                // 改回漸層本體，顏色恆走 accent（預備拍走
+                // sharp 琥珀），不再用 ok 綠。
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [(viewModel.pulseIsCountIn
+                                    ? theme.sharp : theme.accent)
+                            .opacity(0.32 * p), Color.clear],
+                        center: .center,
+                        startRadius: 2,
+                        endRadius: 34))
+                    .frame(width: 68, height: 68)
                     .scaleEffect(0.85 + p * 0.3)
                     .allowsHitTesting(false)
                 // 本體（依等級的母本樣式）。
@@ -286,7 +306,11 @@ struct MetronomeView: View {
         }
         .frame(width: size, height: size)
         .contentShape(Circle())
-        .highPriorityGesture(dialDrag)
+        // 【返修批2・按鍵審計】改一般手勢：highPriority 會
+        // 吞掉子層里程表的 numberDrag（點數字開編輯器／
+        // 數字橫向 scrub 失效）。一般手勢下子層優先——
+        // 數字區走 numberDrag、其餘錶盤走 dialDrag。
+        .gesture(dialDrag)
     }
 
     /// BPM 里程表（母本 .bpm-num/.bpm-col：條帶兩圈 0–9、逐柱 spring）。
@@ -535,11 +559,12 @@ struct MetronomeView: View {
                     }
                 }
             }
-            // 補強段第二列：不規則拍分組（僅適用拍號顯示）＋
-            // Gap Click 靜音小節。兩者皆開專屬面板（非 Menu）：
-            // 分組需自訂編輯、Gap 需雙 Stepper，Menu 承載不了。
-            HStack(spacing: 8) {
-                if viewModel.settings.groupingAvailable {
+            // 補強段第二列：不規則拍分組（僅適用拍號顯示）。
+            // 【返修批2】Gap Click 靜音小節經 Laurent 指示
+            // 整項去掉（格、面板、引擎行為全撤；模型欄位
+            // 保留供舊存檔／備份解碼相容，恆不生效）。
+            if viewModel.settings.groupingAvailable {
+                HStack(spacing: 8) {
                     Button {
                         showGrouping = true
                     } label: {
@@ -548,16 +573,8 @@ struct MetronomeView: View {
                                     .map(String.init).joined(separator: "+"))
                     }
                     .buttonStyle(GlassPressButtonStyle())
+                    Spacer(minLength: 0)
                 }
-                Button {
-                    showGapClick = true
-                } label: {
-                    tileLabel(theme: theme, title: L10n.t("静音小节"),
-                              value: viewModel.settings.gapEnabled
-                                ? L10n.t("发声") + " \(viewModel.settings.gapSoundBars) · " + L10n.t("静音") + " \(viewModel.settings.gapSilentBars)"
-                                : L10n.t("关闭"))
-                }
-                .buttonStyle(GlassPressButtonStyle())
             }
             wideMenuRow(theme: theme, title: L10n.t("预设"),
                         value: viewModel.activePreset.map {
@@ -674,7 +691,7 @@ struct MetronomeView: View {
                     .foregroundStyle(theme.textMuted)
             }
             .padding(.horizontal, 14)
-            .frame(height: 46)
+            .frame(height: 42)
             .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
@@ -697,7 +714,7 @@ struct MetronomeView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .glassBackground(in: RoundedRectangle(cornerRadius: 16, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
@@ -760,7 +777,10 @@ struct MetronomeView: View {
     private var dialDrag: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                if dialStartBpm == nil {
+                // 【返修批2】自癒再武裝：上一拖被系統取消、
+                // 看門狗已 endAdjust 時，start 值可能殘留；
+                // VM 不在 adjusting 即視為新拖、重新取樣。
+                if dialStartBpm == nil || !viewModel.bpmAdjusting {
                     dialStartBpm = viewModel.settings.bpm
                     dialStartY = value.startLocation.y
                     viewModel.beginAdjust()
@@ -784,7 +804,7 @@ struct MetronomeView: View {
     private var numberDrag: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                if numStartBpm == nil {
+                if numStartBpm == nil || !viewModel.bpmAdjusting {
                     numStartBpm = viewModel.settings.bpm
                     numStartTime = value.time
                     numMode = .undecided
@@ -825,7 +845,7 @@ struct MetronomeView: View {
     private func faderDrag(railHeight: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                if faderStartBpm == nil {
+                if faderStartBpm == nil || !viewModel.bpmAdjusting {
                     faderStartBpm = Double(viewModel.settings.bpm)
                     faderStartY = value.startLocation.y
                     faderSnapped = nil
@@ -888,7 +908,10 @@ private final class HoldRepeater: ObservableObject {
                 try await Task.sleep(nanoseconds: 340_000_000)
                 self?.fired = true
                 action()
-                while true {
+                // 【返修批2・按鍵審計】連調上限 500 發
+                // （≈31 s）：pressing(false) 若因手勢取消
+                // 未送達，連調不致無限持續。
+                for _ in 0..<500 {
                     try await Task.sleep(nanoseconds: 62_000_000)
                     action()
                 }
@@ -1108,53 +1131,40 @@ private struct GroupingSheet: View {
     }
 }
 
-/// Gap Click 靜音小節面板（補強段）：響 N 小節／靜 M 小節循環。
-/// 靜音小節內點音與觸感同步靜默，拍點視覺照常推進；預備拍
-/// 不計入循環；漸速計步包含靜音小節（節奏訓練的靜默段照常
-/// 計時，速度變化不因靜默而停滯——見 MetronomeCore 註解）。
-private struct GapClickSheet: View {
-    @ObservedObject var viewModel: MetronomeViewModel
-    @Binding var isPresented: Bool
 
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    Toggle(L10n.t("启用静音小节"), isOn: Binding(
-                        get: { viewModel.settings.gapEnabled },
-                        set: { viewModel.setGapEnabled($0) }))
-                } footer: {
-                    Text(L10n.t("循环播放：先响若干小节，再静音若干小节。静音期间拍点照常显示，但不出声、不震动。"))
-                }
-                if viewModel.settings.gapEnabled {
-                    Section {
-                        Stepper(value: Binding(
-                            get: { viewModel.settings.gapSoundBars },
-                            set: { viewModel.setGapSoundBars($0) }),
-                                in: MetronomeSettings.gapBarsRange) {
-                            Text(L10n.t("发声小节") + " · \(viewModel.settings.gapSoundBars)")
-                        }
-                        Stepper(value: Binding(
-                            get: { viewModel.settings.gapSilentBars },
-                            set: { viewModel.setGapSilentBars($0) }),
-                                in: MetronomeSettings.gapBarsRange) {
-                            Text(L10n.t("静音小节") + " · \(viewModel.settings.gapSilentBars)")
-                        }
-                    } header: {
-                        Text(L10n.t("循环"))
-                    } footer: {
-                        Text(L10n.t("预备拍不计入循环；渐速计步包含静音小节。播放中修改即时生效（循环位置不重置）。"))
-                    }
-                }
+// MARK: - 外接鍵盤快捷鍵（母本行 12152）
+
+/// 【返修批2・按鍵審計補回】本修飾器的定義原置於
+/// DualModeView.swift，同屏功能取消刪檔時一併遺失、
+/// 呼叫點懸空（現行樹編譯必敗）——就地補回：↑↓ ±1、
+/// PageUp／PageDown ±10 BPM（母本鍵位原義）。
+private struct MetroKeyboardShortcuts: ViewModifier {
+    let viewModel: MetronomeViewModel
+
+    func body(content: Content) -> some View {
+        content
+            .focusable()
+            .onKeyPress(.upArrow) { _ in
+                viewModel.stepBpm(1)
+                return .handled
             }
-            .navigationTitle(L10n.t("静音小节"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.t("关闭")) { isPresented = false }
-                }
+            .onKeyPress(.downArrow) { _ in
+                viewModel.stepBpm(-1)
+                return .handled
             }
-        }
-        .presentationDetents([.medium])
+            .onKeyPress(.pageUp) { _ in
+                viewModel.stepBpm(10)
+                return .handled
+            }
+            .onKeyPress(.pageDown) { _ in
+                viewModel.stepBpm(-10)
+                return .handled
+            }
+    }
+}
+
+extension View {
+    func metroKeyboardShortcuts(viewModel: MetronomeViewModel) -> some View {
+        modifier(MetroKeyboardShortcuts(viewModel: viewModel))
     }
 }

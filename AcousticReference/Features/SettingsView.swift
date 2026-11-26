@@ -295,6 +295,9 @@ struct PreferencesView: View {
                 .pickerStyle(.menu)
             }
             .opacity(draftTemperament == .just ? 1 : 0.45)
+            // 【返修批2・按鍵審計】平均律時純律主音不生效，
+            // 視覺變暗之外同步禁用，避免「能點但沒用」。
+            .disabled(draftTemperament != .just)
         }
     }
 

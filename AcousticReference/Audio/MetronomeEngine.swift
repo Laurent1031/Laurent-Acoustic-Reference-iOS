@@ -361,15 +361,11 @@ final class MetronomeCore: @unchecked Sendable {
     /// 位置在 [0, 響+靜) 內循環，位置 ≥ 響數 → 下一小節靜音。
     /// gap 關閉時位置歸零、旗標恆 false（行為與母本一致）。
     private func advanceGapCycle() {
-        let s = settings
-        guard s.gapEnabled else {
-            gapCyclePosition = 0
-            currentBarSilent = false
-            return
-        }
-        let cycle = max(2, s.gapSoundBars + s.gapSilentBars)
-        gapCyclePosition = (gapCyclePosition + 1) % cycle
-        currentBarSilent = gapCyclePosition >= s.gapSoundBars
+        // 【返修批2】Gap Click 靜音小節經 Laurent 指示整項
+        // 取消：循環恆不推進、靜音旗標恆 false。模型欄位
+        // 保留供舊存檔解碼相容，不再被讀取。
+        gapCyclePosition = 0
+        currentBarSilent = false
     }
 }
 

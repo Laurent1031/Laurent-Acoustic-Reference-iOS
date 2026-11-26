@@ -37,14 +37,14 @@ enum DroneTimbre: String, Codable, CaseIterable, Sendable {
                 harmonics: [0, 1], lowpassRatio: 2.5, lowpassQ: 0.7071,
                 bodyEQ: .lowShelf(freq: 280, gainDB: 2.0),
                 chorusDetuneCents: 0, chorusGain: 0,
-                vibratoRate: 0, vibratoDepth: 0, targetAmplitude: 0.30,
+                vibratoRate: 0, vibratoDepth: 0, targetAmplitude: 0.45,
                 hasTine: false)
         case .fork:
             return DroneSynthSpec(
                 harmonics: [0, 1, 0.025], lowpassRatio: 3.2, lowpassQ: 0.7071,
                 bodyEQ: .lowShelf(freq: 280, gainDB: 2.0),
                 chorusDetuneCents: 0, chorusGain: 0,
-                vibratoRate: 0, vibratoDepth: 0, targetAmplitude: 0.32,
+                vibratoRate: 0, vibratoDepth: 0, targetAmplitude: 0.48,
                 hasTine: true)
         case .clarinet:
             return DroneSynthSpec(
@@ -52,7 +52,7 @@ enum DroneTimbre: String, Codable, CaseIterable, Sendable {
                 lowpassRatio: 4.8, lowpassQ: 0.7071,
                 bodyEQ: .peaking(freq: 680, q: 1.1, gainDB: 2.8),
                 chorusDetuneCents: 2.8, chorusGain: 0.18,
-                vibratoRate: 4.4, vibratoDepth: 0.0011, targetAmplitude: 0.26,
+                vibratoRate: 4.4, vibratoDepth: 0.0011, targetAmplitude: 0.39,
                 hasTine: false)
         case .organ:
             return DroneSynthSpec(
@@ -60,7 +60,7 @@ enum DroneTimbre: String, Codable, CaseIterable, Sendable {
                 lowpassRatio: 4.2, lowpassQ: 0.7071,
                 bodyEQ: .lowShelf(freq: 280, gainDB: 2.0),
                 chorusDetuneCents: 5.5, chorusGain: 0.34,
-                vibratoRate: 4.4, vibratoDepth: 0.0011, targetAmplitude: 0.24,
+                vibratoRate: 4.4, vibratoDepth: 0.0011, targetAmplitude: 0.36,
                 hasTine: false)
         case .strings:
             return DroneSynthSpec(
@@ -68,7 +68,7 @@ enum DroneTimbre: String, Codable, CaseIterable, Sendable {
                 lowpassRatio: 5.0, lowpassQ: 0.7071,
                 bodyEQ: .peaking(freq: 300, q: 1.0, gainDB: 2.5),
                 chorusDetuneCents: 4.5, chorusGain: 0.26,
-                vibratoRate: 4.8, vibratoDepth: 0.0014, targetAmplitude: 0.24,
+                vibratoRate: 4.8, vibratoDepth: 0.0014, targetAmplitude: 0.36,
                 hasTine: false)
         case .brass:
             return DroneSynthSpec(
@@ -76,7 +76,7 @@ enum DroneTimbre: String, Codable, CaseIterable, Sendable {
                 lowpassRatio: 6.0, lowpassQ: 0.7071,
                 bodyEQ: .peaking(freq: 900, q: 1.2, gainDB: 2.0),
                 chorusDetuneCents: 0, chorusGain: 0,
-                vibratoRate: 0, vibratoDepth: 0, targetAmplitude: 0.22,
+                vibratoRate: 0, vibratoDepth: 0, targetAmplitude: 0.33,
                 hasTine: false)
         case .oboe:
             return DroneSynthSpec(
@@ -84,7 +84,7 @@ enum DroneTimbre: String, Codable, CaseIterable, Sendable {
                 lowpassRatio: 5.4, lowpassQ: 1.15,
                 bodyEQ: .peaking(freq: 1120, q: 1.4, gainDB: 3.5),
                 chorusDetuneCents: 2.8, chorusGain: 0.18,
-                vibratoRate: 5.2, vibratoDepth: 0.0018, targetAmplitude: 0.26,
+                vibratoRate: 5.2, vibratoDepth: 0.0018, targetAmplitude: 0.39,
                 hasTine: false)
         }
     }
@@ -474,11 +474,12 @@ final class DroneEngine: ObservableObject {
             releaseSessionIfUnused()
             return
         }
-        let coreRef = core
-        let node = AVAudioSourceNode(format: format) { isSilence, _, frameCount, audioBufferList in
-            coreRef.render(isSilence: isSilence, frameCount: frameCount,
-                           audioBufferList: audioBufferList)
-        }
+        // 【返修批2】渲染閉包改經 nonisolated static 工廠
+        // 形成：閉包若在 @MainActor 語境形成、帶隔離註記，
+        // 被即時音訊線程呼叫時會觸發隔離斷言（麥克風 tap
+        // 的首輪閃退即此機制）。Drone 的 source node 此前
+        // 直接在 start() 內形成，同險未爆——一併根除。
+        let node = Self.makeSourceNode(core: core, format: format)
         let eq = AVAudioUnitEQ(numberOfBands: 1)
         compensationDB = PlaybackGainCompensation.gainDB(
             profile: AudioSessionCoordinator.shared.desiredProfile(),
@@ -496,12 +497,28 @@ final class DroneEngine: ObservableObject {
             releaseSessionIfUnused()
             return
         }
+        guard engine.isRunning else {
+            lastError = "Drone 引擎啟動後未運行"
+            releaseSessionIfUnused()
+            return
+        }
         avEngine = engine
         sourceNode = node
         gainEQ = eq
         isPlaying = true
         registerObservers()
         HapticsEngine.shared.warmUp()
+    }
+
+    /// Source node 工廠（nonisolated：渲染閉包在此形成，
+    /// 不帶任何隔離註記，供即時音訊線程安全呼叫）。
+    nonisolated private static func makeSourceNode(
+        core: DroneRenderCore, format: AVAudioFormat
+    ) -> AVAudioSourceNode {
+        AVAudioSourceNode(format: format) { isSilence, _, frameCount, audioBufferList in
+            core.render(isSilence: isSilence, frameCount: frameCount,
+                        audioBufferList: audioBufferList)
+        }
     }
 
     /// 停止（母本 stopDrone）：增益 0.08 s 級淡出後拆引擎。

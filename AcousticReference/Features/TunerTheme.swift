@@ -260,19 +260,42 @@ extension TunerTheme {
     var glassTintBase: Color {
         switch kind {
         case .light: return .white
-        case .dark: return Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
+        case .dark: return Color(red: 38 / 255, green: 38 / 255, blue: 42 / 255)
         case .pit: return Color(red: 26 / 255, green: 9 / 255, blue: 9 / 255)
         }
     }
 
     /// 全 App 統一的玻璃配方（對齊 iOS 27 系統玻璃）：
-    /// tint alpha = 0.02 + 0.34t（t = (不透明度−8)/88，
-    /// 預設 50 → ≈0.18）。interactive 版供「整體即玻璃」
+    /// tint alpha = 0.05 + 0.36t（t = (不透明度−8)/88，
+    /// 預設 50 → ≈0.22）。interactive 版供「整體即玻璃」
     /// 的按鍵本體（頂欄圓鈕等），按壓形變由玻璃本體給出。
+    /// 【返修批2】alpha 曲線整體上調：舊版 0.02+0.34t 在
+    /// 近黑頁面上玻璃與背景幾乎同色，實機看「完全沒有
+    /// 玻璃感」（Laurent 點名偏好頁）；深色 tint 色版本身
+    /// 亦提亮至 #26262A，讓卡面與頁面底色拉開層次。
     func glass(_ opacity: Int, interactive: Bool = false) -> Glass {
         let t = min(1, max(0, (Double(opacity) - 8) / 88))
-        let base = Glass.regular.tint(glassTintBase.opacity(0.02 + 0.34 * t))
+        let base = Glass.regular.tint(glassTintBase.opacity(0.05 + 0.36 * t))
         return interactive ? base.interactive() : base
+    }
+
+    /// 選中鏡片的玻璃（返修批2 重做）：中性亮玻璃，不再以
+    /// accent 染色——舊版藍 tint 鏡片在深色卡面上讀作扁平
+    /// 藍按鈕、選中字被藍灰吃掉（Laurent 實機點名「字看
+    /// 不清、液態玻璃哪裡去了」）。深色＝白 tint 0.26（在
+    /// 深軌道上形成明確的亮玻璃層，textPrimary 近白字對比
+    /// 成立）；淺色＝白 tint 0.85（iOS 淺色分段的亮白鏡片
+    /// 本色，深字成立）；pit 沿深色邏輯（夜視下 0.26 白
+    /// 仍偏亮，降至 0.18）。
+    var lensGlass: Glass {
+        switch kind {
+        case .light:
+            return .regular.tint(Color.white.opacity(0.85)).interactive()
+        case .dark:
+            return .regular.tint(Color.white.opacity(0.26)).interactive()
+        case .pit:
+            return .regular.tint(Color.white.opacity(0.18)).interactive()
+        }
     }
 }
 
@@ -321,14 +344,17 @@ extension View {
 
 // MARK: - 液態玻璃切換效果（裝機返修批・Laurent 指定）
 
-/// 液態玻璃分段控件：選中態是一片真玻璃鏡片，於選項之間
-/// 以 glassEffectID 在 GlassEffectContainer 內液態滑動
-/// morph（iOS 26+ 系統效果），取代舊版實心藍填充。鏡片
-/// 以 accent 32% 染色；選中文字走 textPrimary（淺色下為
-/// 深字、深色下為亮字，雙主題對比皆成立），未選中走
-/// textSecondary。容器僅用於本控件內部（小面積、形制
-/// 單一，即官方文檔的標準用法）；頁面級大列已撤容器
-/// （見 GlassSurface 註解的重影歸因）。
+/// 液態玻璃分段控件（返修批2 重做）：選中態是一片中性
+/// 亮玻璃鏡片（theme.lensGlass），可直接拖動——鏡片 1:1
+/// 跟指、微拉伸，越過格心即切換選中（帶輕觸感），放手
+/// spring 歸位；點按任一格亦即選中。舊版（glassEffectID
+/// morph＋accent 32% 藍 tint、僅點按）經 Laurent 實機
+/// 否決：「我要的是液態玻璃不是正常按鍵，要可以拖動
+/// 調節且有折射的透明液態玻璃」＋選中字被藍灰吃掉看
+/// 不清。本版：鏡片去藍改中性亮玻璃、選中字 textPrimary
+/// 粗體、未選中 textSecondary，雙主題對比皆成立。版面
+/// 恆等分（GeometryReader 量寬），呼叫端須給定寬度
+/// （全寬或固定 frame）。
 struct GlassSegmentedControl<Option: Hashable>: View {
     let options: [(option: Option, title: String, symbol: String?)]
     @Binding var selection: Option
@@ -336,21 +362,40 @@ struct GlassSegmentedControl<Option: Hashable>: View {
     let glassOpacity: Int
     var fontSize: CGFloat = 13
     var height: CGFloat = 30
+    /// 舊參數保留相容（返修批2 起版面恆等分，見類註解）。
     var equalWidth: Bool = false
-    @Namespace private var lensNamespace
+    @State private var dragX: CGFloat?
+    @State private var pressing = false
+
+    private var selectedIndex: Int {
+        options.firstIndex { $0.option == selection } ?? 0
+    }
 
     var body: some View {
-        GlassEffectContainer(spacing: 2) {
-            HStack(spacing: 2) {
-                ForEach(options, id: \.option) { item in
-                    let active = selection == item.option
-                    Button {
-                        guard !active else { return }
-                        withAnimation(.spring(response: 0.38,
-                                              dampingFraction: 0.82)) {
-                            selection = item.option
-                        }
-                    } label: {
+        GeometryReader { geo in
+            let count = max(1, options.count)
+            let segW = (geo.size.width - 6) / CGFloat(count)
+            let selCenter = 3 + segW * (CGFloat(selectedIndex) + 0.5)
+            let lensCenter = dragX.map {
+                min(max($0, 3 + segW / 2), geo.size.width - 3 - segW / 2)
+            } ?? selCenter
+            ZStack(alignment: .leading) {
+                // 鏡片：中性亮玻璃（theme.lensGlass），拖動時
+                // 1:1 跟指、微拉伸；放手 spring 歸位選中格。
+                Capsule()
+                    .fill(.clear)
+                    .frame(width: segW - 2, height: height)
+                    .glassEffect(theme.lensGlass, in: Capsule())
+                    .shadow(color: Color.black.opacity(theme.isDark ? 0.28 : 0.15),
+                            radius: 5, x: 0, y: 2)
+                    .scaleEffect(x: pressing ? 1.07 : 1, y: 1)
+                    .offset(x: lensCenter - segW / 2 + 1, y: 3)
+                    .animation(pressing ? nil
+                               : .spring(response: 0.38, dampingFraction: 0.82),
+                               value: lensCenter)
+                HStack(spacing: 0) {
+                    ForEach(options, id: \.option) { item in
+                        let active = selection == item.option
                         HStack(spacing: 5) {
                             if let symbol = item.symbol {
                                 Image(systemName: symbol)
@@ -358,47 +403,69 @@ struct GlassSegmentedControl<Option: Hashable>: View {
                                                   weight: .semibold))
                             }
                             Text(item.title)
-                                .font(.system(size: fontSize, weight: .semibold))
+                                .font(.system(size: fontSize,
+                                              weight: active ? .bold : .medium))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
                         }
                         .foregroundStyle(active ? theme.textPrimary
                                                 : theme.textSecondary)
-                        .padding(.horizontal, 11)
-                        .frame(maxWidth: equalWidth ? .infinity : nil)
-                        .frame(height: height)
-                        .contentShape(Capsule())
+                        .frame(width: segW, height: height)
                     }
-                    .buttonStyle(.plain)
-                    .background {
-                        if active {
-                            Capsule()
-                                .fill(.clear)
-                                .glassEffect(
-                                    .regular
-                                        .tint(theme.accent.opacity(0.32))
-                                        .interactive(),
-                                    in: Capsule())
-                                .glassEffectID("selection-lens",
-                                               in: lensNamespace)
+                }
+                .padding(.horizontal, 3)
+                .padding(.vertical, 3)
+            }
+            .contentShape(Capsule())
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { value in
+                        pressing = true
+                        dragX = value.location.x
+                        let idx = min(max(Int((value.location.x - 3) / segW), 0),
+                                      count - 1)
+                        if options[idx].option != selection {
+                            selection = options[idx].option
+                            HapticsEngine.shared.tap(milliseconds: 4)
                         }
                     }
-                    .accessibilityLabel(item.title)
-                    .accessibilityAddTraits(active ? [.isSelected] : [])
-                }
-            }
-            .padding(3)
+                    .onEnded { _ in
+                        pressing = false
+                        withAnimation(.spring(response: 0.38,
+                                              dampingFraction: 0.82)) {
+                            dragX = nil
+                        }
+                    }
+            )
         }
+        .frame(height: height + 6)
         .background {
             GlassSurface(shape: Capsule(), theme: theme,
                          glassOpacity: glassOpacity)
+        }
+        .accessibilityElement()
+        .accessibilityLabel(options[selectedIndex].title)
+        .accessibilityAdjustableAction { direction in
+            let next: Int
+            switch direction {
+            case .increment:
+                next = min(selectedIndex + 1, options.count - 1)
+            case .decrement:
+                next = max(selectedIndex - 1, 0)
+            @unknown default:
+                return
+            }
+            if options[next].option != selection {
+                selection = options[next].option
+            }
         }
     }
 }
 
 /// 捲動列晶片的玻璃選中態（收藏／目標／速度預置等橫滑列
-/// 內的晶片無法跨項 morph，改以逐片真玻璃＋accent 染色
-/// ＋interactive 按壓形變呈現，與分段鏡片同語言）。
+/// 內的晶片無法跨項拖動，鏡片改以逐片同款亮玻璃呈現，
+/// 與分段鏡片同語言；返修批2 起廢 accent 藍 tint 與藍
+/// 描邊，理由同 GlassSegmentedControl）。
 struct GlassChipBackground: View {
     let selected: Bool
     let theme: TunerTheme
@@ -411,13 +478,9 @@ struct GlassChipBackground: View {
         if selected {
             Capsule()
                 .fill(.clear)
-                .glassEffect(
-                    .regular.tint(theme.accent.opacity(0.38)).interactive(),
-                    in: Capsule())
-                .overlay {
-                    Capsule().strokeBorder(theme.accent.opacity(0.45),
-                                           lineWidth: 1)
-                }
+                .glassEffect(theme.lensGlass, in: Capsule())
+                .shadow(color: Color.black.opacity(theme.isDark ? 0.28 : 0.15),
+                        radius: 5, x: 0, y: 2)
         } else if bareUnselected {
             Color.clear
         } else {

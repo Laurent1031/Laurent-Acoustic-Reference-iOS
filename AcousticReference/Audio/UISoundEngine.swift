@@ -168,22 +168,22 @@ final class UISoundEngine {
         switch kind {
         case .success:
             return [
-                ToneSpec(fStart: 587.33, fEnd: 587.33, at: 0, dur: 0.11, gain: 0.045, pan: -0.2),
-                ToneSpec(fStart: 880.0, fEnd: 880.0, at: 0.055, dur: 0.18, gain: 0.05, pan: 0.2),
+                ToneSpec(fStart: 587.33, fEnd: 587.33, at: 0, dur: 0.11, gain: 0.09, pan: -0.2),
+                ToneSpec(fStart: 880.0, fEnd: 880.0, at: 0.055, dur: 0.18, gain: 0.10, pan: 0.2),
             ]
         case .lock:
             return [
-                ToneSpec(fStart: 659.25, fEnd: 659.25, at: 0, dur: 0.14, gain: 0.032, pan: -0.25),
-                ToneSpec(fStart: 987.77, fEnd: 987.77, at: 0.035, dur: 0.20, gain: 0.030, pan: 0.25),
+                ToneSpec(fStart: 659.25, fEnd: 659.25, at: 0, dur: 0.14, gain: 0.064, pan: -0.25),
+                ToneSpec(fStart: 987.77, fEnd: 987.77, at: 0.035, dur: 0.20, gain: 0.06, pan: 0.25),
             ]
         case .switch:
-            return [ToneSpec(fStart: 440.0, fEnd: 523.25, at: 0, dur: 0.038, gain: 0.032, pan: 0.1)]
+            return [ToneSpec(fStart: 440.0, fEnd: 523.25, at: 0, dur: 0.038, gain: 0.064, pan: 0.1)]
         case .close:
-            return [ToneSpec(fStart: 480.0, fEnd: 360.0, at: 0, dur: 0.042, gain: 0.028, pan: -0.1)]
+            return [ToneSpec(fStart: 480.0, fEnd: 360.0, at: 0, dur: 0.042, gain: 0.056, pan: -0.1)]
         case .warn:
-            return [ToneSpec(fStart: 330.0, fEnd: 293.66, at: 0, dur: 0.09, gain: 0.04, pan: 0)]
+            return [ToneSpec(fStart: 330.0, fEnd: 293.66, at: 0, dur: 0.09, gain: 0.08, pan: 0)]
         case .tick:
-            return [ToneSpec(fStart: 520.0, fEnd: 380.0, at: 0, dur: 0.018, gain: 0.026, pan: 0)]
+            return [ToneSpec(fStart: 520.0, fEnd: 380.0, at: 0, dur: 0.018, gain: 0.052, pan: 0)]
         }
     }
 

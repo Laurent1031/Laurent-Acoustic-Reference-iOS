@@ -82,8 +82,17 @@ final class AudioSessionCoordinator: @unchecked Sendable {
         let session = AVAudioSession.sharedInstance()
         switch profile {
         case .record:
-            if session.category != .playAndRecord || session.mode != .measurement {
-                try? session.setCategory(.playAndRecord, mode: .measurement, options: [])
+            if session.category != .playAndRecord || session.mode != .measurement
+                || !session.categoryOptions.contains(.defaultToSpeaker) {
+                // 【返修批2 根因修正】options 必須含
+                // .defaultToSpeaker：.playAndRecord 預設把
+                // 播放輸出導向聽筒（earpiece），音量極低——
+                // 實機「基準音放不了（聽不見）／所有音效
+                // 尤其是節拍器很小」的共同根因（調音開麥後
+                // session 停在錄音型，全部播放都被導去
+                // 聽筒）。調音 App 的播放恆應走揚聲器。
+                try? session.setCategory(.playAndRecord, mode: .measurement,
+                                         options: [.defaultToSpeaker])
             }
         case .playback:
             if session.category != .playback || session.mode != .default {
@@ -163,8 +172,16 @@ final class AudioSessionCoordinator: @unchecked Sendable {
 /// measurement 組成態，不污染僅播放型態的母本電平。
 enum PlaybackGainCompensation {
     static let droneDB: Float = 6.0
-    static let metronomeDB: Float = 3.0
-    static let uiSoundDB: Float = 6.0
+    /// 【返修批2・增益審計】3.0 → 6.0：舊值按理論峰值推導、
+    /// 對 measurement 的實際電平損失明顯不足；點擊緩衝已
+    /// 逐音色正規化至 0.80 峰值（ClickSynth.renderAll），
+    /// 疊 +6 dB 後的削波風險由 measurement 輸出衰減對沖，
+    /// SPL 實測校準仍列後續（見 enum 頭註）。
+    static let metronomeDB: Float = 6.0
+    /// 【返修批2・增益審計】6.0 → 9.0，且 UISoundEngine 的
+    /// specs 增益已整體 ×2（母本 WebAudio 原值在原生環境
+    /// 先天過小，峰值原僅 −32 至 −26 dBFS）。
+    static let uiSoundDB: Float = 9.0
 
     /// 型態 → 補償值：.record（measurement）回 path 值，
     /// 其餘（.playback／nil）回 0。

@@ -35,14 +35,33 @@ enum ClickSynth {
         var rng = SplitMix64(state: 0x9E37_79B9_7F4A_7C15)
         var out: [ClickKey: AVAudioPCMBuffer] = [:]
         for timbre in MetronomeTimbre.allCases {
+            // 【返修批2・增益審計】逐音色組正規化：各音色的
+            // 包絡峰值係數差異極大（digital 實峰 ≈0.53、
+            // 噪聲音色受 crest factor 限 ≈0.3–0.5），未正規
+            // 化時體感音量參差且整體偏小。先整組渲染、取組
+            // 內峰值（恆為 L3 非細分），全組同乘 scale 使
+            // L3 峰值 = 0.80——amp 表只管等級比例、絕對電平
+            // 由正規化統一。播放型態（補償 0 dB）即達標，
+            // 錄音型態再疊 EQ 補償（見 PlaybackGainCompensation）。
+            var group: [(key: ClickKey, l: [Double], r: [Double])] = []
             for level in 1...3 {
                 for isSub in [false, true] {
                     let key = ClickKey(timbre: timbre, level: level, isSub: isSub)
                     let (l, r) = render(timbre: timbre, level: level, isSub: isSub,
                                         sampleRate: sampleRate, rng: &rng)
-                    if let buffer = makeBuffer(l: l, r: r, format: format) {
-                        out[key] = buffer
-                    }
+                    group.append((key: key, l: l, r: r))
+                }
+            }
+            let peak = group.reduce(0.0) { acc, item in
+                max(acc, item.l.reduce(0.0) { max($0, abs($1)) },
+                    item.r.reduce(0.0) { max($0, abs($1)) })
+            }
+            let scale = peak > 0 ? 0.80 / peak : 1.0
+            for item in group {
+                let l = scale == 1.0 ? item.l : item.l.map { $0 * scale }
+                let r = scale == 1.0 ? item.r : item.r.map { $0 * scale }
+                if let buffer = makeBuffer(l: l, r: r, format: format) {
+                    out[item.key] = buffer
                 }
             }
         }
@@ -52,7 +71,9 @@ enum ClickSynth {
     // MARK: - 母本增益／聲像（行 11298–11305）
 
     private static func amp(level: Int, isSub: Bool) -> Double {
-        if isSub { return 0.20 }
+        // 【返修批2・增益審計】細分 0.20 → 0.30：舊值相對
+        // L1 0.34 過弱、幾乎聽不見（正規化後比例照此表）。
+        if isSub { return 0.30 }
         switch level {
         case 3: return 0.78
         case 2: return 0.50

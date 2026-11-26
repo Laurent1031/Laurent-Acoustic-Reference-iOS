@@ -21,7 +21,10 @@ final class HoldRepeatController: ObservableObject {
                 try await Task.sleep(nanoseconds: 340_000_000)
                 self?.fired = true
                 action()
-                while true {
+                // 【返修批2・按鍵審計】連調上限 500 發
+                // （≈31 s）：pressing(false) 若因手勢取消
+                // 未送達，連調不致無限持續。
+                for _ in 0..<500 {
                     try await Task.sleep(nanoseconds: 62_000_000)
                     action()
                 }

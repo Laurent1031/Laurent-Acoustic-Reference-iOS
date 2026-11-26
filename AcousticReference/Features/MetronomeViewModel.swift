@@ -261,8 +261,34 @@ final class MetronomeViewModel: ObservableObject {
         HapticsEngine.shared.tap(milliseconds: 3)
     }
 
-    func beginAdjust() { bpmAdjusting = true }
+    /// 拖動看門狗（返修批2）：手勢被系統取消時 onEnded 不
+    /// 觸發，bpmAdjusting 會永久停在 true、里程表凍結於
+    /// 小數位置（實機「數字卡在中間」）。beginAdjust 起
+    /// 一條巡檢：adjusting 期間若 0.35 s 無新的拖動值，
+    /// 自動 endAdjust 收斂到整數 BPM。正常拖動中值持續
+    /// 到達，看門狗恆不觸發。
+    private var lastDragAt: TimeInterval = 0
+    private var adjustWatchdog: Task<Void, Never>?
+
+    func beginAdjust() {
+        bpmAdjusting = true
+        lastDragAt = ProcessInfo.processInfo.systemUptime
+        adjustWatchdog?.cancel()
+        adjustWatchdog = Task { @MainActor [weak self] in
+            while true {
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                guard let self, self.bpmAdjusting else { return }
+                if ProcessInfo.processInfo.systemUptime - self.lastDragAt > 0.35 {
+                    self.endAdjust()
+                    return
+                }
+            }
+        }
+    }
+
     func endAdjust() {
+        adjustWatchdog?.cancel()
+        adjustWatchdog = nil
         liveAdjustValue = nil
         bpmAdjusting = false
         syncBpmRender()
@@ -271,6 +297,7 @@ final class MetronomeViewModel: ObservableObject {
     /// 拖動路徑專用：連續值餵里程表／填充（1:1 直跟），
     /// 取整值走 setBpm 落 settings（吸附已由呼叫端處理）。
     func setBpmFromDrag(_ continuous: Double) {
+        lastDragAt = ProcessInfo.processInfo.systemUptime
         liveAdjustValue = continuous
         setBpm(Int(continuous.rounded()))
         // setBpm 在值未變時不觸發 render；連續值仍須刷新
@@ -364,29 +391,6 @@ final class MetronomeViewModel: ObservableObject {
         activePresetId = nil
         HapticsEngine.shared.tap(milliseconds: 6)
         UISoundEngine.shared.play(.tick)
-    }
-
-    // MARK: - Gap Click 靜音小節（補強段）
-
-    func setGapEnabled(_ on: Bool) {
-        guard on != settings.gapEnabled else { return }
-        settings.gapEnabled = on
-        HapticsEngine.shared.tap(milliseconds: 6)
-        UISoundEngine.shared.play(.tick)
-    }
-
-    func setGapSoundBars(_ value: Int) {
-        let clamped = min(16, max(1, value))
-        guard clamped != settings.gapSoundBars else { return }
-        settings.gapSoundBars = clamped
-        HapticsEngine.shared.detent()
-    }
-
-    func setGapSilentBars(_ value: Int) {
-        let clamped = min(16, max(1, value))
-        guard clamped != settings.gapSilentBars else { return }
-        settings.gapSilentBars = clamped
-        HapticsEngine.shared.detent()
     }
 
     func setDottedBeat(_ on: Bool) {

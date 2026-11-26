@@ -76,11 +76,8 @@ struct InstrumentLibraryView: View {
             .navigationTitle(L10n.t("乐器库与常用收藏"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Text(L10n.t("点亮 ★ 加入常用栏"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(theme.textMuted)
-                }
+                // 【返修批2】左上「點亮 ★…」提示經 Laurent
+                // 指示去掉（工具列裡被擠成圓形殘片、字截斷）。
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(L10n.t("完成")) { dismiss() }
                         .font(.system(size: 15, weight: .semibold))
