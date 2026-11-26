@@ -48,12 +48,14 @@ enum AppTheme: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    /// 顯示名走 L10n（階段 5）：system／pit 為原生專屬字串
+    /// （supplement），light／dark 為母本字典鍵。
     var displayName: String {
         switch self {
-        case .system: return "跟隨系統"
-        case .light: return "淺色"
-        case .dark: return "深色"
-        case .pit: return "樂池暗紅"
+        case .system: return L10n.t("跟随系统")
+        case .light: return L10n.t("浅色")
+        case .dark: return L10n.t("深色")
+        case .pit: return L10n.t("乐池暗红")
         }
     }
 }
@@ -83,6 +85,20 @@ private struct AppStateFile: Codable {
     var guzhengFavMigrationDone: Bool = false
     var tunerDisplayMode: TunerDisplayMode = .strobe
     var themePreference: AppTheme = .system
+    // 階段 5 新增欄（缺欄退母本預設，舊檔無痛遷移）：
+    /// 顯示語言（母本 state.lang，預設 zh-TW）。
+    var language: AppLanguage = .zhTW
+    /// 玻璃不透明度（母本 state.glassAlpha，8–96、預設 50）。
+    var glassOpacity: Int = 50
+    /// 預設啟動主樂器（母本 profile.primaryInstId）：舊檔缺欄時
+    /// 以當時 selectedInstrumentId 為遷移預設（見 AppStore.init
+    /// 的遷移註記），不改變既有啟動選中行為。
+    var primaryInstrumentId: String = "alto_sax"
+    /// 自動開啟麥克風（母本 profile.autoMicOnEnter，預設 false）。
+    var autoMicOnEnter: Bool = false
+    /// 節拍器預設參數（母本 profile 的 defaultBpm 等五欄的整體
+    /// 快照）：nil = 用戶未按過「設為默認」，啟動沿用上次值。
+    var metronomeDefault: MetronomeSettings? = nil
 
     private enum CodingKeys: String, CodingKey {
         case version, tunerSettings, pitchMode, selectedInstrumentId
@@ -90,6 +106,8 @@ private struct AppStateFile: Codable {
         case droneFollow, metronomeSettings, metronomeUserPresets
         case appMode, guzhengFavMigrationDone, tunerDisplayMode
         case themePreference
+        case language, glassOpacity, primaryInstrumentId
+        case autoMicOnEnter, metronomeDefault
     }
 
     init() {}
@@ -112,6 +130,12 @@ private struct AppStateFile: Codable {
         guzhengFavMigrationDone = try c.decodeIfPresent(Bool.self, forKey: .guzhengFavMigrationDone) ?? false
         tunerDisplayMode = try c.decodeIfPresent(TunerDisplayMode.self, forKey: .tunerDisplayMode) ?? .strobe
         themePreference = try c.decodeIfPresent(AppTheme.self, forKey: .themePreference) ?? .system
+        language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .zhTW
+        glassOpacity = min(96, max(8, try c.decodeIfPresent(Int.self, forKey: .glassOpacity) ?? 50))
+        primaryInstrumentId = try c.decodeIfPresent(String.self, forKey: .primaryInstrumentId)
+            ?? selectedInstrumentId
+        autoMicOnEnter = try c.decodeIfPresent(Bool.self, forKey: .autoMicOnEnter) ?? false
+        metronomeDefault = try c.decodeIfPresent(MetronomeSettings.self, forKey: .metronomeDefault)
     }
 }
 
@@ -147,6 +171,27 @@ final class AppStore: ObservableObject {
     @Published var tunerDisplayMode: TunerDisplayMode = .strobe { didSet { persist() } }
     /// 外觀主題偏好（補強段）：system／light／dark／pit 四態。
     @Published var themePreference: AppTheme = .system { didSet { persist() } }
+    /// 顯示語言（階段 5）：唯一真源；ContentView 的 onChange
+    /// 單向同步進 L10n 服務（init 內另有一次同步，保證首幀正確）。
+    @Published var language: AppLanguage = .zhTW { didSet { persist() } }
+    /// 玻璃不透明度（階段 5）：8–96、預設 50；didSet 鉗制並落盤，
+    /// 全 App 玻璃材質經 GlassBackground 修飾器讀此值。
+    @Published var glassOpacity: Int = 50 {
+        didSet {
+            let clamped = min(96, max(8, glassOpacity))
+            if clamped != glassOpacity { glassOpacity = clamped }
+            persist()
+        }
+    }
+    /// 預設啟動主樂器（階段 5，母本 profile.primaryInstId）：
+    /// 變更入口為 setPrimaryInstrument（連動選樂器與收藏）。
+    @Published var primaryInstrumentId = "alto_sax" { didSet { persist() } }
+    /// 自動開啟麥克風（階段 5，母本 profile.autoMicOnEnter）。
+    @Published var autoMicOnEnter = false { didSet { persist() } }
+    /// 節拍器預設參數快照（階段 5）：nil = 未設定（啟動沿用
+    /// 上次值）；非 nil 時 ContentView 啟動以此播種 ViewModel
+    /// （對齊母本啟動套用 profile 默認的語義）。
+    @Published var metronomeDefault: MetronomeSettings? = nil { didSet { persist() } }
 
     /// 選樂器脈衝：每次 selectInstrument 呼叫 +1（含同名重選——
     /// 母本 selectInstrument 連重選也清鎖定與軌跡，行 8485）。
@@ -157,6 +202,40 @@ final class AppStore: ObservableObject {
     func selectInstrument(id: String) {
         selectedInstrumentId = id
         selectionPulse += 1
+    }
+
+    /// 設定預設啟動主樂器（母本偏好頁主樂器 select 的 handler，
+    /// 行 6949）：寫入 primary、即選中該樂器、未收藏則插入
+    /// 收藏首位。偏好頁以交易式草稿操作，「完成」時才呼叫此
+    /// 入口（母本為即時套用＋取消回滾，淨效果相同、時機差異
+    /// 見階段 5 報告）。
+    func setPrimaryInstrument(id: String) {
+        primaryInstrumentId = id
+        selectInstrument(id: id)
+        if !favoriteInstrumentIds.contains(id) {
+            favoriteInstrumentIds.insert(id, at: 0)
+        }
+    }
+
+    /// 將目前節拍器參數設為預設（母本 btnSaveCurrentMetroAsDefault）：
+    /// 存整份設定快照（countIn 本就不落盤，Codable 已排除）。
+    func setMetronomeDefault(_ settings: MetronomeSettings) {
+        metronomeDefault = settings
+    }
+
+    /// 偏好頁摘要（母本 profMetroSummaryText）：「默认：」前綴
+    /// （字典前綴鍵）＋ BPM · 拍號 · 音色本地化名。有預設顯示
+    /// 預設值、無預設顯示出廠默認（120 · 4/4 · 木魚）——母本
+    /// 摘要恆顯示 profile 現值，原生以 metronomeDefault ??
+    /// 出廠值等價呈現。static 版供設定頁草稿摘要共用。
+    static func metroSummaryText(for settings: MetronomeSettings?) -> String {
+        let s = settings ?? MetronomeSettings()
+        return L10n.t("默认：") + "\(s.bpm) BPM · \(s.beatsPerBar)/\(s.beatUnit) · "
+            + L10n.t(s.timbre.sourceName)
+    }
+
+    var metronomeDefaultSummary: String {
+        Self.metroSummaryText(for: metronomeDefault)
     }
 
     // MARK: - 僅執行期狀態（母本 state 層，不落盤）
@@ -202,7 +281,14 @@ final class AppStore: ObservableObject {
         appMode = AppMode(rawValue: snapshot.appMode) ?? .tuner
         tunerDisplayMode = snapshot.tunerDisplayMode
         themePreference = snapshot.themePreference
+        language = snapshot.language
+        glassOpacity = snapshot.glassOpacity
+        primaryInstrumentId = snapshot.primaryInstrumentId
+        autoMicOnEnter = snapshot.autoMicOnEnter
+        metronomeDefault = snapshot.metronomeDefault
         guzhengFavMigrationDone = snapshot.guzhengFavMigrationDone
+        // 首幀前同步語言進 L10n（其後由 ContentView onChange 維護）。
+        L10n.setLanguage(snapshot.language)
 
         // 收藏／選中樂器健全化：剔除無法解析的 id；收藏為空時回母本
         // 預設 [INSTRUMENTS[0], piano, violin]（createDefaultProfile）。
@@ -214,6 +300,10 @@ final class AppStore: ObservableObject {
         selectedInstrumentId = instrument(id: snapshot.selectedInstrumentId) != nil
             ? snapshot.selectedInstrumentId
             : InstrumentCatalog.builtins[0].id
+        // 主樂器健全化：指向已刪除的自訂樂器時退回目前選中樂器。
+        if instrument(id: primaryInstrumentId) == nil {
+            primaryInstrumentId = selectedInstrumentId
+        }
 
         // 古箏收藏遷移（母本行 6550，旗標 laurent_fav_guzheng_removed_v1）：
         // 未遷移過且收藏 >1 且含古箏 → 移除一次；其後手動加回保留。
@@ -277,6 +367,11 @@ final class AppStore: ObservableObject {
         snapshot.guzhengFavMigrationDone = guzhengFavMigrationDone
         snapshot.tunerDisplayMode = tunerDisplayMode
         snapshot.themePreference = themePreference
+        snapshot.language = language
+        snapshot.glassOpacity = glassOpacity
+        snapshot.primaryInstrumentId = primaryInstrumentId
+        snapshot.autoMicOnEnter = autoMicOnEnter
+        snapshot.metronomeDefault = metronomeDefault
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         let url = Self.stateFileURL
         try? FileManager.default.createDirectory(

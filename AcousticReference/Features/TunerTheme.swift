@@ -178,6 +178,56 @@ struct TunerTheme {
     }
 }
 
+// MARK: - 玻璃不透明度（階段 5）
+
+/// 玻璃表面：ultraThinMaterial（系統真模糊）＋母本 --glass-surface
+/// 的色版覆蓋。映射 = 母本 applyGlassAlpha 的 iOS 支（行 8024）：
+/// t = (glassOpacity − 8) / 88 鉗 [0, 1]；深色 surface alpha
+/// = 0.05 + 0.90t、淺色 = 0.10 + 0.86t（glassOpacity 50 時
+/// t ≈ 0.477、深 ≈ 0.48／淺 ≈ 0.51）。pit 沿深色曲線、色版改
+/// 暗紅 (26, 9, 9)。母本另有 blur／sat／bri 三維（backdrop-
+/// filter 參數），原生材質的模糊半徑與飽和由系統固定、無公開
+/// 參數，此三維為平台差異（階段 5 報告註明）；覆蓋 alpha 為
+/// 主導可見的一維，全程單調、兩端差異明確。
+struct GlassSurface<S: Shape>: View {
+    let shape: S
+    let theme: TunerTheme
+    let glassOpacity: Int
+
+    var body: some View {
+        ZStack {
+            shape.fill(.ultraThinMaterial)
+            shape.fill(tint)
+        }
+    }
+
+    private var tint: Color {
+        let t = min(1, max(0, (Double(glassOpacity) - 8) / 88))
+        switch theme.kind {
+        case .light:
+            return Color.white.opacity(0.10 + 0.86 * t)
+        case .dark:
+            return Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
+                .opacity(0.05 + 0.90 * t)
+        case .pit:
+            return Color(red: 26 / 255, green: 9 / 255, blue: 9 / 255)
+                .opacity(0.05 + 0.90 * t)
+        }
+    }
+}
+
+extension View {
+    /// `.background(.ultraThinMaterial, in:)` 的玻璃不透明度
+    /// 等價入口：全 App 玻璃背景一律經此，設定值即時驅動、
+    /// 兩頁＋彈窗一致。
+    func glassBackground<S: Shape>(in shape: S, theme: TunerTheme,
+                                   glassOpacity: Int) -> some View {
+        background {
+            GlassSurface(shape: shape, theme: theme, glassOpacity: glassOpacity)
+        }
+    }
+}
+
 extension Color {
     init(hex: UInt32) {
         self.init(

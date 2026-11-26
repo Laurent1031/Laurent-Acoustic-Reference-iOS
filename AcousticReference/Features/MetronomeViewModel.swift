@@ -83,24 +83,36 @@ final class MetronomeViewModel: ObservableObject {
     var bpmAdjusting = false
 
     var capsuleVisible: Bool { isPlaying || capsulePaused }
+    /// 背景膠囊文字：以 L10n 片段組裝（節拍器運行中／已暫停
+    /// 為母本字典鍵）；本屬性在 ContentView body 求值，語言
+    /// 切換隨 store 重繪即時生效。
     var capsuleText: String {
-        isPlaying ? "♩ \(settings.bpm) BPM · 節拍器運行中" : "已暫停 · 點按繼續"
+        isPlaying ? "♩ \(settings.bpm) BPM · " + L10n.t("节拍器运行中")
+                  : L10n.t("已暂停 · 点按继续")
     }
 
     /// 頂部提示列（母本 updateMetroHint，行 10505；補強段：
     /// Gap 靜音小節在拍訊後加「· 靜音」標記，拍點視覺本身
     /// 照常——靜默的是聲音與觸感，不是顯示）。
+    /// 提示列文字以 L10n 格式串組裝（supplement 的
+    /// 「预备拍 · 第 %d/%d 拍 (%d BPM)」「第 %d 小节 · 第
+    /// %d/%d 拍」兩條格式鍵＋字典片段「静音」）；在
+    /// MetronomeView body 求值，語言切換即時生效。
     var hintText: String {
         if isPlaying {
             if displayIsCountIn {
-                return "● 預備拍 · 第 \(displayBeat + 1)/\(settings.beatsPerBar) 拍 (\(settings.bpm) BPM)"
+                return "● " + String(
+                    format: L10n.t("预备拍 · 第 %d/%d 拍 (%d BPM)"),
+                    displayBeat + 1, settings.beatsPerBar, settings.bpm)
             }
             let suffix = settings.isDottedBeat
                 ? " (♩. \(settings.bpm) BPM)" : " (\(settings.bpm) BPM)"
-            let silent = displayIsSilentBar ? " · 靜音" : ""
-            return "● 第 \(displayBar) 小節 · 第 \(displayBeat + 1)/\(displayBeatsInBar) 拍\(suffix)\(silent)"
+            let silent = displayIsSilentBar ? " · " + L10n.t("静音") : ""
+            return "● " + String(
+                format: L10n.t("第 %d 小节 · 第 %d/%d 拍"),
+                displayBar, displayBeat + 1, displayBeatsInBar) + suffix + silent
         }
-        return "點擊拍柱切換：強拍 / 次強 / 弱拍 / 靜音"
+        return L10n.t("点击拍柱切换：强拍 / 次强 / 弱拍 / 静音")
     }
 
     // MARK: - 內部
@@ -152,7 +164,7 @@ final class MetronomeViewModel: ObservableObject {
             HapticsEngine.shared.tap(milliseconds: 20)
             // 母本行 10979：漸速到達 haptic(20)＋uiSound("success")。
             UISoundEngine.shared.play(.success)
-            self.showToast("已到達目標速度")
+            self.showToast("已到达目标速度")
         }
         engine.onRampChanged = { [weak self] state in
             self?.rampState = state
@@ -471,7 +483,7 @@ final class MetronomeViewModel: ObservableObject {
         activePresetId = preset.id
         HapticsEngine.shared.tap(milliseconds: 8)
         UISoundEngine.shared.play(.tick)
-        showToast("已套用預設")
+        showToast("已套用预设")
     }
 
     /// 保存目前狀態為預置；同名覆蓋（母本行 11063）。成功回 true。
@@ -481,7 +493,7 @@ final class MetronomeViewModel: ObservableObject {
             .split(whereSeparator: { $0.isWhitespace })
             .joined(separator: " ")
         guard !collapsed.isEmpty else {
-            showToast("請輸入預設名稱")
+            showToast("请输入预设名称")
             return false
         }
         if let idx = userPresets.firstIndex(where: { $0.name == collapsed }) {
@@ -506,7 +518,7 @@ final class MetronomeViewModel: ObservableObject {
         // 保存完成回饋：母本同類保存點（設為默認 行 7080、自訂
         // 樂器保存 行 7686）皆 uiSound("success")，此處比照。
         UISoundEngine.shared.play(.success)
-        showToast("已保存預設")
+        showToast("已保存预设")
         return true
     }
 
@@ -537,7 +549,7 @@ final class MetronomeViewModel: ObservableObject {
             guard to != from else {
                 // 母本行 11410：漸速極限提示 uiSound("warn")。
                 UISoundEngine.shared.play(.warn)
-                showToast("當前已在極限速度，無法往該方向漸速")
+                showToast("当前已在极限速度，无法往该方向渐速")
                 return false
             }
             engine.startRamp(from: from, to: to, step: scheme.step,
@@ -557,7 +569,7 @@ final class MetronomeViewModel: ObservableObject {
         else {
             // 母本行 11317：漸速參數無效 uiSound("warn")。
             UISoundEngine.shared.play(.warn)
-            showToast("請檢查漸速參數")
+            showToast("请检查渐速参数")
             return false
         }
         engine.startRamp(from: from, to: to, step: step, barsPerStep: bars)

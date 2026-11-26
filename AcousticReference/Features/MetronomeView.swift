@@ -55,26 +55,26 @@ struct MetronomeView: View {
         }
         .overlay(alignment: .bottom) {
             if let toast = viewModel.toast {
-                Text(toast)
+                Text(L10n.t(toast))
                     .font(.system(size: 13, weight: .medium))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
                     .padding(.bottom, 74)
                     .transition(.opacity)
             }
         }
-        .alert("保存預設", isPresented: $showSavePreset) {
-            TextField("預設名稱", text: $presetName)
-            Button("取消", role: .cancel) {}
-            Button("保存") {
+        .alert(L10n.t("保存预设"), isPresented: $showSavePreset) {
+            TextField(L10n.t("预设名称（如：练习曲 66）"), text: $presetName)
+            Button(L10n.t("取消"), role: .cancel) {}
+            Button(L10n.t("保存")) {
                 if viewModel.savePreset(name: presetName) { presetName = "" }
             }
         }
-        .confirmationDialog("刪除目前預設？", isPresented: $showDeletePreset,
+        .confirmationDialog(L10n.t("删除当前预设？"), isPresented: $showDeletePreset,
                             titleVisibility: .visible) {
-            Button("刪除", role: .destructive) { viewModel.deleteActiveUserPreset() }
-            Button("取消", role: .cancel) {}
+            Button(L10n.t("删除"), role: .destructive) { viewModel.deleteActiveUserPreset() }
+            Button(L10n.t("取消"), role: .cancel) {}
         }
         .sheet(isPresented: $showCustomRamp) {
             CustomRampSheet(viewModel: viewModel, isPresented: $showCustomRamp)
@@ -109,7 +109,7 @@ struct MetronomeView: View {
                 viewModel.toggleCountIn()
             } label: {
                 HStack(spacing: 7) {
-                    Text("預備拍")
+                    Text(L10n.t("预备拍"))
                         .font(.system(size: 13, weight: .semibold))
                     ZStack(alignment: viewModel.settings.countIn ? .trailing : .leading) {
                         Capsule()
@@ -125,8 +125,14 @@ struct MetronomeView: View {
                 .foregroundStyle(viewModel.settings.countIn ? .white : theme.textPrimary)
                 .padding(.horizontal, 12)
                 .frame(height: 34)
-                .background(viewModel.settings.countIn ? AnyShapeStyle(theme.accent) : AnyShapeStyle(.ultraThinMaterial),
-                            in: Capsule())
+                .background {
+                    if viewModel.settings.countIn {
+                        Capsule().fill(theme.accent)
+                    } else {
+                        GlassSurface(shape: Capsule(), theme: theme,
+                                     glassOpacity: store.glassOpacity)
+                    }
+                }
             }
             .buttonStyle(.plain)
 
@@ -135,12 +141,12 @@ struct MetronomeView: View {
             Button {
                 viewModel.tapTempo()
             } label: {
-                Text("TAP 節速")
+                Text(L10n.t("TAP 测速"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(theme.textPrimary)
                     .padding(.horizontal, 14)
                     .frame(height: 34)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
             }
             .buttonStyle(.plain)
         }
@@ -200,7 +206,7 @@ struct MetronomeView: View {
                     .foregroundStyle(lvl == 3 ? .white : theme.textSecondary)
             }
             .frame(height: 46)
-            Text(MetronomeSettings.levelLabels[lvl])
+            Text(L10n.t(MetronomeSettings.levelLabels[lvl]))
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(theme.textMuted)
         }
@@ -216,7 +222,8 @@ struct MetronomeView: View {
             Circle().fill(theme.accent.opacity(0.18))
                 .overlay { Circle().strokeBorder(theme.accent, lineWidth: 1.5) }
         case 1:
-            Circle().fill(.ultraThinMaterial)
+            GlassSurface(shape: Circle(), theme: theme,
+                         glassOpacity: store.glassOpacity)
                 .overlay {
                     Circle().strokeBorder(
                         theme.isDark ? Color.white.opacity(0.25) : Color.black.opacity(0.15),
@@ -330,8 +337,8 @@ struct MetronomeView: View {
             .frame(height: height)
 
             ZStack(alignment: .bottom) {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                GlassSurface(shape: RoundedRectangle(cornerRadius: 14, style: .continuous),
+                             theme: theme, glassOpacity: store.glassOpacity)
                     .overlay {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(theme.isDark ? Color.white.opacity(0.18)
@@ -375,16 +382,15 @@ struct MetronomeView: View {
                 .multilineTextAlignment(.center)
                 .frame(width: 90)
                 .padding(.vertical, 8)
-                .background(.ultraThinMaterial,
-                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .glassBackground(in: RoundedRectangle(cornerRadius: 10, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
             Text("BPM")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(theme.textMuted)
             Spacer()
-            Button("取消") { showEditor = false }
+            Button(L10n.t("取消")) { showEditor = false }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.textSecondary)
-            Button("確定") { commitEditor() }
+            Button(L10n.t("确定")) { commitEditor() }
                 .buttonStyle(.plain)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(theme.accent)
@@ -419,13 +425,19 @@ struct MetronomeView: View {
                     Button {
                         viewModel.setBpm(preset.bpm)
                     } label: {
-                        Text("\(preset.name) \(preset.bpm)")
+                        Text(L10n.t("\(preset.name) \(preset.bpm)"))
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(active ? .white : theme.textPrimary)
                             .padding(.horizontal, 13)
                             .frame(height: 32)
-                            .background(active ? AnyShapeStyle(theme.accent) : AnyShapeStyle(.ultraThinMaterial),
-                                        in: Capsule())
+                            .background {
+                                if active {
+                                    Capsule().fill(theme.accent)
+                                } else {
+                                    GlassSurface(shape: Capsule(), theme: theme,
+                                                 glassOpacity: store.glassOpacity)
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                 }
@@ -439,20 +451,20 @@ struct MetronomeView: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 sigTile(theme: theme)
-                menuTile(theme: theme, title: "細分",
-                         value: MetronomeSettings.subdivisionOptions
-                            .first { $0.value == viewModel.settings.subdivision }?.label ?? "") {
+                menuTile(theme: theme, title: L10n.t("细分"),
+                         value: L10n.t(MetronomeSettings.subdivisionOptions
+                            .first { $0.value == viewModel.settings.subdivision }?.label ?? "")) {
                     ForEach(Array(MetronomeSettings.subdivisionOptions.enumerated()),
                             id: \.offset) { _, option in
                         Button {
                             viewModel.setSubdivision(option.value)
                         } label: {
-                            menuItemLabel(option.label,
+                            menuItemLabel(L10n.t(option.label),
                                           checked: viewModel.settings.subdivision == option.value)
                         }
                     }
                 }
-                menuTile(theme: theme, title: "音色",
+                menuTile(theme: theme, title: L10n.t("音色"),
                          value: viewModel.settings.timbre.displayName) {
                     ForEach(MetronomeTimbre.allCases, id: \.self) { timbre in
                         Button {
@@ -472,7 +484,7 @@ struct MetronomeView: View {
                     Button {
                         showGrouping = true
                     } label: {
-                        tileLabel(theme: theme, title: "重音分組",
+                        tileLabel(theme: theme, title: L10n.t("重音分组"),
                                   value: viewModel.currentGrouping
                                     .map(String.init).joined(separator: "+"))
                     }
@@ -481,27 +493,29 @@ struct MetronomeView: View {
                 Button {
                     showGapClick = true
                 } label: {
-                    tileLabel(theme: theme, title: "靜音小節",
+                    tileLabel(theme: theme, title: L10n.t("静音小节"),
                               value: viewModel.settings.gapEnabled
-                                ? "響 \(viewModel.settings.gapSoundBars) · 靜 \(viewModel.settings.gapSilentBars)"
-                                : "關閉")
+                                ? L10n.t("发声") + " \(viewModel.settings.gapSoundBars) · " + L10n.t("静音") + " \(viewModel.settings.gapSilentBars)"
+                                : L10n.t("关闭"))
                 }
                 .buttonStyle(.plain)
             }
-            wideMenuRow(theme: theme, title: "預設",
-                        value: viewModel.activePreset?.name ?? "選擇") {
-                Section("內建") {
+            wideMenuRow(theme: theme, title: L10n.t("预设"),
+                        value: viewModel.activePreset.map {
+                            $0.builtin ? L10n.t($0.name) : $0.name
+                        } ?? L10n.t("选择")) {
+                Section(L10n.t("内建")) {
                     ForEach(MetronomePreset.builtins) { preset in
                         Button {
                             viewModel.applyPreset(preset)
                         } label: {
-                            menuItemLabel(preset.name,
+                            menuItemLabel(L10n.t(preset.name),
                                           checked: viewModel.activePresetId == preset.id)
                         }
                     }
                 }
                 if !viewModel.userPresets.isEmpty {
-                    Section("自訂") {
+                    Section(L10n.t("自订")) {
                         ForEach(viewModel.userPresets) { preset in
                             Button {
                                 viewModel.applyPreset(preset)
@@ -513,20 +527,20 @@ struct MetronomeView: View {
                     }
                 }
                 Divider()
-                Button("保存目前為預設") { showSavePreset = true }
+                Button(L10n.t("保存当前为预设")) { showSavePreset = true }
                 if let active = viewModel.activePreset, !active.builtin {
-                    Button("刪除目前預設", role: .destructive) { showDeletePreset = true }
+                    Button(L10n.t("删除当前预设"), role: .destructive) { showDeletePreset = true }
                 }
             }
-            wideMenuRow(theme: theme, title: "漸速",
+            wideMenuRow(theme: theme, title: L10n.t("渐速"),
                         value: viewModel.rampState.active
                             ? "\(viewModel.rampState.from) → \(viewModel.rampState.to)"
-                            : "關閉") {
+                            : L10n.t("关闭")) {
                 ForEach(RampQuickScheme.all) { scheme in
                     Button {
                         if viewModel.applyRampQuick(scheme) { showCustomRamp = true }
                     } label: {
-                        menuItemLabel(scheme.label, checked: false)
+                        menuItemLabel(L10n.t(scheme.label), checked: false)
                     }
                 }
             }
@@ -552,11 +566,11 @@ struct MetronomeView: View {
                 Button {
                     viewModel.setDottedBeat(!s.dottedBeat)
                 } label: {
-                    menuItemLabel("附點計拍 (♩.)",
+                    menuItemLabel(L10n.t("附点计拍 (♩.)"),
                                   checked: s.dottedBeat)
                 }
             } label: {
-                tileLabel(theme: theme, title: "拍號", value: value)
+                tileLabel(theme: theme, title: L10n.t("拍号"), value: value)
             }
             Button {
                 viewModel.resetAccents()
@@ -567,7 +581,7 @@ struct MetronomeView: View {
                     .frame(width: 24, height: 24)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("重置重音")
+            .accessibilityLabel(L10n.t("重置重音"))
         }
     }
 
@@ -602,8 +616,7 @@ struct MetronomeView: View {
             }
             .padding(.horizontal, 14)
             .frame(height: 46)
-            .background(.ultraThinMaterial,
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
@@ -626,8 +639,7 @@ struct MetronomeView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial,
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glassBackground(in: RoundedRectangle(cornerRadius: 16, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
@@ -656,7 +668,7 @@ struct MetronomeView: View {
                             .frame(width: g.size.width * viewModel.rampState.progress)
                     }
                 }
-                Text(viewModel.isPlaying ? "停止節拍器 · STOP" : "啟動節拍器 · START")
+                Text(viewModel.isPlaying ? L10n.t("停止节拍器 · STOP") : L10n.t("启动节拍器 · START"))
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -843,8 +855,7 @@ private struct MetronomeHoldRepeatButton: View {
             .font(.system(size: 15, weight: .semibold))
             .frame(maxWidth: .infinity)
             .frame(height: 40)
-            .background(.ultraThinMaterial,
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -866,23 +877,23 @@ private struct CustomRampSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("漸速參數") {
-                    LabeledContent("起始 BPM") {
+                Section(L10n.t("渐速参数")) {
+                    LabeledContent(L10n.t("起始 BPM")) {
                         TextField("20–300", text: $fromText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
-                    LabeledContent("目標 BPM") {
+                    LabeledContent(L10n.t("目标 BPM")) {
                         TextField("20–300", text: $toText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
-                    LabeledContent("每幾小節") {
+                    LabeledContent(L10n.t("每几小节")) {
                         TextField("1–32", text: $barsText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
-                    LabeledContent("每次增減") {
+                    LabeledContent(L10n.t("每次增减")) {
                         TextField("1–20", text: $stepText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
@@ -890,15 +901,15 @@ private struct CustomRampSheet: View {
                 }
                 if viewModel.rampState.active {
                     Section {
-                        LabeledContent("進行中",
+                        LabeledContent(L10n.t("进行中"),
                                        value: "\(viewModel.rampState.from) → \(viewModel.rampState.to) BPM")
-                        Button("停止漸速", role: .destructive) {
+                        Button(L10n.t("停止渐速"), role: .destructive) {
                             viewModel.stopRamp()
                         }
                     }
                 }
                 Section {
-                    Button("開始漸速") {
+                    Button(L10n.t("开始渐速")) {
                         let from = Int(fromText) ?? -1
                         let to = Int(toText) ?? -1
                         let bars = Int(barsText) ?? -1
@@ -910,11 +921,11 @@ private struct CustomRampSheet: View {
                     }
                 }
             }
-            .navigationTitle("自訂漸速")
+            .navigationTitle(L10n.t("自定义渐速"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("關閉") { isPresented = false }
+                    Button(L10n.t("关闭")) { isPresented = false }
                 }
             }
             .onAppear {
@@ -950,7 +961,7 @@ private struct GroupingSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("預置分組（\(viewModel.settings.currentSignatureKey)）") {
+                Section(L10n.t("预置分组") + "（\(viewModel.settings.currentSignatureKey)）") {
                     ForEach(Array(presets.enumerated()), id: \.offset) { _, preset in
                         Button {
                             viewModel.setGrouping(preset)
@@ -969,41 +980,42 @@ private struct GroupingSheet: View {
                     }
                 }
                 Section {
-                    LabeledContent("目前分組",
+                    LabeledContent(L10n.t("当前分组"),
                                    value: viewModel.currentGrouping
                                     .map(String.init).joined(separator: " + "))
                     if !viewModel.accentsMatchGrouping {
-                        Text("目前重音含手動調整（點按拍柱改過），與分組推導不完全一致；套用任一分組將重寫重音。")
+                        Text(L10n.t("目前重音含手动调整（点按拍柱改过），与分组推导不完全一致；套用任一分组将重写重音。"))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    Button("清除分組 · 回母本預設重音") {
+                    Button(L10n.t("清除分组 · 回默认重音")) {
                         viewModel.clearGrouping()
                     }
                 }
-                Section("自訂分組") {
+                Section(L10n.t("自定义分组")) {
                     ForEach(Array(draft.enumerated()), id: \.offset) { index, _ in
                         Stepper(value: draftBinding(index), in: 1...beats) {
-                            Text("第 \(index + 1) 組 · \(draft[index]) 拍")
+                            Text(String(format: L10n.t("第 %d 组 · %d 拍"),
+                                        index + 1, draft[index]))
                         }
                     }
                     .onDelete { draft.remove(atOffsets: $0) }
-                    Button("新增一組") {
+                    Button(L10n.t("新增一组")) {
                         draft.append(1)
                     }
                     .disabled(draftSum >= beats)
-                    LabeledContent("合計", value: "\(draftSum) / \(beats) 拍")
-                    Button("套用自訂分組") {
+                    LabeledContent(L10n.t("合计"), value: "\(draftSum) / \(beats)")
+                    Button(L10n.t("套用自定义分组")) {
                         viewModel.setGrouping(draft)
                     }
                     .disabled(!draftValid)
                 }
             }
-            .navigationTitle("重音分組")
+            .navigationTitle(L10n.t("重音分组"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("關閉") { isPresented = false }
+                    Button(L10n.t("关闭")) { isPresented = false }
                 }
             }
             .onAppear {
@@ -1031,11 +1043,11 @@ private struct GapClickSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Toggle("啟用靜音小節", isOn: Binding(
+                    Toggle(L10n.t("启用静音小节"), isOn: Binding(
                         get: { viewModel.settings.gapEnabled },
                         set: { viewModel.setGapEnabled($0) }))
                 } footer: {
-                    Text("循環播放：先響若干小節，再靜音若干小節。靜音期間拍點照常顯示，但不出聲、不震動。")
+                    Text(L10n.t("循环播放：先响若干小节，再静音若干小节。静音期间拍点照常显示，但不出声、不震动。"))
                 }
                 if viewModel.settings.gapEnabled {
                     Section {
@@ -1043,26 +1055,26 @@ private struct GapClickSheet: View {
                             get: { viewModel.settings.gapSoundBars },
                             set: { viewModel.setGapSoundBars($0) }),
                                 in: MetronomeSettings.gapBarsRange) {
-                            Text("發聲小節 · \(viewModel.settings.gapSoundBars)")
+                            Text(L10n.t("发声小节") + " · \(viewModel.settings.gapSoundBars)")
                         }
                         Stepper(value: Binding(
                             get: { viewModel.settings.gapSilentBars },
                             set: { viewModel.setGapSilentBars($0) }),
                                 in: MetronomeSettings.gapBarsRange) {
-                            Text("靜音小節 · \(viewModel.settings.gapSilentBars)")
+                            Text(L10n.t("静音小节") + " · \(viewModel.settings.gapSilentBars)")
                         }
                     } header: {
-                        Text("循環")
+                        Text(L10n.t("循环"))
                     } footer: {
-                        Text("預備拍不計入循環；漸速計步包含靜音小節。播放中修改即時生效（循環位置不重置）。")
+                        Text(L10n.t("预备拍不计入循环；渐速计步包含静音小节。播放中修改即时生效（循环位置不重置）。"))
                     }
                 }
             }
-            .navigationTitle("靜音小節")
+            .navigationTitle(L10n.t("静音小节"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("關閉") { isPresented = false }
+                    Button(L10n.t("关闭")) { isPresented = false }
                 }
             }
         }

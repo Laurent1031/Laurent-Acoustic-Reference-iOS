@@ -115,7 +115,7 @@ struct TunerView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.system(size: 9, weight: .bold))
-                                Text("削波")
+                                Text(L10n.t("削波"))
                                     .font(.system(size: 10.5, weight: .bold))
                             }
                             .foregroundStyle(.white)
@@ -124,7 +124,7 @@ struct TunerView: View {
                             .background(theme.clipWarning, in: Capsule())
                             .padding(6)
                             .allowsHitTesting(false)
-                            .accessibilityLabel("輸入削波警示")
+                            .accessibilityLabel(L10n.t("输入削波警示"))
                         }
                     }
 
@@ -160,6 +160,16 @@ struct TunerView: View {
         .sheet(isPresented: $showLibrary) {
             InstrumentLibraryView(store: store)
         }
+        // 自動開啟麥克風（母本調音頁 pointerdown → ensureMicOn）：
+        // autoMicOnEnter 開時點按頁面任意處即啟動；simultaneous
+        // 不攔截任何既有手勢與按鈕，關時不觸發（母本預設關）。
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                if store.autoMicOnEnter, !engine.isRunning {
+                    Task { await engine.start() }
+                }
+            }
+        )
         .onDisappear { viewModel.viewDidDisappear() }
     }
 
@@ -240,10 +250,10 @@ struct TunerView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(theme.textSecondary)
                 .frame(width: 26, height: 26)
-                .background(.ultraThinMaterial, in: Circle())
+                .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(store.performanceMode ? "退出演奏態" : "演奏態")
+        .accessibilityLabel(store.performanceMode ? L10n.t("退出演奏态") : L10n.t("演奏态"))
     }
 
     // MARK: - Row 1：樂器觸發鈕＋記譜/實音分段（母本行 5231）
@@ -255,12 +265,13 @@ struct TunerView: View {
             } label: {
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(store.selectedInstrument.categoryLabel)
+                        Text(L10n.localizedName(store.selectedInstrument.categoryLabel))
                             .font(.system(size: 10, weight: .bold))
                             .tracking(0.8)
                             .foregroundStyle(theme.accent)
                             .lineLimit(1)
-                        Text(store.selectedInstrument.displayName)
+                        Text(L10n.headerInstrumentLabel(name: store.selectedInstrument.name,
+                                        englishName: store.selectedInstrument.englishName))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(theme.textPrimary)
                             .lineLimit(1)
@@ -275,8 +286,7 @@ struct TunerView: View {
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 44)
-                .background(.ultraThinMaterial,
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
             }
             .buttonStyle(.plain)
 
@@ -288,11 +298,11 @@ struct TunerView: View {
     /// profile.pitchMode 並保存（母本行 8320）。
     private func pitchModeSegment(theme: TunerTheme) -> some View {
         HStack(spacing: 2) {
-            pitchModeButton(mode: .written, title: "記譜", theme: theme)
-            pitchModeButton(mode: .concert, title: "實音", theme: theme)
+            pitchModeButton(mode: .written, title: L10n.t("记谱"), theme: theme)
+            pitchModeButton(mode: .concert, title: L10n.t("实音"), theme: theme)
         }
         .padding(3)
-        .background(.ultraThinMaterial, in: Capsule())
+        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
     }
 
     private func pitchModeButton(mode: PitchMode, title: String,
@@ -304,6 +314,8 @@ struct TunerView: View {
         } label: {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
                 .foregroundStyle(active ? .white : theme.textSecondary)
                 .padding(.horizontal, 11)
                 .frame(height: 30)
@@ -319,11 +331,11 @@ struct TunerView: View {
     /// 引擎、判準與觸感（與 pitchModeSegment 同，無觸感呼叫）。
     private func displayModeToggle(theme: TunerTheme) -> some View {
         HStack(spacing: 2) {
-            displayModeButton(mode: .strobe, title: "頻閃", theme: theme)
-            displayModeButton(mode: .needle, title: "指針", theme: theme)
+            displayModeButton(mode: .strobe, title: L10n.t("频闪"), theme: theme)
+            displayModeButton(mode: .needle, title: L10n.t("指针"), theme: theme)
         }
         .padding(3)
-        .background(.ultraThinMaterial, in: Capsule())
+        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
     }
 
     private func displayModeButton(mode: TunerDisplayMode, title: String,
@@ -335,6 +347,8 @@ struct TunerView: View {
         } label: {
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
                 .foregroundStyle(active ? .white : theme.textSecondary)
                 .padding(.horizontal, 9)
                 .frame(height: 26)
@@ -357,12 +371,12 @@ struct TunerView: View {
                     Button {
                         showLibrary = true
                     } label: {
-                        Text("＋ 常用")
+                        Text(L10n.t("＋ 常用"))
                             .font(.system(size: 12.5, weight: .semibold))
                             .foregroundStyle(theme.accent)
                             .padding(.horizontal, 11)
                             .frame(height: 32)
-                            .background(.ultraThinMaterial, in: Capsule())
+                            .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
                     }
                     .buttonStyle(.plain)
                 }
@@ -391,13 +405,13 @@ struct TunerView: View {
     private func favoriteChip(inst: Instrument, theme: TunerTheme) -> some View {
         let active = inst.id == store.selectedInstrumentId
         let isDragged = favDragId == inst.id
-        return Text(inst.name)
+        return Text(L10n.localizedName(inst.name))
             .font(.system(size: 12.5, weight: .semibold))
             .foregroundStyle(active ? .white : theme.textPrimary)
             .padding(.horizontal, 11)
             .frame(height: 32)
             .background(active ? theme.accent : Color.clear, in: Capsule())
-            .background(.ultraThinMaterial, in: Capsule())
+            .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
             .background(GeometryReader { proxy in
                 Color.clear.preference(
                     key: FavChipFrameKey.self,
@@ -539,7 +553,7 @@ struct TunerView: View {
             })
         }
         .padding(.horizontal, 4)
-        .background(.ultraThinMaterial, in: Capsule())
+        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
     }
 
     /// 收藏圓點指示（母本 #25 renderFavDots，行 6883）：收藏 ≥2
@@ -583,12 +597,12 @@ struct TunerView: View {
             }
 
             // 唱名標籤（母本 .solfege-tag；鎖定時轉 ok 色，母本行 3398）。
-            Text(viewModel.solfegeText)
+            Text(L10n.t(viewModel.solfegeText))
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(viewModel.noteLocked ? theme.ok : theme.accent)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 3)
-                .background(.ultraThinMaterial, in: Capsule())
+                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
                 .overlay {
                     Capsule().strokeBorder(
                         (viewModel.noteLocked ? theme.ok : theme.accent).opacity(0.35),
@@ -606,12 +620,12 @@ struct TunerView: View {
                         justStripExpanded.toggle()
                     }
                 } label: {
-                    Text("純律 · \(PitchMath.noteNames[store.tunerSettings.justTonicPc])")
+                    Text("\(L10n.t("纯律")) · \(PitchMath.noteNames[store.tunerSettings.justTonicPc])")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(theme.accent)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 3)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
                         .overlay {
                             Capsule().strokeBorder(theme.accent.opacity(0.35), lineWidth: 1)
                         }
@@ -639,7 +653,7 @@ struct TunerView: View {
                             .padding(.horizontal, 10)
                             .frame(height: 28)
                             .background(active ? theme.accent : Color.clear, in: Capsule())
-                            .background(.ultraThinMaterial, in: Capsule())
+                            .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
                     }
                     .buttonStyle(.plain)
                 }
@@ -662,7 +676,7 @@ struct TunerView: View {
             Circle()
                 .fill(theme.accent)
                 .frame(width: 7, height: 7)
-            Text("點擊下方「開啟麥克風校音」開始檢測")
+            Text(L10n.t("轻点任意处开始校音"))
                 .font(.system(size: 12.5))
                 .foregroundStyle(theme.textSecondary)
         }
@@ -687,7 +701,7 @@ struct TunerView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    targetChip(label: "自動識別", note: nil, isGreen: false,
+                    targetChip(label: L10n.t("自动识别"), note: nil, isGreen: false,
                                chipId: "__auto__", theme: theme)
                     ForEach(viewModel.targetChipItems) { item in
                         targetChip(label: item.label, note: item.note,
@@ -764,11 +778,11 @@ struct TunerView: View {
     private func guzhengKeyMenu(theme: TunerTheme) -> some View {
         Menu {
             ForEach(InstrumentCatalog.guzhengKeyOrder, id: \.self) { key in
-                Button("古箏 \(key)調") { store.guzhengKey = key }
+                Button(L10n.t("古筝 \(key)调")) { store.guzhengKey = key }
             }
         } label: {
             HStack(spacing: 3) {
-                Text("古箏 \(store.guzhengKey)調")
+                Text(L10n.t("古筝 \(store.guzhengKey)调"))
                     .font(.system(size: 12.5, weight: .semibold))
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 9, weight: .bold))
@@ -776,12 +790,13 @@ struct TunerView: View {
             .foregroundStyle(theme.accent)
             .padding(.horizontal, 10)
             .frame(height: 32)
-            .background(.ultraThinMaterial, in: Capsule())
+            .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
         }
     }
 
     private func targetChip(label: String, note: String?, isGreen: Bool,
                             chipId: String, theme: TunerTheme) -> some View {
+        let label = L10n.localizedName(label)
         let active = note == nil
             ? viewModel.lockedTargetNote == nil
             : viewModel.lockedTargetNote == note
@@ -796,7 +811,7 @@ struct TunerView: View {
                 .padding(.horizontal, 11)
                 .frame(height: 32)
                 .background(active ? theme.accent : Color.clear, in: Capsule())
-                .background(.ultraThinMaterial, in: Capsule())
+                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
                 .background(GeometryReader { proxy in
                     Color.clear.preference(
                         key: TargetChipFrameKey.self,
@@ -810,17 +825,17 @@ struct TunerView: View {
 
     private func metricsCard(theme: TunerTheme) -> some View {
         HStack(spacing: 8) {
-            metricBox(theme: theme, label: "WRITTEN 記譜", value: viewModel.writtenText)
-            metricBox(theme: theme, label: "CONCERT 實音", value: viewModel.concertText)
+            metricBox(theme: theme, label: "WRITTEN " + L10n.t("记谱"), value: viewModel.writtenText)
+            metricBox(theme: theme, label: "CONCERT " + L10n.t("实音"), value: viewModel.concertText)
             metricBox(
-                theme: theme, label: "CENTS 音分",
+                theme: theme, label: "CENTS " + L10n.t("音分"),
                 value: viewModel.centsDisplayText,
                 valueColor: viewModel.isInTune ? theme.ok : theme.textPrimary
             )
-            metricBox(theme: theme, label: "FREQ 頻率", value: viewModel.frequencyText)
+            metricBox(theme: theme, label: "FREQ " + L10n.t("频率"), value: viewModel.frequencyText)
         }
         .padding(10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(
@@ -867,7 +882,7 @@ struct TunerView: View {
                         viewModel.stabilityFrozen ? theme.accent : theme.textSecondary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
             }
             .buttonStyle(.plain)
             Spacer()
@@ -885,7 +900,7 @@ struct TunerView: View {
                 HStack(spacing: 6) {
                     Image(systemName: drone.isPlaying ? "stop.fill" : "play.fill")
                         .font(.system(size: 11, weight: .bold))
-                    Text(viewModel.droneButtonText)
+                    Text(L10n.t(viewModel.droneButtonText))
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
                 }
@@ -916,7 +931,7 @@ struct TunerView: View {
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Text("音色 \(store.droneTimbre.displayName)")
+                    Text("\(L10n.t("音色")) \(store.droneTimbre.displayName)")
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
                     Image(systemName: "chevron.up.chevron.down")
@@ -935,7 +950,7 @@ struct TunerView: View {
             Button {
                 viewModel.toggleDroneFollow()
             } label: {
-                Text("音高跟隨")
+                Text(L10n.t("音高跟随"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(store.droneFollow ? .white : theme.textSecondary)
                     .padding(.horizontal, 11)
@@ -947,7 +962,7 @@ struct TunerView: View {
             }
             .buttonStyle(.plain)
         }
-        .background(.ultraThinMaterial, in: Capsule())
+        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
         .overlay {
             Capsule().strokeBorder(
                 theme.isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08),
@@ -960,7 +975,7 @@ struct TunerView: View {
     private func micControls(theme: TunerTheme) -> some View {
         VStack(spacing: 8) {
             if engine.permissionDenied {
-                Text("麥克風權限被拒絕，請到系統設定開啟")
+                Text(L10n.t("麦克风权限被拒绝，请到系统设置开启"))
                     .font(.footnote)
                     .foregroundStyle(theme.clipWarning)
             }
@@ -988,13 +1003,13 @@ struct TunerView: View {
                     Circle()
                         .fill(engine.isRunning ? theme.ok : theme.textMuted)
                         .frame(width: 9, height: 9)
-                    Text(engine.isRunning ? "校音中 · 點擊停止" : "開啟麥克風校音")
+                    Text(engine.isRunning ? L10n.t("校音中 · 点击停止") : L10n.t("开启麦克风校音"))
                         .font(.system(size: 16, weight: .semibold))
                 }
                 .foregroundStyle(theme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 13)
-                .background(.ultraThinMaterial, in: Capsule())
+                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
                 .overlay {
                     Capsule().strokeBorder(
                         theme.isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08),

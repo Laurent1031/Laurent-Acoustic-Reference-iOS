@@ -1,0 +1,13 @@
+=== i18n 字典抽取核對報告 ===
+母本: /home/hatch/workspace/tuner-metronome/index.html
+字典語言: zh-TW, en, ja, ko, de, fr, ru（zh-CN 為源串本身、無字典）
+逐語鍵數: zh-TW=376 en=358 ja=348 ko=330 de=329 fr=329 ru=329
+前綴鍵: 18 條
+缺鍵（回退源串，母本既定行為）en: 18 條
+缺鍵（回退源串，母本既定行為）ja: 28 條
+缺鍵（回退源串，母本既定行為）ko: 46 條
+缺鍵（回退源串，母本既定行為）de: 47 條
+缺鍵（回退源串，母本既定行為）fr: 47 條
+缺鍵（回退源串，母本既定行為）ru: 47 條
+supplement 原生專屬字串: 93 條源串；逐語 zh-TW=93 en=93 ja=93 ko=93 de=93 fr=93 ru=93
+vm 求值 vs JSON.parse 深比對＋spot-check 不一致: 0

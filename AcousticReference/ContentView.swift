@@ -1,6 +1,14 @@
 import SwiftUI
 import UIKit
 
+/// 頂欄 sheet 種類（ContentView.activeSheet）。
+enum TopSheet: Identifiable {
+    case debug
+    case preferences
+    case systemSettings
+    var id: Self { self }
+}
+
 /// App 殼（階段 4）：頂欄（品牌＋調音/節拍分段切換＋診斷入口，
 /// 對照母本頂欄）＋兩頁保活切換＋節拍器背景膠囊＋螢幕常亮管理。
 /// 兩頁以 ZStack 疊放、僅切透明度與命中測試：任一頁的執行期
@@ -19,7 +27,9 @@ struct ContentView: View {
     @StateObject private var metronomeEngine: MetronomeEngine
     @StateObject private var metronomeViewModel: MetronomeViewModel
     @StateObject private var droneEngine: DroneEngine
-    @State private var showDebug = false
+    /// 頂欄喚出的 sheet（診斷／偏好／系統設定，階段 5 統一以
+    /// item 呈現，避免多個 .sheet 修飾器互相衝突）。
+    @State private var activeSheet: TopSheet?
     /// 排練防誤觸鎖（補強段）：僅執行期狀態，不落盤——重啟 App
     /// 恆為未鎖定，避免「開機即鎖死」的困惑（取捨註明於報告）。
     @State private var rehearsalLocked = false
@@ -34,11 +44,16 @@ struct ContentView: View {
         tunerEngine.range = store.effectiveRange
         _engine = StateObject(wrappedValue: tunerEngine)
 
-        let metroEngine = MetronomeEngine(settings: store.metronomeSettings)
+        // 節拍器啟動播種（階段 5）：用戶設過「設為默認」時以
+        // 預設參數啟動（母本 applyUserProfileToWorkspace 語義），
+        // 未設時沿用上次值（階段 3/4 既有行為）；運行中的變更
+        // 仍回存 metronomeSettings（上次值），與預設並存。
+        let metroSeed = store.metronomeDefault ?? store.metronomeSettings
+        let metroEngine = MetronomeEngine(settings: metroSeed)
         _metronomeEngine = StateObject(wrappedValue: metroEngine)
         let metroViewModel = MetronomeViewModel(
             engine: metroEngine,
-            persisted: (settings: store.metronomeSettings,
+            persisted: (settings: metroSeed,
                         userPresets: store.metronomeUserPresets))
         metroViewModel.persistSettings = { store.metronomeSettings = $0 }
         metroViewModel.persistUserPresets = { store.metronomeUserPresets = $0 }
@@ -93,16 +108,38 @@ struct ContentView: View {
                    value: metronomeViewModel.capsuleVisible)
         .animation(.easeOut(duration: 0.2), value: rehearsalLocked)
         .preferredColorScheme(store.themePreference.forcedColorScheme)
-        .sheet(isPresented: $showDebug) {
-            TunerDebugView(engine: engine,
-                           metronomeEngine: metronomeEngine,
-                           metronomeViewModel: metronomeViewModel,
-                           store: store)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .debug:
+                TunerDebugView(engine: engine,
+                               metronomeEngine: metronomeEngine,
+                               metronomeViewModel: metronomeViewModel,
+                               store: store)
+            case .preferences:
+                PreferencesView(store: store,
+                                currentMetronomeSettings: metronomeViewModel.settings)
+            case .systemSettings:
+                SystemSettingsView(store: store,
+                                   metronomeViewModel: metronomeViewModel)
+            }
         }
         .onAppear {
             HapticsEngine.shared.isEnabled = engine.settings.hapticsOn
             UISoundEngine.shared.isEnabled = engine.settings.soundsOn
             updateIdleTimer()
+            startMicIfAutoEnabled()
+        }
+        // 語言唯一真源在 store；變更單向同步進 L10n（所有
+        // @ObservedObject store 的視圖隨 @Published 變更重繪，
+        // 渲染時即以新語言查表——即時生效）。
+        .onChange(of: store.language) { _, newLanguage in
+            L10n.setLanguage(newLanguage)
+        }
+        // 自動開啟麥克風（母本 autoMicOnEnter）：切換到調音
+        // 模式時啟動（啟動落在調音由 onAppear 處理；調音頁
+        // 點按任意處由 TunerView 的手勢處理）。
+        .onChange(of: store.appMode) { _, newMode in
+            if newMode == .tuner { startMicIfAutoEnabled() }
         }
         // store → 引擎單向同步（store 為唯一真源）。
         .onChange(of: store.tunerSettings) { _, newSettings in
@@ -127,33 +164,62 @@ struct ContentView: View {
         .onChange(of: metronomeEngine.isPlaying) { _, _ in updateIdleTimer() }
     }
 
-    // MARK: - 頂欄（母本 topBar：品牌＋分段＋診斷）
+    // MARK: - 頂欄（母本 topBar：品牌＋分段＋偏好／设置＋鎖＋診斷）
 
+    /// 母本頂欄右側有「偏好」「设置」兩文字鈕（階段 5 補入）。
+    /// iPhone 寬度放不下全列（品牌＋分段＋兩文字鈕＋兩圖標鈕），
+    /// 以寬度斷點分三檔：≥428 全列（含品牌徽章）；≥375 去徽章
+    /// （品牌字標 LAURENT 全尺寸保留，絕不縮放／截斷——版面
+    /// 鐵律）；<375 再把分段收為純圖標（無障礙標籤保留全名）。
     private func topBar(theme: TunerTheme) -> some View {
-        HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(theme.accent)
-                .frame(width: 34, height: 34)
-                .overlay {
-                    Text("L")
-                        .font(.system(size: 19, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                }
+        GeometryReader { geo in
+            topBarRow(theme: theme,
+                      showsBadge: geo.size.width >= 428,
+                      segmentLabels: geo.size.width >= 375)
+        }
+        .frame(height: 36)
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+
+    private func topBarRow(theme: TunerTheme, showsBadge: Bool,
+                           segmentLabels: Bool) -> some View {
+        HStack(spacing: 8) {
+            if showsBadge {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(theme.accent)
+                    .frame(width: 34, height: 34)
+                    .overlay {
+                        Text("L")
+                            .font(.system(size: 19, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                    }
+            }
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("LAURENT")
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .tracking(2.5)
                     .foregroundStyle(theme.textPrimary)
+                    .fixedSize()
                 Text("STUDIO EDITION")
                     .font(.system(size: 8.5, weight: .medium, design: .rounded))
                     .tracking(3)
                     .foregroundStyle(theme.textMuted)
+                    .fixedSize()
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            modeSegment(theme: theme)
+            modeSegment(theme: theme, showsLabels: segmentLabels)
+
+            topTextButton(title: L10n.t("偏好"), theme: theme) {
+                activeSheet = .preferences
+            }
+            topTextButton(title: L10n.t("设置"), theme: theme) {
+                activeSheet = .systemSettings
+            }
 
             Button {
                 rehearsalLocked = true
@@ -162,44 +228,59 @@ struct ContentView: View {
                 Image(systemName: "lock.open")
                     .font(.system(size: 14, weight: .semibold))
                     .frame(width: 32, height: 32)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
             }
             .buttonStyle(.plain)
             .foregroundStyle(theme.textSecondary)
-            .accessibilityLabel("排練鎖定")
+            .accessibilityLabel(L10n.t("排练锁定"))
 
             Button {
-                showDebug = true
+                activeSheet = .debug
             } label: {
                 Image(systemName: "waveform.path.ecg")
                     .font(.system(size: 14, weight: .semibold))
                     .frame(width: 32, height: 32)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
             }
             .buttonStyle(.plain)
             .foregroundStyle(theme.textSecondary)
-            .accessibilityLabel("診斷")
+            .accessibilityLabel(L10n.t("诊断"))
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
+    }
+
+    /// 頂欄文字鈕（母本 .icon-btn 形制：純文字、次級色）。
+    private func topTextButton(title: String, theme: TunerTheme,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+                .fixedSize()
+                .foregroundStyle(theme.textSecondary)
+                .frame(height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// 分段切換（母本 seg：調音／節拍；選中滑塊以 spring 移動，
     /// 切換震動 haptic(6)——母本 segBtn 呼叫點）。
-    private func modeSegment(theme: TunerTheme) -> some View {
+    private func modeSegment(theme: TunerTheme, showsLabels: Bool = true) -> some View {
         HStack(spacing: 2) {
-            segmentButton(mode: .tuner, title: "調音",
-                          symbol: "tuningfork", theme: theme)
-            segmentButton(mode: .metronome, title: "節拍",
-                          symbol: "metronome", theme: theme)
+            segmentButton(mode: .tuner, title: L10n.t("调音"),
+                          symbol: "tuningfork", theme: theme,
+                          showsLabel: showsLabels)
+            segmentButton(mode: .metronome, title: L10n.t("节拍"),
+                          symbol: "metronome", theme: theme,
+                          showsLabel: showsLabels)
         }
         .padding(3)
-        .background(.ultraThinMaterial, in: Capsule())
+        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
     }
 
     private func segmentButton(mode target: AppMode, title: String,
-                               symbol: String, theme: TunerTheme) -> some View {
+                               symbol: String, theme: TunerTheme,
+                               showsLabel: Bool = true) -> some View {
         let active = mode == target
         return Button {
             guard mode != target else { return }
@@ -209,15 +290,19 @@ struct ContentView: View {
             HStack(spacing: 5) {
                 Image(systemName: symbol)
                     .font(.system(size: 12, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                if showsLabel {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                }
             }
             .foregroundStyle(active ? .white : theme.textSecondary)
-            .padding(.horizontal, 11)
+            .padding(.horizontal, showsLabel ? 11 : 8)
             .frame(height: 28)
             .background(active ? theme.accent : Color.clear, in: Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     // MARK: - 防誤觸鎖遮罩（補強段）
@@ -236,13 +321,13 @@ struct ContentView: View {
                 HStack(spacing: 7) {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 11, weight: .semibold))
-                    Text("排練鎖定 · 長按解鎖")
+                    Text(L10n.t("排练锁定 · 长按解锁"))
                         .font(.system(size: 12.5, weight: .semibold))
                 }
                 .foregroundStyle(theme.textSecondary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
-                .background(.ultraThinMaterial, in: Capsule())
+                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
                 .overlay {
                     Capsule().strokeBorder(
                         theme.isDark ? Color.white.opacity(0.14) : Color.black.opacity(0.08),
@@ -257,7 +342,7 @@ struct ContentView: View {
                             HapticsEngine.shared.tap(milliseconds: 12)
                         }
                 )
-                .accessibilityLabel("排練鎖定中，長按解鎖")
+                .accessibilityLabel(L10n.t("排练锁定中，长按解锁"))
             }
         }
     }
@@ -284,7 +369,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
-            .background(.ultraThinMaterial, in: Capsule())
+            .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
             .overlay {
                 Capsule().strokeBorder(
                     theme.isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.08),
@@ -301,6 +386,18 @@ struct ContentView: View {
     private func updateIdleTimer() {
         UIApplication.shared.isIdleTimerDisabled =
             engine.isRunning || metronomeEngine.isPlaying
+    }
+
+    // MARK: - 自動開啟麥克風（母本 ensureMicOn，階段 5 接線）
+
+    /// autoMicOnEnter 開且目前在調音模式、引擎未運行時啟動
+    /// （engine.start 自帶權限申請；權限被拒時引擎自行落入
+    /// permissionDenied 狀態，調音頁顯示提示）。關時全不觸發
+    /// （母本預設關，零回退）。
+    private func startMicIfAutoEnabled() {
+        guard store.autoMicOnEnter, store.appMode == .tuner,
+              !engine.isRunning else { return }
+        Task { await engine.start() }
     }
 }
 

@@ -1,0 +1,840 @@
+{
+  "Core Haptics 不可用（降级为系统震动）": {
+    "de": "Core Haptics nicht verfügbar (Systemvibration)",
+    "en": "Core Haptics unavailable (system vibration fallback)",
+    "fr": "Core Haptics indisponible (vibration système)",
+    "ja": "Core Haptics 利用不可（システム振動にフォールバック）",
+    "ko": "Core Haptics 사용 불가(시스템 진동으로 대체)",
+    "ru": "Core Haptics недоступен (системная вибрация)",
+    "zh-TW": "Core Haptics 不可用（降級為系統震動）"
+  },
+  "Core Haptics 可用": {
+    "de": "Core Haptics verfügbar",
+    "en": "Core Haptics available",
+    "fr": "Core Haptics disponible",
+    "ja": "Core Haptics 利用可能",
+    "ko": "Core Haptics 사용 가능",
+    "ru": "Core Haptics доступен",
+    "zh-TW": "Core Haptics 可用"
+  },
+  "IO 缓冲": {
+    "de": "IO-Puffer",
+    "en": "IO buffer",
+    "fr": "Tampon IO",
+    "ja": "IOバッファ",
+    "ko": "IO 버퍼",
+    "ru": "Буфер IO",
+    "zh-TW": "IO 緩衝"
+  },
+  "_comment": "原生專屬字串補充表（母本 I18N 字典沒有的字串：原生新增功能、原生 UI 形制、診斷頁）。鍵為 zh-CN 源串，值為其餘七語；zh-CN 恆等於鍵本身、不列。由 tools/extract-i18n.mjs 合併進 Resources/localization.json 的 supplement 段，與母本字典分開標明出處。查表順序：母本字典 → supplement → 源串。",
+  "与调音页的 A4 步进器同步": {
+    "de": "Synchron mit dem A4-Steller der Stimmseite",
+    "en": "Synced with the A4 stepper on the tuner page",
+    "fr": "Synchronisé avec le réglage A4 de l'accordeur",
+    "ja": "調音ページのA4ステッパーと連動",
+    "ko": "조율 페이지의 A4 스테퍼와 동기화",
+    "ru": "Синхронизировано с настройкой A4 на странице тюнера",
+    "zh-TW": "與調音頁的 A4 步進器同步"
+  },
+  "中": {
+    "de": "Mittel",
+    "en": "Mid",
+    "fr": "Moyen",
+    "ja": "中",
+    "ko": "중간",
+    "ru": "Средний",
+    "zh-TW": "中"
+  },
+  "乐池暗红": {
+    "de": "Orchestergraben-Rot",
+    "en": "Pit Dark Red",
+    "fr": "Rouge fosse",
+    "ja": "ピットダークレッド",
+    "ko": "오케스트라 핏 다크레드",
+    "ru": "Тёмно-красная (оркестровая яма)",
+    "zh-TW": "樂池暗紅"
+  },
+  "低": {
+    "de": "Niedrig",
+    "en": "Low",
+    "fr": "Bas",
+    "ja": "低",
+    "ko": "낮음",
+    "ru": "Низкий",
+    "zh-TW": "低"
+  },
+  "保存": {
+    "de": "Speichern",
+    "en": "Save",
+    "fr": "Enregistrer",
+    "ja": "保存",
+    "ko": "저장",
+    "ru": "Сохранить",
+    "zh-TW": "保存"
+  },
+  "保存当前为预设": {
+    "de": "Aktuelles als Preset speichern",
+    "en": "Save Current as Preset",
+    "fr": "Enregistrer comme préréglage",
+    "ja": "現在の設定をプリセットに保存",
+    "ko": "현재 설정을 프리셋으로 저장",
+    "ru": "Сохранить текущее как пресет",
+    "zh-TW": "保存目前為預設"
+  },
+  "保存预设": {
+    "de": "Preset speichern",
+    "en": "Save Preset",
+    "fr": "Enregistrer le préréglage",
+    "ja": "プリセットを保存",
+    "ko": "프리셋 저장",
+    "ru": "Сохранить пресет",
+    "zh-TW": "保存預設"
+  },
+  "停止校音": {
+    "de": "Stimmen stoppen",
+    "en": "Stop Tuning",
+    "fr": "Arrêter l'accordage",
+    "ja": "調律を停止",
+    "ko": "조율 중지",
+    "ru": "Остановить настройку",
+    "zh-TW": "停止校音"
+  },
+  "内建": {
+    "de": "Integriert",
+    "en": "Built-in",
+    "fr": "Intégrés",
+    "ja": "内蔵",
+    "ko": "내장",
+    "ru": "Встроенные",
+    "zh-TW": "內建"
+  },
+  "删除": {
+    "de": "Löschen",
+    "en": "Delete",
+    "fr": "Supprimer",
+    "ja": "削除",
+    "ko": "삭제",
+    "ru": "Удалить",
+    "zh-TW": "刪除"
+  },
+  "删除当前预设？": {
+    "de": "Aktuelles Preset löschen?",
+    "en": "Delete current preset?",
+    "fr": "Supprimer le préréglage actuel ?",
+    "ja": "現在のプリセットを削除しますか？",
+    "ko": "현재 프리셋을 삭제할까요?",
+    "ru": "Удалить текущий пресет?",
+    "zh-TW": "刪除目前預設？"
+  },
+  "削波": {
+    "de": "Übersteuerung",
+    "en": "Clipping",
+    "fr": "Saturation",
+    "ja": "クリッピング",
+    "ko": "클리핑",
+    "ru": "Клиппинг",
+    "zh-TW": "削波"
+  },
+  "原始": {
+    "de": "Roh",
+    "en": "Raw",
+    "fr": "Brut",
+    "ja": "原始",
+    "ko": "원본",
+    "ru": "Исходная",
+    "zh-TW": "原始"
+  },
+  "发声": {
+    "de": "Klang",
+    "en": "Sound",
+    "fr": "Son",
+    "ja": "発音",
+    "ko": "소리",
+    "ru": "Звук",
+    "zh-TW": "發聲"
+  },
+  "发声小节": {
+    "de": "Klingende Takte",
+    "en": "Sounding Bars",
+    "fr": "Mesures sonores",
+    "ja": "発音小節",
+    "ko": "소리 마디",
+    "ru": "Звучащие такты",
+    "zh-TW": "發聲小節"
+  },
+  "取样率": {
+    "de": "Abtastrate",
+    "en": "Sample rate",
+    "fr": "Fréquence d'échantillonnage",
+    "ja": "サンプリングレート",
+    "ko": "샘플레이트",
+    "ru": "Частота дискретизации",
+    "zh-TW": "取樣率"
+  },
+  "合计": {
+    "de": "Summe",
+    "en": "Total",
+    "fr": "Total",
+    "ja": "合計",
+    "ko": "합계",
+    "ru": "Итого",
+    "zh-TW": "合計"
+  },
+  "启用静音小节": {
+    "de": "Stumme Takte aktivieren",
+    "en": "Enable Gap Click",
+    "fr": "Activer les mesures silencieuses",
+    "ja": "無音小節を有効化",
+    "ko": "무음 마디 활성화",
+    "ru": "Включить тихие такты",
+    "zh-TW": "啟用靜音小節"
+  },
+  "噪声门": {
+    "de": "Noise Gate",
+    "en": "Noise Gate",
+    "fr": "Noise Gate",
+    "ja": "ノイズゲート",
+    "ko": "노이즈 게이트",
+    "ru": "Шумовой порог",
+    "zh-TW": "噪聲門"
+  },
+  "在调音页点按任意处或切换到调音时自动开启": {
+    "de": "Startet bei Tippen auf die Stimmseite oder Wechsel dorthin",
+    "en": "Starts when you tap the tuner page or switch to it",
+    "fr": "Démarre au toucher de la page accordeur ou à son ouverture",
+    "ja": "調音ページのタップ、または切り替えで自動開始",
+    "ko": "조율 페이지를 탭하거나 전환하면 자동 시작",
+    "ru": "Запуск при касании страницы тюнера или переходе на неё",
+    "zh-TW": "在調音頁點按任意處或切換到調音時自動開啟"
+  },
+  "复制诊断记录": {
+    "de": "Diagnoseprotokoll kopieren",
+    "en": "Copy Detection Log",
+    "fr": "Copier le journal",
+    "ja": "診断ログをコピー",
+    "ko": "진단 기록 복사",
+    "ru": "Копировать журнал",
+    "zh-TW": "複製診斷記錄"
+  },
+  "套用自定义分组": {
+    "de": "Eigene Gruppe anwenden",
+    "en": "Apply Custom Grouping",
+    "fr": "Appliquer le groupe",
+    "ja": "カスタムグループを適用",
+    "ko": "사용자 지정 그룹 적용",
+    "ru": "Применить свою группу",
+    "zh-TW": "套用自訂分組"
+  },
+  "好": {
+    "de": "OK",
+    "en": "OK",
+    "fr": "OK",
+    "ja": "OK",
+    "ko": "확인",
+    "ru": "OK",
+    "zh-TW": "好"
+  },
+  "容差": {
+    "de": "Toleranz",
+    "en": "Tolerance",
+    "fr": "Tolérance",
+    "ja": "許容差",
+    "ko": "허용 오차",
+    "ru": "Допуск",
+    "zh-TW": "容差"
+  },
+  "尚无排程拍": {
+    "de": "Noch keine Schläge geplant",
+    "en": "No beats scheduled yet",
+    "fr": "Aucun temps planifié",
+    "ja": "まだ拍がスケジュールされていません",
+    "ko": "아직 예약된 박이 없습니다",
+    "ru": "Доли ещё не запланированы",
+    "zh-TW": "尚無排程拍"
+  },
+  "屏幕常亮": {
+    "de": "Bildschirm anlassen",
+    "en": "Keep Screen On",
+    "fr": "Écran toujours actif",
+    "ja": "画面常時点灯",
+    "ko": "화면 켜짐 유지",
+    "ru": "Не гасить экран",
+    "zh-TW": "屏幕常亮"
+  },
+  "已保存预设": {
+    "de": "Preset gespeichert",
+    "en": "Preset saved",
+    "fr": "Préréglage enregistré",
+    "ja": "プリセットを保存しました",
+    "ko": "프리셋이 저장되었습니다",
+    "ru": "Пресет сохранён",
+    "zh-TW": "已保存預設"
+  },
+  "已停止": {
+    "de": "Gestoppt",
+    "en": "Stopped",
+    "fr": "Arrêté",
+    "ja": "停止中",
+    "ko": "중지됨",
+    "ru": "Остановлен",
+    "zh-TW": "已停止"
+  },
+  "已复制": {
+    "de": "Kopiert",
+    "en": "Copied",
+    "fr": "Copié",
+    "ja": "コピーしました",
+    "ko": "복사됨",
+    "ru": "Скопировано",
+    "zh-TW": "已複製"
+  },
+  "已套用预设": {
+    "de": "Preset angewendet",
+    "en": "Preset applied",
+    "fr": "Préréglage appliqué",
+    "ja": "プリセットを適用しました",
+    "ko": "프리셋이 적용되었습니다",
+    "ru": "Пресет применён",
+    "zh-TW": "已套用預設"
+  },
+  "已排程主拍": {
+    "de": "Hauptschläge geplant",
+    "en": "beats scheduled",
+    "fr": "temps principaux planifiés",
+    "ja": "スケジュール済みの主拍",
+    "ko": "예약된 주박",
+    "ru": "запланировано долей",
+    "zh-TW": "已排程主拍"
+  },
+  "平均|偏差|": {
+    "de": "Mittlere |Abw.|",
+    "en": "Mean |dev|",
+    "fr": "Écart moyen",
+    "ja": "平均|偏差|",
+    "ko": "평균 |편차|",
+    "ru": "Среднее |откл.|",
+    "zh-TW": "平均｜偏差｜"
+  },
+  "平稳": {
+    "de": "Ruhig",
+    "en": "Smooth",
+    "fr": "Stable",
+    "ja": "安定",
+    "ko": "평활",
+    "ru": "Плавно",
+    "zh-TW": "平穩"
+  },
+  "当前分组": {
+    "de": "Aktuelle Gruppe",
+    "en": "Current Grouping",
+    "fr": "Groupe actuel",
+    "ja": "現在のグループ",
+    "ko": "현재 그룹",
+    "ru": "Текущая группа",
+    "zh-TW": "目前分組"
+  },
+  "循环": {
+    "de": "Zyklus",
+    "en": "Cycle",
+    "fr": "Cycle",
+    "ja": "サイクル",
+    "ko": "반복",
+    "ru": "Цикл",
+    "zh-TW": "循環"
+  },
+  "循环播放：先响若干小节，再静音若干小节。静音期间拍点照常显示，但不出声、不震动。": {
+    "de": "Wechselt klingende und stumme Takte. In stummen Takten läuft die Anzeige weiter, ohne Ton und Vibration.",
+    "en": "Cycles sounding bars with silent bars. Beats still display during silence, without sound or vibration.",
+    "fr": "Alterne mesures sonores et silencieuses. Pendant le silence, les temps s'affichent sans son ni vibration.",
+    "ja": "発音小節と無音小節を繰り返します。無音中も拍は表示されますが、音と振動はありません。",
+    "ko": "소리 마디와 무음 마디를 반복합니다. 무음 중에도 박자는 표시되지만 소리와 진동은 없습니다.",
+    "ru": "Чередует звучащие и тихие такты. В тихих тактах доли отображаются без звука и вибрации.",
+    "zh-TW": "循環播放：先響若干小節，再靜音若干小節。靜音期間拍點照常顯示，但不出聲、不震動。"
+  },
+  "快速": {
+    "de": "Schnell",
+    "en": "Fast",
+    "fr": "Rapide",
+    "ja": "高速",
+    "ko": "빠름",
+    "ru": "Быстро",
+    "zh-TW": "快速"
+  },
+  "指针": {
+    "de": "Nadel",
+    "en": "Needle",
+    "fr": "Aiguille",
+    "ja": "針",
+    "ko": "바늘",
+    "ru": "Стрелка",
+    "zh-TW": "指針"
+  },
+  "排练锁定": {
+    "de": "Probensperre",
+    "en": "Rehearsal Lock",
+    "fr": "Verrouillage répétition",
+    "ja": "リハーサルロック",
+    "ko": "리허설 잠금",
+    "ru": "Блокировка репетиции",
+    "zh-TW": "排練鎖定"
+  },
+  "排练锁定 · 长按解锁": {
+    "de": "Gesperrt · Lange drücken zum Entsperren",
+    "en": "Locked · Long-press to unlock",
+    "fr": "Verrouillé · Appui long pour déverrouiller",
+    "ja": "ロック中 · 長押しで解除",
+    "ko": "잠금됨 · 길게 눌러 해제",
+    "ru": "Заблокировано · Удерживайте для разблокировки",
+    "zh-TW": "排練鎖定 · 長按解鎖"
+  },
+  "排练锁定中，长按解锁": {
+    "de": "Probensperre aktiv, lange drücken zum Entsperren",
+    "en": "Rehearsal locked, long-press to unlock",
+    "fr": "Verrouillage actif, appui long pour déverrouiller",
+    "ja": "リハーサルロック中。長押しで解除",
+    "ko": "리허설 잠금 중, 길게 눌러 해제",
+    "ru": "Блокировка активна, удерживайте для разблокировки",
+    "zh-TW": "排練鎖定中，長按解鎖"
+  },
+  "新增一组": {
+    "de": "Gruppe hinzufügen",
+    "en": "Add Group",
+    "fr": "Ajouter un groupe",
+    "ja": "グループを追加",
+    "ko": "그룹 추가",
+    "ru": "Добавить группу",
+    "zh-TW": "新增一組"
+  },
+  "最大": {
+    "de": "Max",
+    "en": "Max",
+    "fr": "Max",
+    "ja": "最大",
+    "ko": "최대",
+    "ru": "Макс.",
+    "zh-TW": "最大"
+  },
+  "最小调度余量": {
+    "de": "Min. Reserve",
+    "en": "Min headroom",
+    "fr": "Marge min.",
+    "ja": "最小スケジュール余裕",
+    "ko": "최소 스케줄 여유",
+    "ru": "Мин. запас",
+    "zh-TW": "最小調度餘量"
+  },
+  "最近拍距": {
+    "de": "Letztes Intervall",
+    "en": "Last interval",
+    "fr": "Dernier intervalle",
+    "ja": "直近の拍間隔",
+    "ko": "최근 박 간격",
+    "ru": "Последний интервал",
+    "zh-TW": "最近拍距"
+  },
+  "标准": {
+    "de": "Standard",
+    "en": "Standard",
+    "fr": "Standard",
+    "ja": "標準",
+    "ko": "표준",
+    "ru": "Стандарт",
+    "zh-TW": "標準"
+  },
+  "校音与节拍偏好": {
+    "de": "Stimm- & Metronomoptionen",
+    "en": "Tuning & Metronome Preferences",
+    "fr": "Préférences accordeur et métronome",
+    "ja": "調律とメトロノームの設定",
+    "ko": "조율 및 메트로놈 환경설정",
+    "ru": "Настройки тюнера и метронома",
+    "zh-TW": "校音與節拍偏好"
+  },
+  "校音或节拍器运行时自动保持屏幕常亮，无需手动设置": {
+    "de": "Bleibt beim Stimmen oder laufenden Metronom automatisch an",
+    "en": "The screen stays on automatically while tuning or the metronome runs",
+    "fr": "Reste actif pendant l'accordage ou le métronome",
+    "ja": "調律中またはメトロノーム再生中は自動で点灯し続けます",
+    "ko": "조율 중이거나 메트로놈이 재생 중이면 자동으로 켜진 상태를 유지합니다",
+    "ru": "Экран автоматически не гаснет во время настройки или работы метронома",
+    "zh-TW": "校音或節拍器運行時自動保持屏幕常亮，無需手動設置"
+  },
+  "检测范围": {
+    "de": "Bereich",
+    "en": "Range",
+    "fr": "Plage",
+    "ja": "検出範囲",
+    "ko": "감지 범위",
+    "ru": "Диапазон",
+    "zh-TW": "檢測範圍"
+  },
+  "每几小节": {
+    "de": "Alle N Takte",
+    "en": "Every N Bars",
+    "fr": "Toutes les N mesures",
+    "ja": "何小節ごと",
+    "ko": "몇 마디마다",
+    "ru": "Каждые N тактов",
+    "zh-TW": "每幾小節"
+  },
+  "每次增减": {
+    "de": "Schrittweite",
+    "en": "Step Size",
+    "fr": "Pas",
+    "ja": "増減量",
+    "ko": "증감량",
+    "ru": "Шаг изменения",
+    "zh-TW": "每次增減"
+  },
+  "清晰度": {
+    "de": "Klarheit",
+    "en": "Clarity",
+    "fr": "Clarté",
+    "ja": "明瞭度",
+    "ko": "명료도",
+    "ru": "Чёткость",
+    "zh-TW": "清晰度"
+  },
+  "清除分组 · 回默认重音": {
+    "de": "Gruppe löschen · Standardakzente",
+    "en": "Clear Grouping · Default Accents",
+    "fr": "Effacer le groupe · accents par défaut",
+    "ja": "グループを消去 · 既定のアクセント",
+    "ko": "그룹 지우기 · 기본 강세",
+    "ru": "Сбросить группу · акценты по умолчанию",
+    "zh-TW": "清除分組 · 回預設重音"
+  },
+  "清除记录": {
+    "de": "Protokoll löschen",
+    "en": "Clear Log",
+    "fr": "Effacer le journal",
+    "ja": "ログを消去",
+    "ko": "기록 지우기",
+    "ru": "Очистить журнал",
+    "zh-TW": "清除記錄"
+  },
+  "渐速参数": {
+    "de": "Rampenparameter",
+    "en": "Ramp Parameters",
+    "fr": "Paramètres de rampe",
+    "ja": "テンポ変化パラメータ",
+    "ko": "램프 매개변수",
+    "ru": "Параметры изменения темпа",
+    "zh-TW": "漸速參數"
+  },
+  "演奏态": {
+    "de": "Aufführungsmodus",
+    "en": "Performance Mode",
+    "fr": "Mode concert",
+    "ja": "演奏モード",
+    "ko": "연주 모드",
+    "ru": "Режим выступления",
+    "zh-TW": "演奏態"
+  },
+  "目前重音含手动调整（点按拍柱改过），与分组推导不完全一致；套用任一分组将重写重音。": {
+    "de": "Die aktuellen Akzente enthalten manuelle Änderungen und weichen von der Gruppe ab. Eine Gruppe anzuwenden überschreibt die Akzente.",
+    "en": "Current accents include manual edits and no longer match the grouping exactly. Applying a grouping rewrites the accents.",
+    "fr": "Les accents actuels incluent des réglages manuels et diffèrent du groupe. Appliquer un groupe réécrit les accents.",
+    "ja": "現在のアクセントには手動調整が含まれ、グループと完全には一致しません。グループを適用するとアクセントが上書きされます。",
+    "ko": "현재 강세에는 수동 조정이 포함되어 그룹과 완전히 일치하지 않습니다. 그룹을 적용하면 강세가 덮어씌워집니다.",
+    "ru": "Текущие акценты изменены вручную и не полностью совпадают с группой. Применение группы перезапишет акценты.",
+    "zh-TW": "目前重音含手動調整（點按拍柱改過），與分組推導不完全一致；套用任一分組將重寫重音。"
+  },
+  "目标 BPM": {
+    "de": "Ziel-BPM",
+    "en": "Target BPM",
+    "fr": "BPM cible",
+    "ja": "目標 BPM",
+    "ko": "목표 BPM",
+    "ru": "Целевой BPM",
+    "zh-TW": "目標 BPM"
+  },
+  "确定": {
+    "de": "OK",
+    "en": "OK",
+    "fr": "OK",
+    "ja": "OK",
+    "ko": "확인",
+    "ru": "OK",
+    "zh-TW": "確定"
+  },
+  "第 %d 小节 · 第 %d/%d 拍": {
+    "de": "Takt %d · Schlag %d/%d",
+    "en": "Bar %d · Beat %d/%d",
+    "fr": "Mesure %d · Temps %d/%d",
+    "ja": "第%d小節 · 第%d/%d拍",
+    "ko": "%d번째 마디 · %d/%d박",
+    "ru": "Такт %d · Доля %d/%d",
+    "zh-TW": "第 %d 小節 · 第 %d/%d 拍"
+  },
+  "第 %d 组 · %d 拍": {
+    "de": "Gruppe %d · %d Schläge",
+    "en": "Group %d · %d beats",
+    "fr": "Groupe %d · %d temps",
+    "ja": "第%dグループ · %d拍",
+    "ko": "%d번째 그룹 · %d박",
+    "ru": "Группа %d · %d долей",
+    "zh-TW": "第 %d 組 · %d 拍"
+  },
+  "系统设置": {
+    "de": "Systemeinstellungen",
+    "en": "System Settings",
+    "fr": "Réglages système",
+    "ja": "システム設定",
+    "ko": "시스템 설정",
+    "ru": "Системные настройки",
+    "zh-TW": "系統設定"
+  },
+  "自定义分组": {
+    "de": "Eigene Gruppe",
+    "en": "Custom Grouping",
+    "fr": "Groupe personnalisé",
+    "ja": "カスタムグループ",
+    "ko": "사용자 지정 그룹",
+    "ru": "Своя группа",
+    "zh-TW": "自訂分組"
+  },
+  "自定义渐速": {
+    "de": "Eigene Rampe",
+    "en": "Custom Ramp",
+    "fr": "Rampe personnalisée",
+    "ja": "カスタムテンポ変化",
+    "ko": "사용자 지정 램프",
+    "ru": "Своё изменение темпа",
+    "zh-TW": "自訂漸速"
+  },
+  "节拍器": {
+    "de": "Metronom",
+    "en": "Metronome",
+    "fr": "Métronome",
+    "ja": "メトロノーム",
+    "ko": "메트로놈",
+    "ru": "Метроном",
+    "zh-TW": "節拍器"
+  },
+  "节拍器逐拍震动（强拍更明显）、音准达标轻震确认、按键轻触反馈": {
+    "de": "Vibration pro Schlag (Akzente stärker), leichtes Tippen bei Stimmung, Tastenfeedback",
+    "en": "Per-beat vibration (stronger on accents), a tap when in tune, light key feedback",
+    "fr": "Vibration à chaque temps (accents plus forts), retour quand c'est juste, touches",
+    "ja": "拍ごとの振動（強拍は強く）、合格時の軽い振動、キー操作のフィードバック",
+    "ko": "박마다 진동(강박은 더 강하게), 정확 시 가벼운 진동, 키 피드백",
+    "ru": "Вибрация на каждую долю (акценты сильнее), отклик при точной настройке и нажатиях",
+    "zh-TW": "節拍器逐拍震動（強拍更明顯）、音準達標輕震確認、按鍵輕觸反饋"
+  },
+  "诊断": {
+    "de": "Diagnose",
+    "en": "Diagnostics",
+    "fr": "Diagnostic",
+    "ja": "診断",
+    "ko": "진단",
+    "ru": "Диагностика",
+    "zh-TW": "診斷"
+  },
+  "请输入预设名称": {
+    "de": "Preset-Namen eingeben",
+    "en": "Enter a preset name",
+    "fr": "Saisissez un nom de préréglage",
+    "ja": "プリセット名を入力してください",
+    "ko": "프리셋 이름을 입력하세요",
+    "ru": "Введите название пресета",
+    "zh-TW": "請輸入預設名稱"
+  },
+  "起始 BPM": {
+    "de": "Start-BPM",
+    "en": "Start BPM",
+    "fr": "BPM de départ",
+    "ja": "開始 BPM",
+    "ko": "시작 BPM",
+    "ru": "Начальный BPM",
+    "zh-TW": "起始 BPM"
+  },
+  "跟随系统": {
+    "de": "System",
+    "en": "System",
+    "fr": "Système",
+    "ja": "システム連動",
+    "ko": "시스템 따름",
+    "ru": "Системная",
+    "zh-TW": "跟隨系統"
+  },
+  "轻点继续": {
+    "de": "Tippen: Weiter",
+    "en": "Tap to Resume",
+    "fr": "Toucher pour reprendre",
+    "ja": "タップで再開",
+    "ko": "눌러서 계속",
+    "ru": "Нажмите, чтобы продолжить",
+    "zh-TW": "輕點繼續"
+  },
+  "输入削波警示": {
+    "de": "Warnung: Eingangsübersteuerung",
+    "en": "Input clipping warning",
+    "fr": "Alerte saturation d'entrée",
+    "ja": "入力クリッピング警告",
+    "ko": "입력 클리핑 경고",
+    "ru": "Предупреждение о клиппинге входа",
+    "zh-TW": "輸入削波警示"
+  },
+  "运行中": {
+    "de": "Läuft",
+    "en": "Running",
+    "fr": "En cours",
+    "ja": "実行中",
+    "ko": "실행 중",
+    "ru": "Работает",
+    "zh-TW": "運行中"
+  },
+  "进行中": {
+    "de": "Läuft",
+    "en": "In Progress",
+    "fr": "En cours",
+    "ja": "実行中",
+    "ko": "진행 중",
+    "ru": "Выполняется",
+    "zh-TW": "進行中"
+  },
+  "退出演奏态": {
+    "de": "Aufführungsmodus beenden",
+    "en": "Exit Performance Mode",
+    "fr": "Quitter le mode concert",
+    "ja": "演奏モードを終了",
+    "ko": "연주 모드 종료",
+    "ru": "Выйти из режима выступления",
+    "zh-TW": "退出演奏態"
+  },
+  "采集延迟": {
+    "de": "Aufnahmelatenz",
+    "en": "Capture latency",
+    "fr": "Latence de capture",
+    "ja": "収録レイテンシ",
+    "ko": "캡처 지연",
+    "ru": "Задержка захвата",
+    "zh-TW": "採集延遲"
+  },
+  "重置重音": {
+    "de": "Akzente zurücksetzen",
+    "en": "Reset Accents",
+    "fr": "Réinitialiser les accents",
+    "ja": "アクセントをリセット",
+    "ko": "강세 초기화",
+    "ru": "Сбросить акценты",
+    "zh-TW": "重置重音"
+  },
+  "重音分组": {
+    "de": "Akzentgruppen",
+    "en": "Accent Grouping",
+    "fr": "Groupes d'accents",
+    "ja": "アクセントグループ",
+    "ko": "강세 그룹",
+    "ru": "Группировка акцентов",
+    "zh-TW": "重音分組"
+  },
+  "阻尼": {
+    "de": "Dämpfung",
+    "en": "Damping",
+    "fr": "Amortissement",
+    "ja": "ダンピング",
+    "ko": "감쇠",
+    "ru": "Демпфирование",
+    "zh-TW": "阻尼"
+  },
+  "附点计拍 (♩.)": {
+    "de": "Punktierter Schlag (♩.)",
+    "en": "Dotted Beat (♩.)",
+    "fr": "Temps pointé (♩.)",
+    "ja": "付点拍 (♩.)",
+    "ko": "점음표 박자 (♩.)",
+    "ru": "Пунктирный ритм (♩.)",
+    "zh-TW": "附點計拍 (♩.)"
+  },
+  "静音小节": {
+    "de": "Stumme Takte",
+    "en": "Gap Click",
+    "fr": "Mesures silencieuses",
+    "ja": "無音小節",
+    "ko": "무음 마디",
+    "ru": "Тихие такты",
+    "zh-TW": "靜音小節"
+  },
+  "音分": {
+    "de": "Cent",
+    "en": "Cents",
+    "fr": "Cents",
+    "ja": "セント",
+    "ko": "센트",
+    "ru": "Центы",
+    "zh-TW": "音分"
+  },
+  "预备拍 · 第 %d/%d 拍 (%d BPM)": {
+    "de": "Einzählen · Schlag %d/%d (%d BPM)",
+    "en": "Count-in · Beat %d/%d (%d BPM)",
+    "fr": "Pré-compte · Temps %d/%d (%d BPM)",
+    "ja": "予備拍 · 第%d/%d拍（%d BPM）",
+    "ko": "예비박 · %d/%d박 (%d BPM)",
+    "ru": "Отсчёт · Доля %d/%d (%d BPM)",
+    "zh-TW": "預備拍 · 第 %d/%d 拍 (%d BPM)"
+  },
+  "预备拍不计入循环；渐速计步包含静音小节。播放中修改即时生效（循环位置不重置）。": {
+    "de": "Einzählen zählt nicht zum Zyklus; Rampenschritte umfassen auch stumme Takte. Änderungen wirken sofort, ohne den Zyklus zurückzusetzen.",
+    "en": "Count-in is excluded from the cycle; ramp steps include silent bars. Changes apply live without resetting the cycle.",
+    "fr": "Le décompte est hors cycle ; les pas de rampe incluent les mesures silencieuses. Les changements s'appliquent en direct sans réinitialiser le cycle.",
+    "ja": "カウントインはサイクルに含みません。テンポ変化のステップには無音小節も含まれます。再生中の変更は即時反映され、位置はリセットされません。",
+    "ko": "카운트인은 반복에 포함되지 않으며, 램프 단계에는 무음 마디도 포함됩니다. 재생 중 변경은 즉시 적용되고 위치는 초기화되지 않습니다.",
+    "ru": "Вступительные доли не входят в цикл; шаги изменения темпа включают тихие такты. Изменения применяются сразу, без сброса цикла.",
+    "zh-TW": "預備拍不計入循環；漸速計步包含靜音小節。播放中修改即時生效（循環位置不重置）。"
+  },
+  "预置分组": {
+    "de": "Preset-Gruppen",
+    "en": "Preset Groupings",
+    "fr": "Groupes prédéfinis",
+    "ja": "プリセットグループ",
+    "ko": "프리셋 그룹",
+    "ru": "Готовые группы",
+    "zh-TW": "預置分組"
+  },
+  "频率": {
+    "de": "Frequenz",
+    "en": "Frequency",
+    "fr": "Fréquence",
+    "ja": "周波数",
+    "ko": "주파수",
+    "ru": "Частота",
+    "zh-TW": "頻率"
+  },
+  "频闪": {
+    "de": "Stroboskop",
+    "en": "Strobe",
+    "fr": "Stroboscope",
+    "ja": "ストロボ",
+    "ko": "스트로브",
+    "ru": "Стробоскоп",
+    "zh-TW": "頻閃"
+  },
+  "高": {
+    "de": "Hoch",
+    "en": "High",
+    "fr": "Haut",
+    "ja": "高",
+    "ko": "높음",
+    "ru": "Высокий",
+    "zh-TW": "高"
+  },
+  "麦克风权限被拒绝，请到系统设置开启": {
+    "de": "Mikrofonzugriff verweigert — in den Einstellungen aktivieren",
+    "en": "Microphone access denied — enable it in Settings",
+    "fr": "Micro désactivé — activez-le dans Réglages",
+    "ja": "マイクの許可が拒否されました。設定で有効にしてください",
+    "ko": "마이크 권한이 거부되었습니다. 설정에서 켜주세요",
+    "ru": "Доступ к микрофону запрещён — включите в Настройках",
+    "zh-TW": "麥克風權限被拒絕，請到系統設定開啟"
+  },
+  "默认 A4": {
+    "de": "Standard-A4",
+    "en": "Default A4",
+    "fr": "A4 par défaut",
+    "ja": "既定のA4",
+    "ko": "기본 A4",
+    "ru": "A4 по умолчанию",
+    "zh-TW": "預設 A4"
+  }
+}

@@ -12,18 +12,21 @@ enum DroneTimbre: String, Codable, CaseIterable, Sendable {
     case strings
     case brass
 
-    /// zh-TW 顯示名（母本 zh-TW 渲染值）。
-    var displayName: String {
+    /// zh-CN 源串（母本 DRONE_TIMBRES 原文）。
+    var sourceName: String {
         switch self {
-        case .oboe: return "雙簧管"
-        case .fork: return "標準音叉"
-        case .organ: return "溫潤合奏"
-        case .clarinet: return "單簧管"
-        case .sine: return "純淨正弦"
+        case .oboe: return "双簧管"
+        case .fork: return "标准音叉"
+        case .organ: return "温润合奏"
+        case .clarinet: return "单簧管"
+        case .sine: return "纯净正弦"
         case .strings: return "大提琴"
-        case .brass: return "銅管泛音"
+        case .brass: return "铜管泛音"
         }
     }
+
+    /// 顯示名（階段 5 接線）：源串經 L10n 查母本字典。
+    var displayName: String { L10n.t(sourceName) }
 
     /// 合成參數（母本 startDroneGraph，行 9940–10217，逐值對照；
     /// 見 DroneSynthSpec 的欄位說明）。

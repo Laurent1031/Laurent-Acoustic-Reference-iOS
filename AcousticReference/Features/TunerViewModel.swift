@@ -155,12 +155,12 @@ final class TunerViewModel: ObservableObject {
     @Published private(set) var octaveText = ""
     @Published private(set) var hasNote = false
     @Published private(set) var noteLocked = false
-    @Published private(set) var solfegeText = "本調 --"
+    @Published private(set) var solfegeText = "本调 --"
     @Published private(set) var writtenText = "--"
     @Published private(set) var concertText = "--"
     @Published private(set) var frequencyText = "0.0 Hz"
     @Published private(set) var displayCents: Double = 0
-    @Published private(set) var stabilityBadgeText = "輕點定格"
+    @Published private(set) var stabilityBadgeText = "轻点定格"
     @Published private(set) var stabilityFrozen = false
 
     // MARK: - 發佈狀態（削波警示，補強段）
@@ -269,6 +269,17 @@ final class TunerViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // 語言切換：儲存型文字（穩定度徽章）以新語言片段重組；
+        // 唱名／Drone 鈕為顯示端查表，不在此處理。
+        store.$language
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.refreshBadgeText()
+                }
+            }
+            .store(in: &cancellables)
+
         engine.$latestReading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] reading in
@@ -293,6 +304,9 @@ final class TunerViewModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        // 徽章初值以目前語言組裝（@Published 初值為源串佔位）。
+        refreshBadgeText()
     }
 
     // MARK: - Reading 入口
@@ -415,7 +429,7 @@ final class TunerViewModel: ObservableObject {
         writtenText = PitchMath.noteName(midi: writtenMidi)
         concertText = PitchMath.noteName(midi: targetMidi)
         let writtenPc = ((writtenMidi % 12) + 12) % 12
-        solfegeText = "本調 " + Self.solfegeMap[writtenPc]
+        solfegeText = "本调 " + Self.solfegeMap[writtenPc]
 
         let displayed = store.pitchMode == .written ? writtenMidi : targetMidi
         let pc = ((displayed % 12) + 12) % 12
@@ -501,8 +515,8 @@ final class TunerViewModel: ObservableObject {
             }
         }
         return [
-            TargetChipItem(label: "標準 A4", note: "A4", isGreen: false),
-            TargetChipItem(label: "管樂 B♭4", note: "B♭4", isGreen: false),
+            TargetChipItem(label: "标准 A4", note: "A4", isGreen: false),
+            TargetChipItem(label: "管乐 B♭4", note: "B♭4", isGreen: false),
             TargetChipItem(label: "中央 C4", note: "C4", isGreen: false),
             TargetChipItem(label: "F4", note: "F4", isGreen: false),
             TargetChipItem(label: "G4", note: "G4", isGreen: false),
@@ -514,10 +528,12 @@ final class TunerViewModel: ObservableObject {
     /// Drone 目標音：鎖定音 ?? A4(69)（母本 droneTargetFreq）。
     var droneTargetMidi: Int { lockedTargetMidi ?? 69 }
 
-    /// 主鈕文案（母本 droneBtnText）：停止 (X)／基準音 X。
+    /// 主鈕文案（母本 droneBtnText）：停止 (X)／基准音 X。
+    /// 回 zh-CN 源串組裝，顯示端（TunerView）以 L10n.t 查表
+    /// （「停止 (」「基准音 」皆為字典前綴鍵，與母本 tStr 組法一致）。
     var droneButtonText: String {
         let note = lockedTargetNote ?? "A4"
-        return drone.isPlaying ? "停止 (\(note))" : "基準音 \(note)"
+        return drone.isPlaying ? "停止 (\(note))" : "基准音 \(note)"
     }
 
     /// 開關 Drone（母本 toggleDrone）：開 haptic(12)、關 haptic(8)
@@ -622,21 +638,26 @@ final class TunerViewModel: ObservableObject {
         UISoundEngine.shared.play(stabilityFrozen ? .switch : .tick)
     }
 
-    /// 母本 updateTraceBadge（行 9243）四態文字。
+    /// 母本 updateTraceBadge（行 9243）四態文字。以 L10n 片段
+    /// 組裝（整串非字典鍵）：已定格／稳定度／轻点定格為母本
+    /// 字典片段鍵、轻点继续為 supplement；語言切換經 init 的
+    /// store.$language 訂閱即時重組（徽章為儲存型文字，不經
+    /// 顯示端查表）。
     private func refreshBadgeText() {
         let stats = stability.stats
         if stability.frozen {
             if let stats {
                 let mean = stats.mean
                 let meanText = (mean >= 0 ? "+" : "") + String(format: "%.1f", mean)
-                stabilityBadgeText = "⏸ 已定格 · 穩定度 \(stats.stability)% (\(meanText)¢)"
+                stabilityBadgeText = "⏸ " + L10n.t("已定格") + " · " + L10n.t("稳定度")
+                    + " \(stats.stability)% (\(meanText)¢)"
             } else {
-                stabilityBadgeText = "⏸ 已定格 · 輕點繼續"
+                stabilityBadgeText = "⏸ " + L10n.t("已定格") + " · " + L10n.t("轻点继续")
             }
         } else if engine.isRunning, let stats {
-            stabilityBadgeText = "穩定度 \(stats.stability)% · 輕點定格"
+            stabilityBadgeText = L10n.t("稳定度") + " \(stats.stability)% · " + L10n.t("轻点定格")
         } else {
-            stabilityBadgeText = "輕點定格"
+            stabilityBadgeText = L10n.t("轻点定格")
         }
     }
 
@@ -648,7 +669,7 @@ final class TunerViewModel: ObservableObject {
         hasNote = false
         noteLocked = false
         isInTune = false
-        solfegeText = "本調 --"
+        solfegeText = "本调 --"
         writtenText = "--"
         concertText = "--"
         frequencyText = "0.0 Hz"

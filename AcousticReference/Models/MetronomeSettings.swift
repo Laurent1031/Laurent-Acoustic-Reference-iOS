@@ -9,17 +9,19 @@ enum MetronomeTimbre: String, CaseIterable, Codable, Sendable {
     case rimshot
     case marimba
 
-    /// 母本顯示名（zh-CN 源串；zh-TW 介面經 i18n 表轉換，階段 5 接入
-    /// i18n 後改走字串表，此處先用母本 zh-TW 渲染值）。
-    var displayName: String {
+    /// zh-CN 源串（母本 TIMBRE_OPTIONS 原文）。
+    var sourceName: String {
         switch self {
-        case .woodblock: return "樂團木魚"
-        case .wittner: return "機械鐘擺"
-        case .digital: return "DB-90 電子"
-        case .rimshot: return "軍鼓邊擊"
-        case .marimba: return "溫潤木琴"
+        case .woodblock: return "乐团木鱼"
+        case .wittner: return "机械钟摆"
+        case .digital: return "DB-90 电子"
+        case .rimshot: return "军鼓边击"
+        case .marimba: return "温润木琴"
         }
     }
+
+    /// 顯示名（階段 5 接線）：源串經 L10n 查母本字典。
+    var displayName: String { L10n.t(sourceName) }
 }
 
 /// 節拍器預置（母本 metro preset：整組節拍器狀態的命名快照）。
@@ -227,12 +229,15 @@ struct MetronomeSettings: Equatable, Sendable {
         (3, 8), (6, 8), (7, 8), (9, 8), (12, 8),
     ]
 
-    /// 母本 SUB_OPTIONS（行 7093）：5 種細分（zh-TW 渲染值）。
+    /// 母本 SUB_OPTIONS（行 7093）：5 種細分（zh-CN 源串；
+    /// 顯示時經 L10n 查字典——字典鍵即此五串）。
     static let subdivisionOptions: [(value: Int, label: String)] = [
-        (1, "♩ 四分"), (2, "♫ 八分"), (3, "♪♪♪ 三連"), (4, "♬ 十六"), (5, "♩. 附點"),
+        (1, "♩ 四分"), (2, "♫ 八分"), (3, "♪♪♪ 三连"), (4, "♬ 十六"), (5, "♩. 附点"),
     ]
 
     /// 速度預置（母本 tempoPresetRow，行 5409–5416）：6 個。
+    /// name 為 zh-CN 源串；母本字典的鍵是「名＋空格＋BPM」的
+    /// 複合串（"慢板 56"），顯示時以複合串查表（見 MetronomeView）。
     static let tempoPresets: [(bpm: Int, name: String)] = [
         (56, "慢板"), (66, "柔板"), (76, "行板"),
         (104, "中板"), (120, "快板"), (176, "急板"),
@@ -241,8 +246,9 @@ struct MetronomeSettings: Equatable, Sendable {
     /// 推子吸附點（母本行 10704，僅拖動路徑、±1.5 BPM 內吸附）。
     static let faderSnapPoints = [60, 72, 80, 96, 120, 144, 160]
 
-    /// 重音等級標籤（母本 LEVEL_LABELS，行 10392）。
-    static let levelLabels = ["靜音", "弱拍", "次強", "強拍"]
+    /// 重音等級標籤（母本 LEVEL_LABELS，行 10392；zh-CN 源串，
+    /// 顯示時經 L10n 查字典）。
+    static let levelLabels = ["静音", "弱拍", "次强", "强拍"]
 
     /// 母本 defaultAccentsFor（行 6489）：按拍號給出音樂性預設重音。
     static func defaultAccents(beats: Int, unit: Int) -> [Int] {

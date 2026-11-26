@@ -74,16 +74,16 @@ struct InstrumentLibraryView: View {
                     .padding(.bottom, 12)
                 }
             }
-            .navigationTitle("樂器庫與常用收藏")
+            .navigationTitle(L10n.t("乐器库与常用收藏"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Text("點亮 ★ 加入常用欄")
+                    Text(L10n.t("点亮 ★ 加入常用栏"))
                         .font(.system(size: 11))
                         .foregroundStyle(theme.textMuted)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
+                    Button(L10n.t("完成")) { dismiss() }
                         .font(.system(size: 15, weight: .semibold))
                 }
             }
@@ -101,7 +101,7 @@ struct InstrumentLibraryView: View {
                         // 母本：搜尋中點分類 = 瀏覽該分類，清查詢。
                         if !searchQuery.isEmpty { searchQuery = "" }
                     } label: {
-                        Text(entry.name)
+                        Text(L10n.localizedName(entry.name))
                             .font(.system(size: 12.5, weight: .semibold))
                             .foregroundStyle(tab == entry.category ? .white : theme.textSecondary)
                             .padding(.horizontal, 12)
@@ -114,7 +114,7 @@ struct InstrumentLibraryView: View {
             }
             .padding(3)
         }
-        .background(.ultraThinMaterial, in: Capsule())
+        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
     }
 
     // MARK: - 搜尋（母本 instSearchInput）
@@ -124,7 +124,7 @@ struct InstrumentLibraryView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(theme.textMuted)
-            TextField("搜尋樂器（名稱 / 英文 / 調號）", text: $searchQuery)
+            TextField(L10n.t("搜索乐器（名称 / 英文 / 调号）"), text: $searchQuery)
                 .font(.system(size: 14))
                 .foregroundStyle(theme.textPrimary)
                 .autocorrectionDisabled()
@@ -140,7 +140,7 @@ struct InstrumentLibraryView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 38)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
     }
 
     // MARK: - 卡片格
@@ -149,8 +149,8 @@ struct InstrumentLibraryView: View {
         ScrollView {
             if visibleInstruments.isEmpty {
                 Text(searchQuery.isEmpty
-                     ? "尚無自訂樂器，點下方「＋ 新增自訂樂器」建立"
-                     : "未找到匹配的樂器，換個關鍵詞試試")
+                     ? L10n.t("尚无自订乐器，点下方「＋ 新增自订乐器」建立")
+                     : L10n.t("未找到匹配的乐器，换个关键词试试"))
                     .font(.system(size: 12.5))
                     .foregroundStyle(theme.textMuted)
                     .frame(maxWidth: .infinity)
@@ -186,8 +186,8 @@ struct InstrumentLibraryView: View {
                 }
             }
         }
-        .alert("請至少保留 1 個常用樂器", isPresented: $minimumFavoriteWarning) {
-            Button("好", role: .cancel) {}
+        .alert(L10n.t("请至少保留 1 个常用乐器"), isPresented: $minimumFavoriteWarning) {
+            Button(L10n.t("好"), role: .cancel) {}
         }
     }
 
@@ -196,13 +196,12 @@ struct InstrumentLibraryView: View {
             editing = nil
             showingForm = true
         } label: {
-            Text("＋ 新增自訂樂器")
+            Text(L10n.t("＋ 新增自订乐器"))
                 .font(.system(size: 14.5, weight: .semibold))
                 .foregroundStyle(theme.accent)
                 .frame(maxWidth: .infinity)
                 .frame(height: 44)
-                .background(.ultraThinMaterial,
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
         }
         .buttonStyle(.plain)
     }
@@ -228,7 +227,7 @@ private struct InstrumentCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 4) {
-                Text(instrument.name)
+                Text(L10n.localizedName(instrument.name))
                     .font(.system(size: 14.5, weight: .semibold))
                     .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
@@ -242,7 +241,7 @@ private struct InstrumentCard: View {
                     }
                     .buttonStyle(.plain)
                     Button { tapDelete() } label: {
-                        Text(confirmingDelete ? "確認刪除？" : "✕")
+                        Text(confirmingDelete ? L10n.t("确认删除？") : "✕")
                             .font(.system(size: confirmingDelete ? 10.5 : 11,
                                         weight: .semibold))
                             .foregroundStyle(confirmingDelete ? theme.clipWarning : theme.textSecondary)
@@ -397,17 +396,19 @@ private struct CustomInstrumentFormView: View {
         var id: Int { value }
     }
 
+    /// 選項標籤為 zh-CN 源串（母本 ciTrans 原文）；顯示時經
+    /// L10n.t 查字典（十條皆為字典鍵）。
     private static let transpositionOptions: [TranspositionOption] = [
-        TranspositionOption(value: 0, label: "同度 · 記譜 = 實音（鋼琴/長笛）"),
-        TranspositionOption(value: -2, label: "降B樂器 · 記譜高大二度（單簧管/小號）"),
-        TranspositionOption(value: -3, label: "A調 · 記譜高小三度（A調單簧管）"),
-        TranspositionOption(value: -7, label: "F調 · 記譜高純五度（圓號/英國管）"),
-        TranspositionOption(value: -9, label: "降E · 記譜高大六度（中音薩克斯）"),
-        TranspositionOption(value: -12, label: "低八度 · 記譜高八度（低音提琴）"),
-        TranspositionOption(value: -21, label: "降E低音 · 記譜高十三度（上低音薩克斯）"),
-        TranspositionOption(value: 12, label: "高八度 · 記譜低八度（短笛）"),
-        TranspositionOption(value: 2, label: "D調 · 記譜低大二度"),
-        TranspositionOption(value: 5, label: "F調 · 記譜低純四度"),
+        TranspositionOption(value: 0, label: "同度 · 记谱 = 实音（钢琴/长笛）"),
+        TranspositionOption(value: -2, label: "降B乐器 · 记谱高大二度（单簧管/小号）"),
+        TranspositionOption(value: -3, label: "A调 · 记谱高小三度（A调单簧管）"),
+        TranspositionOption(value: -7, label: "F调 · 记谱高纯五度（圆号/英国管）"),
+        TranspositionOption(value: -9, label: "降E · 记谱高大六度（中音萨克斯）"),
+        TranspositionOption(value: -12, label: "低八度 · 记谱高八度（低音提琴）"),
+        TranspositionOption(value: -21, label: "降E低音 · 记谱高十三度（上低音萨克斯）"),
+        TranspositionOption(value: 12, label: "高八度 · 记谱低八度（短笛）"),
+        TranspositionOption(value: 2, label: "D调 · 记谱低大二度"),
+        TranspositionOption(value: 5, label: "F调 · 记谱低纯四度"),
     ]
 
     init(store: AppStore, editing: Instrument?,
@@ -449,51 +450,51 @@ private struct CustomInstrumentFormView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 field(theme: theme) {
-                    TextField("樂器名稱（如：降E調高音薩克斯）", text: $name)
+                    TextField(L10n.t("乐器名称（如：降E调高音萨克斯）"), text: $name)
                         .onChange(of: name) { _, _ in nameError = false }
                 }
                 if nameError {
-                    Text("請填寫樂器名稱")
+                    Text(L10n.t("请填写乐器名称"))
                         .font(.system(size: 12))
                         .foregroundStyle(theme.clipWarning)
                 }
 
                 HStack(spacing: 8) {
                     field(theme: theme) {
-                        TextField("英文/副標（可選）", text: $englishName)
+                        TextField(L10n.t("英文/副标（可选）"), text: $englishName)
                     }
                     field(theme: theme) {
-                        TextField("調號（如 1 = E♭）", text: $keyName)
+                        TextField(L10n.t("调号（如 1 = E♭，可选）"), text: $keyName)
                     }
                 }
 
-                labeledPicker(theme: theme, label: "移調關係（記譜與實音）") {
-                    Picker("移調關係", selection: $transposition) {
+                labeledPicker(theme: theme, label: L10n.t("移调关系（记谱与实音）")) {
+                    Picker(L10n.t("移调关系（记谱与实音）"), selection: $transposition) {
                         ForEach(Self.transpositionOptions) { option in
-                            Text(option.label).tag(option.value)
+                            Text(L10n.t(option.label)).tag(option.value)
                         }
                     }
                 }
 
-                labeledPicker(theme: theme, label: "歸屬分類（自訂欄始終可見）") {
-                    Picker("歸屬分類", selection: $category) {
-                        Text("僅自訂欄").tag(InstrumentCategory.custom)
+                labeledPicker(theme: theme, label: L10n.t("归属分类（自订栏始终可见）")) {
+                    Picker(L10n.t("归属分类（自订栏始终可见）"), selection: $category) {
+                        Text(L10n.t("仅自订栏")).tag(InstrumentCategory.custom)
                         ForEach(InstrumentCatalog.categories.filter { $0.category != .custom }) { entry in
-                            Text(entry.name).tag(entry.category)
+                            Text(L10n.localizedName(entry.name)).tag(entry.category)
                         }
                     }
                 }
 
                 HStack(spacing: 8) {
-                    labeledPicker(theme: theme, label: "最低音（實音）") {
-                        Picker("最低音", selection: $lowMidi) {
+                    labeledPicker(theme: theme, label: L10n.t("最低音（实音）")) {
+                        Picker(L10n.t("最低音（实音）"), selection: $lowMidi) {
                             ForEach(24...96, id: \.self) { midi in
                                 Text(PitchMath.noteName(midi: midi)).tag(midi)
                             }
                         }
                     }
-                    labeledPicker(theme: theme, label: "最高音（實音）") {
-                        Picker("最高音", selection: $highMidi) {
+                    labeledPicker(theme: theme, label: L10n.t("最高音（实音）")) {
+                        Picker(L10n.t("最高音（实音）"), selection: $highMidi) {
                             ForEach(24...96, id: \.self) { midi in
                                 Text(PitchMath.noteName(midi: midi)).tag(midi)
                             }
@@ -503,24 +504,23 @@ private struct CustomInstrumentFormView: View {
                 .onChange(of: lowMidi) { _, _ in rangeError = false }
                 .onChange(of: highMidi) { _, _ in rangeError = false }
                 if rangeError {
-                    Text("最高音必須高於最低音")
+                    Text(L10n.t("最高音必须高于最低音"))
                         .font(.system(size: 12))
                         .foregroundStyle(theme.clipWarning)
                 }
 
                 HStack(spacing: 8) {
                     Button { onCancel() } label: {
-                        Text("取消")
+                        Text(L10n.t("取消"))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(theme.textPrimary)
                             .frame(maxWidth: .infinity)
                             .frame(height: 46)
-                            .background(.ultraThinMaterial,
-                                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
                     }
                     .buttonStyle(.plain)
                     Button { save() } label: {
-                        Text(editing == nil ? "保存自訂樂器" : "保存修改")
+                        Text(editing == nil ? L10n.t("保存自订乐器") : L10n.t("保存修改"))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -543,8 +543,7 @@ private struct CustomInstrumentFormView: View {
             .foregroundStyle(theme.textPrimary)
             .padding(.horizontal, 12)
             .frame(height: 42)
-            .background(.ultraThinMaterial,
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
     }
 
     private func labeledPicker<Content: View>(
@@ -560,8 +559,7 @@ private struct CustomInstrumentFormView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 8)
                 .frame(height: 42)
-                .background(.ultraThinMaterial,
-                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
