@@ -8,9 +8,12 @@ import Foundation
 /// ——profile 為 localStorage `laurent_profile_v7` 的解析物件
 /// （createDefaultProfile，行 6211 的形狀）、settings 為
 /// `laurent_settings_v6`（saveAppSettings，行 8101 的形狀）；
-/// 背景圖過大時母本會清空 settings.customBgDataUrl 並加
-/// `bgOmitted: true`（原生不支援自訂背景，該欄恆不映射，見
-/// unmappedKeys）。
+/// 背景圖過大時母本會清空 customBgDataUrl 並加
+/// `bgOmitted: true`（匯入端記 warning）。
+/// 【裝機返修批】自訂背景三欄（bgKind／bgColor／
+/// customBgDataUrl）自本批起正式映射（原生功能已補齊，
+/// 見 AppStore 自訂背景段）；themeMode=custom 亦直映射
+/// .custom，不再退回隨系統。
 ///
 /// 設計（失敗不動現有數據的原子性）：
 /// 1. makePlan 先做信封級驗證（app 字串須符、profile／settings
@@ -69,6 +72,11 @@ enum BackupImporter {
         var soundsOn: Bool?
         var themePreference: AppTheme?
         var glassOpacity: Int?
+        // 自訂背景三欄（profile 與 settings 兩段皆可攜帶，
+        // settings 為母本現行存檔段、同欄以 settings 為準）
+        var bgKind: String?
+        var bgColorHex: String?
+        var customBgImageData: Data?
 
         /// 備份中有、原生有意不映射的鍵（逐鍵點名，確認 sheet 顯示）。
         var unmappedKeys: [String] = []
@@ -157,6 +165,8 @@ enum BackupImporter {
             plan.justTonicPc = ((v.intValue % 12) + 12) % 12
         }
         if let v = profile["autoMicOnEnter"] as? Bool { plan.autoMicOnEnter = v }
+
+        mapBackground(profile, plan: &plan)
 
         // 收藏：只留匯入後目錄可解析的 id、去重保序；全滅時退回
         // 母本預設三件（與 AppStore.init 的健全化同一口徑）。
@@ -301,11 +311,7 @@ enum BackupImporter {
             case "system": plan.themePreference = .system
             case "light": plan.themePreference = .light
             case "dark": plan.themePreference = .dark
-            case "custom":
-                // 母本自訂背景（圖／色）原生未移植（階段 5 有意
-                // 差異）：退回隨系統並點名，不靜默吞掉。
-                plan.themePreference = .system
-                plan.unmappedKeys.append("themeMode=custom（自訂背景）→ 已退回隨系統")
+            case "custom": plan.themePreference = .custom
             default:
                 plan.warnings.append("themeMode 值無法識別，已跳過")
             }
@@ -313,11 +319,52 @@ enum BackupImporter {
         if let v = settings["glassAlpha"] as? NSNumber {
             plan.glassOpacity = min(96, max(8, v.intValue))
         }
-        // 自訂背景三鍵：原生無對應功能，逐鍵點名不映射。
-        for key in ["customBgDataUrl", "bgColor", "bgKind"]
-        where settings[key] != nil {
-            plan.unmappedKeys.append(key)
+        mapBackground(settings, plan: &plan)
+    }
+
+    /// 自訂背景三欄映射（profile／settings 共用）：bgKind 只
+    /// 收 ""／"color"／"image"；bgColor 須可解析為 #RRGGBB；
+    /// customBgDataUrl 為 data URL，解 base64 為圖片 Data
+    /// （上限 12 MB，超出跳過並記 warning——母本導出端本有
+    /// bgOmitted 機制，異常大檔視為壞值）。
+    private static func mapBackground(_ dict: [String: Any],
+                                      plan: inout ImportPlan) {
+        if let s = dict["bgKind"] as? String {
+            if ["", "color", "image"].contains(s) {
+                plan.bgKind = s
+            } else {
+                plan.warnings.append("bgKind 值無法識別，已跳過")
+            }
         }
+        if let s = dict["bgColor"] as? String, !s.isEmpty {
+            if AppStore.parseHexColor(s) != nil {
+                plan.bgColorHex = s
+            } else {
+                plan.warnings.append("bgColor 值無法識別，已跳過")
+            }
+        }
+        if let s = dict["customBgDataUrl"] as? String, !s.isEmpty {
+            if let data = decodeDataURL(s) {
+                if data.count <= 12 * 1024 * 1024 {
+                    plan.customBgImageData = data
+                } else {
+                    plan.warnings.append("背景圖過大（>12 MB），已跳過")
+                }
+            } else {
+                plan.warnings.append("customBgDataUrl 無法解析，已跳過")
+            }
+        }
+    }
+
+    /// data URL（data:<mime>;base64,<payload>）→ Data。
+    private static func decodeDataURL(_ string: String) -> Data? {
+        guard string.hasPrefix("data:"),
+              let comma = string.firstIndex(of: ",")
+        else { return nil }
+        let header = string[string.startIndex..<comma]
+        guard header.contains(";base64") else { return nil }
+        let payload = string[string.index(after: comma)...]
+        return Data(base64Encoded: String(payload))
     }
 
     // MARK: 摘要
@@ -396,6 +443,129 @@ extension AppStore {
             // tunerSettings：已在上方合成（plan 欄位不分段），此處
             // 不重複處理。
         }
+        // 自訂背景（兩段皆可攜帶，plan 已以 settings 為準組裝）：
+        // 有值才覆寫；匯入 .custom 主題而備份無背景欄時，保留
+        // 原生現有背景（不清空用戶已設的圖／色）。
+        if let kind = plan.bgKind { bgKind = kind }
+        if let color = plan.bgColorHex { bgColorHex = color }
+        if let image = plan.customBgImageData { customBgData = image }
         pendingImportPlan = nil
+    }
+}
+
+// MARK: - 導出（裝機返修批補齊：母本「數據備份 · 導出備份」等價）
+
+/// 備份導出：把原生狀態組裝回母本信封形狀（profile／settings
+/// 兩段＋背景三欄雙段攜帶，與母本 buildBackupJson／
+/// saveAppSettings 的現行寫法一致），網頁版與原生版可互導。
+/// pit（原生專屬主題）導出為 dark（母本無此態，註明取捨）；
+/// 背景圖大於 2 MB 時比照母本省略並標 bgOmitted。
+enum BackupExporter {
+
+    static func makeBackupData(store: AppStore) -> Data? {
+        let tuner = store.tunerSettings
+
+        var profile: [String: Any] = [:]
+        profile["primaryInstId"] = store.primaryInstrumentId
+        profile["favoriteInstIds"] = store.favoriteInstrumentIds
+        profile["customInstruments"] = store.customInstruments.map { inst in
+            [
+                "id": inst.id,
+                "cat": inst.category.rawValue,
+                "catLabel": inst.categoryLabel,
+                "name": inst.name,
+                "en": inst.englishName,
+                "keyName": inst.keyName,
+                "trans": inst.transposition,
+                "minF": inst.minFrequency,
+                "maxF": inst.maxFrequency,
+            ] as [String: Any]
+        }
+        profile["defaultA4"] = tuner.a4
+        profile["pitchMode"] = store.pitchMode.rawValue
+        profile["damping"] = tuner.damping.rawValue
+        profile["tolerance"] = tuner.toleranceCents
+        profile["noiseGate"] = tuner.noiseGate.rawValue
+        profile["droneTimbre"] = store.droneTimbre.rawValue
+        profile["droneFollow"] = store.droneFollow
+        profile["temperament"] = tuner.temperament.rawValue
+        profile["justTonicPc"] = tuner.justTonicPc
+        profile["autoMicOnEnter"] = store.autoMicOnEnter
+        if let metroDefault = store.metronomeDefault {
+            profile["defaultBpm"] = metroDefault.bpm
+            profile["defaultBeats"] = metroDefault.beatsPerBar
+            profile["defaultNoteUnit"] = metroDefault.beatUnit
+            profile["dottedBeat"] = metroDefault.dottedBeat
+            profile["defaultTimbre"] = metroDefault.timbre.rawValue
+        }
+        profile["metroPresets"] = store.metronomeUserPresets.map { preset in
+            [
+                "id": preset.id,
+                "name": preset.name,
+                "bpm": preset.bpm,
+                "beats": preset.beats,
+                "noteUnit": preset.noteUnit,
+                "subdivision": preset.subdivision,
+                "timbre": preset.timbre.rawValue,
+            ] as [String: Any]
+        }
+
+        var settings: [String: Any] = [:]
+        settings["lang"] = store.language.rawValue
+        settings["mode"] = store.appMode.rawValue
+        settings["hapticsOn"] = tuner.hapticsOn
+        settings["soundsOn"] = tuner.soundsOn
+        settings["themeMode"] = themeModeString(store.themePreference)
+        settings["glassAlpha"] = store.glassOpacity
+
+        // 背景三欄：兩段同寫（母本 profile 預設形狀與 settings
+        // 存檔形狀皆含，互導零遺失）。圖片過大比照母本省略。
+        var bgOmitted = false
+        var dataURL = ""
+        if let data = store.customBgData {
+            if data.count <= 2 * 1024 * 1024 {
+                dataURL = "data:image/jpeg;base64," + data.base64EncodedString()
+            } else {
+                bgOmitted = true
+            }
+        }
+        profile["bgKind"] = store.bgKind
+        profile["bgColor"] = store.bgColorHex
+        profile["customBgDataUrl"] = dataURL
+        settings["bgKind"] = store.bgKind
+        settings["bgColor"] = store.bgColorHex
+        settings["customBgDataUrl"] = dataURL
+
+        var envelope: [String: Any] = [
+            "app": BackupImporter.expectedAppTag,
+            "v": 1,
+            "profile": profile,
+            "settings": settings,
+        ]
+        if bgOmitted { envelope["bgOmitted"] = true }
+        return try? JSONSerialization.data(
+            withJSONObject: envelope, options: [.sortedKeys])
+    }
+
+    private static func themeModeString(_ theme: AppTheme) -> String {
+        switch theme {
+        case .system: return "system"
+        case .light: return "light"
+        case .dark, .pit: return "dark"
+        case .custom: return "custom"
+        }
+    }
+
+    /// 寫入暫存檔供 ShareLink 分享（檔名對齊母本導出口徑）。
+    static func writeTempFile(store: AppStore) -> URL? {
+        guard let data = makeBackupData(store: store) else { return nil }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LAURENT-Acoustic-Reference-backup.json")
+        do {
+            try data.write(to: url, options: [.atomic])
+            return url
+        } catch {
+            return nil
+        }
     }
 }

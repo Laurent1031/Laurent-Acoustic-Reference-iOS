@@ -24,30 +24,36 @@ struct MetronomeView: View {
     @State private var faderRubber: Double = 0
 
     var body: some View {
-        let theme = TunerTheme.resolve(preference: store.themePreference,
-                                       system: colorScheme)
+        let theme = store.resolvedTheme(system: colorScheme)
         GeometryReader { geo in
-            let dialSize = min(182, max(122, geo.size.height * 0.19))
-            let railHeight = min(250, max(152, geo.size.height * 0.20))
+            // 【裝機返修】尺寸改由寬度驅動、整頁入 ScrollView：
+            // 舊版以高度分數定尺寸＋定高 VStack，列寬可被舞台
+            // 列的 Spacer 撐出畫面（預置晶片列右側被裁的成因）。
+            // 現每列寬恆 = 視口寬 − 32；錶盤與推子同高（舞台
+            // 比例對齊母本），內容超高時捲動而非裁切。錶盤／
+            // 推子的豎拖以 highPriorityGesture 壓過捲動平移。
             let contentWidth = geo.size.width - 32
+            let dialSize = min(190, max(140, contentWidth * 0.52))
 
             ZStack {
                 theme.background.ignoresSafeArea()
 
-                VStack(spacing: 10) {
-                    hintRow(theme: theme)
-                    controlRow(theme: theme)
-                    dotsRow(theme: theme, width: contentWidth)
-                    stageRow(theme: theme, dialSize: dialSize, railHeight: railHeight)
-                    steppersRow(theme: theme)
-                    if showEditor { editorRow(theme: theme) }
-                    tempoPresetRow(theme: theme)
-                    bentoGrid(theme: theme)
-                    startButton(theme: theme)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 10) {
+                        hintRow(theme: theme)
+                        controlRow(theme: theme)
+                        dotsRow(theme: theme, width: contentWidth)
+                        stageRow(theme: theme, dialSize: dialSize, railHeight: dialSize)
+                        steppersRow(theme: theme)
+                        if showEditor { editorRow(theme: theme) }
+                        tempoPresetRow(theme: theme)
+                        bentoGrid(theme: theme)
+                        startButton(theme: theme)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 2)
+                    .padding(.bottom, 10)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 2)
-                .padding(.bottom, 10)
             }
         }
         .onChange(of: engine.lastError) { _, error in
@@ -283,7 +289,7 @@ struct MetronomeView: View {
         }
         .frame(width: size, height: size)
         .contentShape(Circle())
-        .gesture(dialDrag)
+        .highPriorityGesture(dialDrag)
     }
 
     /// BPM 里程表（母本 .bpm-num/.bpm-col：條帶兩圈 0–9、逐柱 spring）。
@@ -307,16 +313,21 @@ struct MetronomeView: View {
     private func odoColumn(index: Int, fontSize: CGFloat, digitH: CGFloat,
                            theme: TunerTheme) -> some View {
         let m = index < viewModel.odoPositions.count ? viewModel.odoPositions[index] : 0
+        // 【裝機返修】舊版 frame(height:) 預設置中對齊，20 位
+        // 長條被置中後可見窗對錯位、且 Text 行高大於 digitH
+        // 使相鄰數字上下滲入（實機「013 疊 120」糊成一團）。
+        // 改：逐格固定高＋逐格裁切、窗框頂對齊、offset 移位。
         return VStack(spacing: 0) {
             ForEach(0..<20, id: \.self) { i in
                 Text("\(i % 10)")
                     .font(.system(size: fontSize, weight: .bold, design: .rounded))
                     .foregroundStyle(theme.textPrimary)
                     .frame(height: digitH)
+                    .clipped()
             }
         }
         .offset(y: -CGFloat(m) * digitH)
-        .frame(height: digitH)
+        .frame(height: digitH, alignment: .top)
         .clipped()
     }
 
@@ -363,7 +374,7 @@ struct MetronomeView: View {
             .scaleEffect(x: sx, y: sy)
         }
         .contentShape(Rectangle())
-        .gesture(faderDrag(railHeight: height))
+        .highPriorityGesture(faderDrag(railHeight: height))
     }
 
     // MARK: - 步進鈕與編輯器
@@ -430,16 +441,12 @@ struct MetronomeView: View {
                     } label: {
                         Text(L10n.t("\(preset.name) \(preset.bpm)"))
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(active ? .white : theme.textPrimary)
+                            .foregroundStyle(theme.textPrimary)
                             .padding(.horizontal, 13)
                             .frame(height: 32)
                             .background {
-                                if active {
-                                    Capsule().fill(theme.accent)
-                                } else {
-                                    GlassSurface(shape: Capsule(), theme: theme,
-                                                 glassOpacity: store.glassOpacity)
-                                }
+                                GlassChipBackground(selected: active, theme: theme,
+                                                    glassOpacity: store.glassOpacity)
                             }
                     }
                     .buttonStyle(.plain)

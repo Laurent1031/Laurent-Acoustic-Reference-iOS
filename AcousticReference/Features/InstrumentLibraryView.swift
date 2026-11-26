@@ -44,8 +44,7 @@ struct InstrumentLibraryView: View {
     }
 
     var body: some View {
-        let theme = TunerTheme.resolve(preference: store.themePreference,
-                                       system: colorScheme)
+        let theme = store.resolvedTheme(system: colorScheme)
         NavigationStack {
             ZStack {
                 theme.background.ignoresSafeArea()
@@ -103,11 +102,15 @@ struct InstrumentLibraryView: View {
                     } label: {
                         Text(L10n.localizedName(entry.name))
                             .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundStyle(tab == entry.category ? .white : theme.textSecondary)
+                            .foregroundStyle(tab == entry.category ? theme.textPrimary : theme.textSecondary)
                             .padding(.horizontal, 12)
                             .frame(height: 30)
-                            .background(tab == entry.category ? theme.accent : Color.clear,
-                                        in: Capsule())
+                            .background {
+                                GlassChipBackground(selected: tab == entry.category,
+                                                    theme: theme,
+                                                    glassOpacity: store.glassOpacity,
+                                                    bareUnselected: true)
+                            }
                     }
                     .buttonStyle(.plain)
                 }
@@ -445,8 +448,7 @@ private struct CustomInstrumentFormView: View {
     }
 
     var body: some View {
-        let theme = TunerTheme.resolve(preference: store.themePreference,
-                                       system: colorScheme)
+        let theme = store.resolvedTheme(system: colorScheme)
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 field(theme: theme) {

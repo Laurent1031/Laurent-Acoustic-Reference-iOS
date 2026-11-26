@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 調音主畫面的設計 token，逐項對照母本 CSS 變量（index.html 行 151–198）。
 ///
@@ -59,6 +60,15 @@ struct TunerTheme {
     let faderGlyphUncovered: Color
     /// 收藏星色（母本寫死 #FFD60A，雙主題同）；pit 改暗琥珀。
     let favoriteStar: Color
+    /// 自訂背景 payload（裝機返修批）：非 nil 時 background
+    /// 改渲染自訂層；kind 沿解析時的淺／深基底（由背景亮度
+    /// 判定，見 AppStore.customBackgroundIsLight）。
+    var customBackground: CustomBackground? = nil
+
+    enum CustomBackground: Sendable {
+        case color(UInt32)
+        case image(Data)
+    }
 
     /// 依主題偏好與系統外觀解析（補強段）：.system 沿用母本
     /// 「隨系統」；.light/.dark 強制；.pit 樂池暗紅。
@@ -74,6 +84,20 @@ struct TunerTheme {
     /// 相容入口（舊呼叫點語義 = 跟隨系統）。
     static func resolve(_ scheme: ColorScheme) -> TunerTheme {
         resolve(preference: .system, system: scheme)
+    }
+
+    /// 自訂背景入口（裝機返修批）：preference == .custom 且
+    /// 有 payload 時，以亮度判定選淺／深基底並掛上自訂層；
+    /// 其餘情形與三參數版同。
+    static func resolve(preference: AppTheme, system: ColorScheme,
+                        customBackground: CustomBackground?,
+                        customIsLight: Bool) -> TunerTheme {
+        if preference == .custom, let customBackground {
+            var theme = customIsLight ? TunerTheme.light : TunerTheme.dark
+            theme.customBackground = customBackground
+            return theme
+        }
+        return resolve(preference: preference, system: system)
     }
 
     static let dark = TunerTheme(
@@ -149,6 +173,57 @@ struct TunerTheme {
     /// pit：頂部 #140404（近黑帶暗紅）→ #000。
     @ViewBuilder
     var background: some View {
+        if let customBackground {
+            customBackgroundView(customBackground)
+        } else {
+            themedBackground
+        }
+    }
+
+    /// 自訂背景層（母本 bgGradientFor／wpLayer 等價）：
+    /// 純色 = 165° 線性漸層（+26 → 原色 → −54）＋左上
+    /// 徑向高光（+46 淡出）；圖片 = 等比填滿裁切。
+    @ViewBuilder
+    private func customBackgroundView(_ bg: CustomBackground) -> some View {
+        switch bg {
+        case .color(let hex):
+            ZStack {
+                LinearGradient(
+                    colors: [Self.shade(hex, 26), Color(hex: hex),
+                             Self.shade(hex, -54)],
+                    startPoint: UnitPoint(x: 0.08, y: 0),
+                    endPoint: UnitPoint(x: 0.62, y: 1))
+                RadialGradient(
+                    colors: [Self.shade(hex, 46).opacity(0.85),
+                             Self.shade(hex, 46).opacity(0)],
+                    center: UnitPoint(x: 0.18, y: 0),
+                    startRadius: 0, endRadius: 460)
+            }
+        case .image(let data):
+            if let uiImage = UIImage(data: data) {
+                GeometryReader { geo in
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                }
+            } else {
+                Color.black
+            }
+        }
+    }
+
+    /// 母本 shadeHex 同義：三通道同加 amount 並鉗制 0–255。
+    static func shade(_ hex: UInt32, _ amount: Int) -> Color {
+        let r = Double(min(255, max(0, Int((hex >> 16) & 0xFF) + amount))) / 255
+        let g = Double(min(255, max(0, Int((hex >> 8) & 0xFF) + amount))) / 255
+        let b = Double(min(255, max(0, Int(hex & 0xFF) + amount))) / 255
+        return Color(red: r, green: g, blue: b)
+    }
+
+    @ViewBuilder
+    private var themedBackground: some View {
         switch kind {
         case .dark:
             ZStack {
@@ -180,32 +255,31 @@ struct TunerTheme {
 
 // MARK: - 玻璃不透明度（階段 5 材質版 → 階段 6 真折射）
 
-/// 玻璃表面（階段 6 升級）：系統 Liquid Glass 真折射
-/// （glassEffect）為渲染主體——部署目標 iOS 27、CI runner
-/// 為 Xcode 26.x（SDK ≥ 26，glassEffect 自 iOS 26 SDK 起
-/// 可用），API 無條件可達，不需 availability 分支。
+/// 玻璃表面（階段 6 升級；裝機返修批重做）：系統 Liquid
+/// Glass 真折射（glassEffect）為渲染主體——部署目標
+/// iOS 27、CI runner 為 Xcode 26.x（SDK ≥ 26，glassEffect
+/// 自 iOS 26 SDK 起可用），API 無條件可達，不需
+/// availability 分支。
+///
+/// 【裝機返修・2026-11-26】Laurent 實機回報「按鍵糊、字不
+/// 明顯、配色奇怪、尤其右上角」：歸因於舊版在折射層之上
+/// 再壓一層白色覆蓋（×0.55 曲線）把玻璃悶成磨砂塑料、
+/// 且表面無描邊、淺色下邊界消失。本版處置：
+/// 1. 覆蓋層權重降至 ×0.30（保留不透明度滑桿的相對節律，
+///    不再悶死折射與高光）；
+/// 2. 每面補 1pt 內描邊（淺 黑 0.10／深 白 0.16／pit 沿
+///    深色），邊界在任何背景上可辨；
+/// 3. 全 App 撤除 GlassEffectContainer 包裹——其合成通道
+///    疑似造成樂器卡重影（實機截圖），玻璃逐面獨立渲染。
 ///
 /// 玻璃不透明度（8–96）的語義映射：glassEffect 無 opacity
 /// 參數，以兩條同向單調的通道保留可感差異——
 /// 1. Glass tint：以主題表面色（深 (28,28,30)／淺白／pit
 ///    (26,9,9)）染色，alpha = 0.08 + 0.30t；
-/// 2. 覆蓋層：階段 5 的母本 iOS 支曲線（t = (值−8)/88；
-///    深 0.05+0.90t／淺 0.10+0.86t，pit 沿深色）× 0.55——
-///    保留原曲線的相對節律，但讓出約一半權重給折射本體，
-///    避免覆蓋層把真折射悶死。
-/// 兩端行為：值 8 → tint 0.08＋覆蓋 ≈0.03–0.06，近全透、
-/// 折射最強；值 96 → tint 0.38＋覆蓋 ≈0.52，呈濃色玻璃板、
-/// 折射仍在邊緣與高光處可見。全程單調、兩端差異明確，
-/// 與母本「不透明度」的心智模型一致（映射關係即此註解，
-/// 屬有意取捨：原生無母本 blur／sat／bri 三維參數，階段 5
-/// 已註明，階段 6 亦不冒充）。
-///
-/// 成簇分組：玻璃元素成排出現處（頂欄、調音頁首列／收藏
-/// 列）由呼叫方以 GlassEffectContainer 包裹，系統得以統一
-/// 合成、相鄰玻璃可流體相鄰渲染；單顆玻璃（膠囊、浮鈕）
-/// 不需容器。interactive 不加於本背景層：按壓形變應作用在
-/// 控件本體而非其背景襯底，加了只會讓襯底與內容脫步
-/// （逐點取捨註明）。
+/// 2. 覆蓋層：母本 iOS 支曲線（t = (值−8)/88；深 0.05+
+///    0.90t／淺 0.10+0.86t，pit 沿深色）× 0.30。
+/// interactive 不加於本背景層：按壓形變應作用在控件本體
+/// 而非其背景襯底，加了只會讓襯底與內容脫步。
 struct GlassSurface<S: Shape>: View {
     let shape: S
     let theme: TunerTheme
@@ -218,6 +292,12 @@ struct GlassSurface<S: Shape>: View {
             .glassEffect(glassVariant(t: t), in: shape)
             .overlay {
                 shape.fill(opacityTint(t: t))
+            }
+            .overlay {
+                shape.strokeBorder(
+                    theme.isDark ? Color.white.opacity(0.16)
+                                 : Color.black.opacity(0.10),
+                    lineWidth: 1)
             }
     }
 
@@ -245,7 +325,7 @@ struct GlassSurface<S: Shape>: View {
         case .dark, .pit:
             curve = 0.05 + 0.90 * t
         }
-        return surfaceColor.opacity(curve * 0.55)
+        return surfaceColor.opacity(curve * 0.30)
     }
 }
 
@@ -294,7 +374,126 @@ extension View {
     }
 }
 
+// MARK: - 液態玻璃切換效果（裝機返修批・Laurent 指定）
+
+/// 液態玻璃分段控件：選中態是一片真玻璃鏡片，於選項之間
+/// 以 glassEffectID 在 GlassEffectContainer 內液態滑動
+/// morph（iOS 26+ 系統效果），取代舊版實心藍填充。鏡片
+/// 以 accent 32% 染色；選中文字走 textPrimary（淺色下為
+/// 深字、深色下為亮字，雙主題對比皆成立），未選中走
+/// textSecondary。容器僅用於本控件內部（小面積、形制
+/// 單一，即官方文檔的標準用法）；頁面級大列已撤容器
+/// （見 GlassSurface 註解的重影歸因）。
+struct GlassSegmentedControl<Option: Hashable>: View {
+    let options: [(option: Option, title: String, symbol: String?)]
+    @Binding var selection: Option
+    let theme: TunerTheme
+    let glassOpacity: Int
+    var fontSize: CGFloat = 13
+    var height: CGFloat = 30
+    var equalWidth: Bool = false
+    @Namespace private var lensNamespace
+
+    var body: some View {
+        GlassEffectContainer(spacing: 2) {
+            HStack(spacing: 2) {
+                ForEach(options, id: \.option) { item in
+                    let active = selection == item.option
+                    Button {
+                        guard !active else { return }
+                        withAnimation(.spring(response: 0.38,
+                                              dampingFraction: 0.82)) {
+                            selection = item.option
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            if let symbol = item.symbol {
+                                Image(systemName: symbol)
+                                    .font(.system(size: fontSize - 1,
+                                                  weight: .semibold))
+                            }
+                            Text(item.title)
+                                .font(.system(size: fontSize, weight: .semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        .foregroundStyle(active ? theme.textPrimary
+                                                : theme.textSecondary)
+                        .padding(.horizontal, 11)
+                        .frame(maxWidth: equalWidth ? .infinity : nil)
+                        .frame(height: height)
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .background {
+                        if active {
+                            Capsule()
+                                .fill(.clear)
+                                .glassEffect(
+                                    .regular
+                                        .tint(theme.accent.opacity(0.32))
+                                        .interactive(),
+                                    in: Capsule())
+                                .glassEffectID("selection-lens",
+                                               in: lensNamespace)
+                        }
+                    }
+                    .accessibilityLabel(item.title)
+                    .accessibilityAddTraits(active ? [.isSelected] : [])
+                }
+            }
+            .padding(3)
+        }
+        .background {
+            GlassSurface(shape: Capsule(), theme: theme,
+                         glassOpacity: glassOpacity)
+        }
+    }
+}
+
+/// 捲動列晶片的玻璃選中態（收藏／目標／速度預置等橫滑列
+/// 內的晶片無法跨項 morph，改以逐片真玻璃＋accent 染色
+/// ＋interactive 按壓形變呈現，與分段鏡片同語言）。
+struct GlassChipBackground: View {
+    let selected: Bool
+    let theme: TunerTheme
+    let glassOpacity: Int
+    /// 已在玻璃軌道內的晶片（樂器庫分類列）：未選中不另
+    /// 鋪玻璃（避免玻璃疊玻璃發糊），只留選中鏡片。
+    var bareUnselected: Bool = false
+
+    var body: some View {
+        if selected {
+            Capsule()
+                .fill(.clear)
+                .glassEffect(
+                    .regular.tint(theme.accent.opacity(0.38)).interactive(),
+                    in: Capsule())
+                .overlay {
+                    Capsule().strokeBorder(theme.accent.opacity(0.45),
+                                           lineWidth: 1)
+                }
+        } else if bareUnselected {
+            Color.clear
+        } else {
+            GlassSurface(shape: Capsule(), theme: theme,
+                         glassOpacity: glassOpacity)
+        }
+    }
+}
+
 extension Color {
+    /// #RRGGBB（ColorPicker 自選色回寫背景用；取 sRGB 三通道）。
+    var hexString: String? {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
+        else { return nil }
+        return String(format: "#%02X%02X%02X",
+                      Int((r * 255).rounded()),
+                      Int((g * 255).rounded()),
+                      Int((b * 255).rounded()))
+    }
+
     init(hex: UInt32) {
         self.init(
             red: Double((hex >> 16) & 0xFF) / 255,

@@ -1,4 +1,6 @@
+import PhotosUI
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 /// 設定兩面（階段 5），入口在 ContentView 頂欄（比照母本頂欄的
@@ -16,10 +18,10 @@ import UniformTypeIdentifiers
 /// - SystemSettingsView = 母本 settingsModal「系统设置」：
 ///   即時生效（母本同），含語言／外觀／玻璃不透明度（本頁
 ///   卡片即以 GlassSurface 渲染，拖動當下即預覽）／震動／
-///   音效／藍牙補償＋屏幕常亮資訊列。未移植三項在報告點名：
-///   自訂背景（上傳圖片＋背景色彩，web 專屬）、數據備份
-///   導出／導入（規格書 §5 第 8 步範疇）、贊賞支持／聯繫
-///   我們（內容性條目）。
+///   音效／藍牙補償＋屏幕常亮資訊列。數據備份導入於階段 8
+///   補齊；自訂背景與備份導出於裝機返修批補齊（Laurent
+///   實機點名缺失）。未移植僅剩：贊賞支持／聯繫我們
+///   （內容性條目）。
 
 // MARK: - 共用組件
 
@@ -70,26 +72,15 @@ private struct SettingsChips<Option: Hashable>: View {
     @Binding var selection: Option
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(options, id: \.value) { option in
-                let active = selection == option.value
-                Button {
-                    selection = option.value
-                } label: {
-                    Text(option.label)
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .foregroundStyle(active ? .white : theme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 30)
-                        .background(active ? theme.accent : Color.clear, in: Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(3)
-        .glassBackground(in: Capsule(), theme: theme, glassOpacity: glassOpacity)
+        // 【裝機返修】改液態玻璃鏡片切換（GlassSegmentedControl，
+        // 全 App 選項控件統一）；等寬分配沿舊版形制。
+        GlassSegmentedControl(
+            options: options.map {
+                (option: $0.value, title: $0.label, symbol: nil)
+            },
+            selection: $selection,
+            theme: theme, glassOpacity: glassOpacity,
+            fontSize: 12.5, height: 30, equalWidth: true)
     }
 }
 
@@ -132,8 +123,7 @@ struct PreferencesView: View {
     }
 
     var body: some View {
-        let theme = TunerTheme.resolve(preference: store.themePreference,
-                                       system: colorScheme)
+        let theme = store.resolvedTheme(system: colorScheme)
         NavigationStack {
             ZStack {
                 theme.background.ignoresSafeArea()
@@ -364,10 +354,14 @@ struct SystemSettingsView: View {
     /// 確認 sheet 接手（本 sheet 關閉後仍能呈現）。
     @State private var showBackupImporter = false
     @State private var backupImportError = false
+    /// 自訂背景（裝機返修批）：選圖與自選色的本地狀態。
+    @State private var backgroundPhotoItem: PhotosPickerItem?
+    @State private var customColor: Color = Color(hex: 0x0A84FF)
+    /// 備份導出（裝機返修批）：暫存檔 URL，生成後以 ShareLink 呈現。
+    @State private var backupExportURL: URL?
 
     var body: some View {
-        let theme = TunerTheme.resolve(preference: store.themePreference,
-                                       system: colorScheme)
+        let theme = store.resolvedTheme(system: colorScheme)
         NavigationStack {
             ZStack {
                 theme.background.ignoresSafeArea()
@@ -435,6 +429,23 @@ struct SystemSettingsView: View {
                     .foregroundStyle(theme.accent)
             }
             .buttonStyle(.plain)
+            Divider()
+            if let backupExportURL {
+                ShareLink(item: backupExportURL) {
+                    Text(L10n.t("导出备份"))
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(theme.accent)
+                }
+            } else {
+                Button {
+                    backupExportURL = BackupExporter.writeTempFile(store: store)
+                } label: {
+                    Text(L10n.t("导出备份"))
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(theme.accent)
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -491,7 +502,123 @@ struct SystemSettingsView: View {
             }
             .font(.system(size: 10.5))
             .foregroundStyle(theme.textMuted)
+
+            if store.themePreference == .custom {
+                Divider()
+                backgroundControls(theme: theme)
+            }
         }
+    }
+
+    // MARK: 自訂背景（裝機返修批，母本 themeConsole 背景段）
+
+    /// 母本預置色票（index.html 行 5774–5783 原值）。
+    private static let backgroundSwatches: [UInt32] = [
+        0x0A84FF, 0x5E5CE6, 0xBF5AF2, 0xFF375F, 0xFF453A,
+        0xFF9F0A, 0xFFD60A, 0x30D158, 0x64D2FF, 0x8E8E93,
+    ]
+
+    @ViewBuilder
+    private func backgroundControls(theme: TunerTheme) -> some View {
+        SettingsLabel(theme: theme,
+                      title: L10n.t("自定义背景"),
+                      sub: backgroundStatusText)
+        // 色票列（母本 .bg-swatch-row）：點選即套用純色背景。
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 34), spacing: 9)],
+                  alignment: .leading, spacing: 9) {
+            ForEach(Self.backgroundSwatches, id: \.self) { hex in
+                Button {
+                    store.setCustomBackgroundColor(
+                        String(format: "#%06X", hex))
+                } label: {
+                    Circle()
+                        .fill(Color(hex: hex))
+                        .frame(width: 30, height: 30)
+                        .overlay {
+                            if store.bgKind == "color",
+                               AppStore.parseHexColor(store.bgColorHex) == hex {
+                                Circle().strokeBorder(.white, lineWidth: 2)
+                                    .padding(2)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(format: "#%06X", hex))
+            }
+        }
+
+        HStack(spacing: 10) {
+            ColorPicker(L10n.t("自选色彩"), selection: $customColor,
+                        supportsOpacity: false)
+                .font(.system(size: 13))
+                .foregroundStyle(theme.textPrimary)
+                .onChange(of: customColor) { _, newColor in
+                    if let hex = newColor.hexString {
+                        store.setCustomBackgroundColor(hex)
+                    }
+                }
+            Spacer(minLength: 8)
+            PhotosPicker(selection: $backgroundPhotoItem,
+                         matching: .images) {
+                Text(L10n.t("选择图片"))
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(theme.accent)
+            }
+            .onChange(of: backgroundPhotoItem) { _, item in
+                guard let item else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(
+                        type: Data.self),
+                       let processed = Self.processBackgroundImage(data) {
+                        store.setCustomBackgroundImage(processed)
+                    }
+                    backgroundPhotoItem = nil
+                }
+            }
+        }
+
+        if store.bgKind != "" {
+            Button {
+                store.clearCustomBackground()
+            } label: {
+                Text(L10n.t("清除背景"))
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(theme.clipWarning)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// 背景現況說明（母本 bgPrevLabel 等價）。
+    private var backgroundStatusText: String {
+        switch store.bgKind {
+        case "color":
+            return L10n.t("当前色彩背景") + " " + store.bgColorHex.uppercased()
+        case "image":
+            return L10n.t("自定义背景已保存")
+        default:
+            return L10n.t("尚未设置自定义背景")
+        }
+    }
+
+    /// 選圖處理：長邊縮至 ≤1600、轉 JPEG 0.8（落盤體積與
+    /// 解碼成本可控；母本以 data URL 存 localStorage 亦有
+    /// 體積上限，口徑一致）。
+    static func processBackgroundImage(_ data: Data) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let maxEdge: CGFloat = 1600
+        let longest = max(image.size.width, image.size.height)
+        guard longest > maxEdge else {
+            return image.jpegData(compressionQuality: 0.8)
+        }
+        let scale = maxEdge / longest
+        let newSize = CGSize(width: image.size.width * scale,
+                             height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+        }
+        return resized.jpegData(compressionQuality: 0.8)
     }
 
     private var glassBinding: Binding<Double> {

@@ -346,9 +346,36 @@ final class AudioEngine: ObservableObject {
 
     // MARK: - 內部
 
+    /// 引擎啟動錯誤（可恢復形）：呈現於調音頁 lastError，
+    /// 取代進程級中止（見 startEngine 的防禦註記）。
+    enum EngineStartError: LocalizedError {
+        case invalidInputFormat(sampleRate: Double, channels: Int)
+        var errorDescription: String? {
+            switch self {
+            case .invalidInputFormat(let sampleRate, let channels):
+                return "麥克風輸入格式未就緒（\(Int(sampleRate)) Hz／\(channels) ch），請重試"
+            }
+        }
+    }
+
     private func startEngine() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .measurement, options: [])
+        do {
+            try configureSessionAndStart(session, mode: .measurement)
+        } catch {
+            // 【裝機返修・防禦】實機首裝一點麥克風即退出：
+            // .ips 未到手前先做雙層防禦——(1) 下方格式守衛攔
+            // installTap 的 NSException 路徑；(2) 可抛錯的
+            // setCategory／start 若在 .measurement 下失敗，
+            // 退 .default 重試一次（犧牲 AGC 關閉，換不閃退；
+            // 檢測路徑與判準不變）。兩次皆敗才交回 UI 顯示。
+            try configureSessionAndStart(session, mode: .default)
+        }
+    }
+
+    private func configureSessionAndStart(_ session: AVAudioSession,
+                                          mode: AVAudioSession.Mode) throws {
+        try session.setCategory(.playAndRecord, mode: mode, options: [])
         // IO buffer 壓向硬體下限（規格書 §3.1）：先請求 3 ms，
         // 失敗退 5 ms；實際生效值以 session.ioBufferDuration 為準（診斷顯示）。
         if (try? session.setPreferredIOBufferDuration(0.003)) == nil {
@@ -359,6 +386,14 @@ final class AudioEngine: ObservableObject {
         let audioEngine = AVAudioEngine()
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
+        // 格式未就緒（取樣率／聲道為 0）時 installTap 會以
+        // NSException 直接中止進程、Swift 層攔不到：先守衛，
+        // 改以可恢復錯誤呈現（同上 EngineStartError）。
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            throw EngineStartError.invalidInputFormat(
+                sampleRate: format.sampleRate,
+                channels: Int(format.channelCount))
+        }
         core.setSampleRate(format.sampleRate)
         core.resetRing()
         core.onReading = { [weak self] reading in

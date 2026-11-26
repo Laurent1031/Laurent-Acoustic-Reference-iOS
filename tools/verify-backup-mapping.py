@@ -49,10 +49,14 @@ for key in ("app", "v", "profile", "settings"):
 if "expectedAppTag" not in importer:
     failures.append("[欄位覆蓋] app 標記驗證缺失")
 
-# 未映射三鍵必須在 unmappedKeys 的點名迴圈中
+# 背景三鍵（裝機返修批起正式映射）：必須在 mapBackground 中被讀取
+if "mapBackground" not in importer:
+    failures.append("[背景映射] mapBackground 缺失")
 for key in ("customBgDataUrl", "bgColor", "bgKind"):
     if key not in importer:
-        failures.append(f"[未映射點名] {key} 未在匯入器中點名")
+        failures.append(f"[背景映射] {key} 未在匯入器中出現")
+if '"custom": plan.themePreference = .custom' not in importer:
+    failures.append("[背景映射] themeMode=custom 未直映射 .custom")
 
 # --- 2. 目標覆蓋 ---
 apply_body = importer.split("func applyImport", 1)[1]
@@ -61,7 +65,8 @@ assigned = set(re.findall(r"^\s{12}(?:if let \w+ = plan\.\w+ \{\s*)?(\w+)\s*=", 
 targets = ["customInstruments", "favoriteInstrumentIds", "tunerSettings", "pitchMode",
            "droneTimbre", "droneFollow", "autoMicOnEnter", "metronomeUserPresets",
            "metronomeDefault", "primaryInstrumentId", "language", "appMode",
-           "themePreference", "glassOpacity", "pendingImportPlan"]
+           "themePreference", "glassOpacity", "pendingImportPlan",
+           "bgKind", "bgColorHex", "customBgData"]
 for target in targets:
     if not re.search(rf"@Published var {target}\b", appstore):
         failures.append(f"[目標覆蓋] AppStore 無 @Published {target}")
@@ -81,6 +86,8 @@ assert favs == ["custom_1730000000001", "alto_sax", "violin"], f"收藏過濾不
 assert fixture["profile"]["primaryInstId"] in catalog_ids
 assert fixture["settings"]["glassAlpha"] == 72 and 8 <= 72 <= 96
 assert fixture["settings"]["lang"] == "ja"
+assert fixture["settings"]["themeMode"] == "custom"  # 裝機返修批：custom 直映射 .custom
+assert fixture["settings"]["bgKind"] == "color" and fixture["settings"]["bgColor"] == "#FF9F0A"
 assert fixture["profile"]["defaultBeats"] == 3  # metronomeDefault accents 應為 [3,1,1]
 
 # 錯誤信封（鏡像 ImportError 分類）

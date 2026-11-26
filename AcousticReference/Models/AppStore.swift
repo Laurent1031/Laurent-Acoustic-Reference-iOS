@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 import WidgetKit
 
 /// App 模式（母本 state.mode 的 tuner/metro 子集）。階段 3 時以
@@ -44,11 +45,18 @@ enum AppTheme: String, Codable, Sendable, CaseIterable {
     /// 樂池暗紅：系統層強制深色（材質／選單／彈窗走深色渲染），
     /// 品牌 token 改走 TunerTheme 的 pit 調色盤。
     case pit
+    /// 自訂背景（裝機返修批補齊，母本 themeMode=custom）：
+    /// 純色漸層或自選圖片作頁面背景，淺／深 token 由背景
+    /// 亮度自動判定（母本 hexLuminance／圖片亮度分析同義）。
+    /// 系統層 forcedColorScheme 須隨判定走，故根視圖改用
+    /// AppStore.effectiveForcedColorScheme，本屬性對 custom
+    /// 回 nil（不干預）僅作保底。
+    case custom
 
     /// 套到根視圖的 preferredColorScheme（system 為 nil＝不干預）。
     var forcedColorScheme: ColorScheme? {
         switch self {
-        case .system: return nil
+        case .system, .custom: return nil
         case .light: return .light
         case .dark, .pit: return .dark
         }
@@ -62,6 +70,7 @@ enum AppTheme: String, Codable, Sendable, CaseIterable {
         case .light: return L10n.t("浅色")
         case .dark: return L10n.t("深色")
         case .pit: return L10n.t("乐池暗红")
+        case .custom: return L10n.t("自定义")
         }
     }
 }
@@ -105,6 +114,15 @@ private struct AppStateFile: Codable {
     /// 節拍器預設參數（母本 profile 的 defaultBpm 等五欄的整體
     /// 快照）：nil = 用戶未按過「設為默認」，啟動沿用上次值。
     var metronomeDefault: MetronomeSettings? = nil
+    // 裝機返修批新增欄（自訂背景，母本 profile 三欄同名同義；
+    // 缺欄退空值，舊檔無痛遷移）：
+    /// 背景種類：""／"color"／"image"（母本 bgKind 原值）。
+    var bgKind: String = ""
+    /// 純色背景色票（母本 bgColor，#RRGGBB；"" = 未設）。
+    var bgColor: String = ""
+    /// 自選背景圖（母本 customBgDataUrl 的原生形：圖片 Data；
+    /// 選圖時已縮放至長邊 ≤1600 並轉 JPEG，落盤體積可控）。
+    var customBgData: Data? = nil
 
     private enum CodingKeys: String, CodingKey {
         case version, tunerSettings, pitchMode, selectedInstrumentId
@@ -114,6 +132,7 @@ private struct AppStateFile: Codable {
         case themePreference
         case language, glassOpacity, primaryInstrumentId
         case autoMicOnEnter, metronomeDefault
+        case bgKind, bgColor, customBgData
     }
 
     init() {}
@@ -142,6 +161,9 @@ private struct AppStateFile: Codable {
             ?? selectedInstrumentId
         autoMicOnEnter = try c.decodeIfPresent(Bool.self, forKey: .autoMicOnEnter) ?? false
         metronomeDefault = try c.decodeIfPresent(MetronomeSettings.self, forKey: .metronomeDefault)
+        bgKind = try c.decodeIfPresent(String.self, forKey: .bgKind) ?? ""
+        bgColor = try c.decodeIfPresent(String.self, forKey: .bgColor) ?? ""
+        customBgData = try c.decodeIfPresent(Data.self, forKey: .customBgData)
     }
 }
 
@@ -198,6 +220,13 @@ final class AppStore: ObservableObject {
     /// 上次值）；非 nil 時 ContentView 啟動以此播種 ViewModel
     /// （對齊母本啟動套用 profile 默認的語義）。
     @Published var metronomeDefault: MetronomeSettings? = nil { didSet { persist() } }
+    /// 自訂背景三欄（裝機返修批，母本 bgKind／bgColor／
+    /// customBgDataUrl）：bgKind 為 ""／"color"／"image"；
+    /// 僅 themePreference == .custom 時生效（母本同：背景
+    /// 只在 custom 模式渲染，其他模式保留值不顯示）。
+    @Published var bgKind: String = "" { didSet { persist() } }
+    @Published var bgColorHex: String = "" { didSet { persist() } }
+    @Published var customBgData: Data? = nil { didSet { persist() } }
 
     /// 待確認的備份匯入計劃（階段 8）：檔案選取／分享表單入的
     /// 備份先組裝成 plan 掛在此處，ContentView 以 sheet 呈現
@@ -250,6 +279,114 @@ final class AppStore: ObservableObject {
         Self.metroSummaryText(for: metronomeDefault)
     }
 
+    // MARK: - 自訂背景（裝機返修批，母本 themeMode=custom）
+
+    /// 目前背景 payload（僅 .custom 模式由 resolvedTheme 採用）。
+    var customBackgroundPayload: TunerTheme.CustomBackground? {
+        switch bgKind {
+        case "color":
+            guard let hex = Self.parseHexColor(bgColorHex) else { return nil }
+            return .color(hex)
+        case "image":
+            guard let customBgData else { return nil }
+            return .image(customBgData)
+        default:
+            return nil
+        }
+    }
+
+    /// 背景亮度判定（母本：色彩 hexLuminance > 0.62 → 淺；
+    /// 圖片走亮度分析）。無背景可判時回深色側（保守，與
+    /// 母本 custom 未設背景的深色底一致）。
+    var customBackgroundIsLight: Bool {
+        switch bgKind {
+        case "color":
+            guard let hex = Self.parseHexColor(bgColorHex) else { return false }
+            return Self.hexLuminance(hex) > 0.62
+        case "image":
+            guard let customBgData,
+                  let lum = Self.imageLuminance(customBgData) else { return false }
+            return lum > 0.62
+        default:
+            return false
+        }
+    }
+
+    /// 根視圖 preferredColorScheme：custom 時隨背景判定，
+    /// 其餘沿 AppTheme.forcedColorScheme。
+    var effectiveForcedColorScheme: ColorScheme? {
+        if themePreference == .custom {
+            return customBackgroundIsLight ? .light : .dark
+        }
+        return themePreference.forcedColorScheme
+    }
+
+    /// 全 App 主題解析唯一入口（各頁 body 呼叫，取代散列的
+    /// TunerTheme.resolve(preference:system:) 直呼）。
+    func resolvedTheme(system: ColorScheme) -> TunerTheme {
+        TunerTheme.resolve(preference: themePreference, system: system,
+                           customBackground: customBackgroundPayload,
+                           customIsLight: customBackgroundIsLight)
+    }
+
+    /// 設定純色背景並切到自訂模式（母本在 custom 模式內
+    /// 操作背景；原生入口自動切換，免用戶找不到開關）。
+    func setCustomBackgroundColor(_ hex: String) {
+        bgColorHex = hex
+        bgKind = "color"
+        themePreference = .custom
+    }
+
+    /// 設定圖片背景並切到自訂模式（data 須已縮放編碼，
+    /// 由設定頁選圖流程負責）。
+    func setCustomBackgroundImage(_ data: Data) {
+        customBgData = data
+        bgKind = "image"
+        themePreference = .custom
+    }
+
+    func clearCustomBackground() {
+        bgKind = ""
+        bgColorHex = ""
+        customBgData = nil
+    }
+
+    static func parseHexColor(_ string: String) -> UInt32? {
+        var s = string.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let value = UInt32(s, radix: 16) else { return nil }
+        return value
+    }
+
+    /// 母本 hexLuminance 同式（線性加權）。
+    static func hexLuminance(_ hex: UInt32) -> Double {
+        let r = Double((hex >> 16) & 0xFF)
+        let g = Double((hex >> 8) & 0xFF)
+        let b = Double(hex & 0xFF)
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+    }
+
+    /// 圖片平均亮度：縮繪至 16×16 後逐像素同式加權平均。
+    static func imageLuminance(_ data: Data) -> Double? {
+        guard let image = UIImage(data: data), let cg = image.cgImage
+        else { return nil }
+        var pixels = [UInt8](repeating: 0, count: 16 * 16 * 4)
+        guard let ctx = CGContext(
+            data: &pixels, width: 16, height: 16, bitsPerComponent: 8,
+            bytesPerRow: 16 * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 16, height: 16))
+        var sum = 0.0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            sum += 0.2126 * Double(pixels[i])
+                 + 0.7152 * Double(pixels[i + 1])
+                 + 0.0722 * Double(pixels[i + 2])
+        }
+        return sum / Double(16 * 16) / 255
+    }
+
     // MARK: - 僅執行期狀態（母本 state 層，不落盤）
 
     /// 古箏調號（母本 state.guzhengKey，預設 "D"；母本不入 profile，
@@ -298,6 +435,9 @@ final class AppStore: ObservableObject {
         primaryInstrumentId = snapshot.primaryInstrumentId
         autoMicOnEnter = snapshot.autoMicOnEnter
         metronomeDefault = snapshot.metronomeDefault
+        bgKind = snapshot.bgKind
+        bgColorHex = snapshot.bgColor
+        customBgData = snapshot.customBgData
         guzhengFavMigrationDone = snapshot.guzhengFavMigrationDone
         // 首幀前同步語言進 L10n（其後由 ContentView onChange 維護）。
         L10n.setLanguage(snapshot.language)
@@ -384,6 +524,9 @@ final class AppStore: ObservableObject {
         snapshot.primaryInstrumentId = primaryInstrumentId
         snapshot.autoMicOnEnter = autoMicOnEnter
         snapshot.metronomeDefault = metronomeDefault
+        snapshot.bgKind = bgKind
+        snapshot.bgColor = bgColorHex
+        snapshot.customBgData = customBgData
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         let url = Self.stateFileURL
         try? FileManager.default.createDirectory(

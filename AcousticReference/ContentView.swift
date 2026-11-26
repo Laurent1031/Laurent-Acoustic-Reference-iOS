@@ -70,8 +70,7 @@ struct ContentView: View {
     private var mode: AppMode { store.appMode }
 
     var body: some View {
-        let theme = TunerTheme.resolve(preference: store.themePreference,
-                                       system: colorScheme)
+        let theme = store.resolvedTheme(system: colorScheme)
         VStack(spacing: 0) {
             topBar(theme: theme)
 
@@ -113,7 +112,7 @@ struct ContentView: View {
         .animation(.spring(response: 0.32, dampingFraction: 0.9),
                    value: metronomeViewModel.capsuleVisible)
         .animation(.easeOut(duration: 0.2), value: rehearsalLocked)
-        .preferredColorScheme(store.themePreference.forcedColorScheme)
+        .preferredColorScheme(store.effectiveForcedColorScheme)
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .debug:
@@ -196,30 +195,15 @@ struct ContentView: View {
 
     // MARK: - 頂欄（母本 topBar：品牌＋分段＋偏好／设置＋鎖＋診斷）
 
-    /// 母本頂欄右側有「偏好」「设置」兩文字鈕（階段 5 補入）。
-    /// iPhone 寬度放不下全列（品牌＋分段＋兩文字鈕＋兩圖標鈕），
-    /// 以寬度斷點分三檔：≥428 全列（含品牌徽章）；≥375 去徽章
-    /// （品牌字標 LAURENT 全尺寸保留，絕不縮放／截斷——版面
-    /// 鐵律）；<375 再把分段收為純圖標（無障礙標籤保留全名）。
+    /// 【裝機返修・2026-11-26】舊版單列塞品牌＋三段分段＋
+    /// 兩文字鈕＋兩圖標鈕，iPhone 寬度必溢出、右側圓鈕被裁
+    /// （實機回報）。改兩列制：第一列品牌徽章＋字標＋偏好／
+    /// 设置＋鎖＋診斷；第二列模式分段全寬（液態玻璃鏡片
+    /// 切換、三段等寬、圖標＋文字恆顯示）。品牌字標全尺寸
+    /// 保留，絕不縮放／截斷（版面鐵律）。
     private func topBar(theme: TunerTheme) -> some View {
-        GeometryReader { geo in
-            topBarRow(theme: theme,
-                      showsBadge: geo.size.width >= 428,
-                      segmentLabels: geo.size.width >= 375)
-        }
-        .frame(height: 36)
-        .padding(.horizontal, 16)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
-    }
-
-    private func topBarRow(theme: TunerTheme, showsBadge: Bool,
-                           segmentLabels: Bool) -> some View {
-        // 玻璃成簇分組（階段 6）：頂欄的分段／鎖／診斷玻璃
-        // 以 GlassEffectContainer 統一合成（真折射相鄰渲染）。
-        GlassEffectContainer(spacing: 8) {
-        HStack(spacing: 8) {
-            if showsBadge {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(theme.accent)
                     .frame(width: 34, height: 34)
@@ -228,58 +212,75 @@ struct ContentView: View {
                             .font(.system(size: 19, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                     }
-            }
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("LAURENT")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .tracking(2.5)
-                    .foregroundStyle(theme.textPrimary)
-                    .fixedSize()
-                Text("STUDIO EDITION")
-                    .font(.system(size: 8.5, weight: .medium, design: .rounded))
-                    .tracking(3)
-                    .foregroundStyle(theme.textMuted)
-                    .fixedSize()
-            }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("LAURENT")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .tracking(2.5)
+                        .foregroundStyle(theme.textPrimary)
+                        .fixedSize()
+                    Text("STUDIO EDITION")
+                        .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                        .tracking(3)
+                        .foregroundStyle(theme.textMuted)
+                        .fixedSize()
+                }
 
-            Spacer(minLength: 4)
+                Spacer(minLength: 8)
 
-            modeSegment(theme: theme, showsLabels: segmentLabels)
+                topTextButton(title: L10n.t("偏好"), theme: theme) {
+                    activeSheet = .preferences
+                }
+                topTextButton(title: L10n.t("设置"), theme: theme) {
+                    activeSheet = .systemSettings
+                }
 
-            topTextButton(title: L10n.t("偏好"), theme: theme) {
-                activeSheet = .preferences
-            }
-            topTextButton(title: L10n.t("设置"), theme: theme) {
-                activeSheet = .systemSettings
-            }
+                Button {
+                    rehearsalLocked = true
+                    HapticsEngine.shared.tap(milliseconds: 12)
+                } label: {
+                    Image(systemName: "lock.open")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 32, height: 32)
+                        .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.textSecondary)
+                .accessibilityLabel(L10n.t("排练锁定"))
 
-            Button {
-                rehearsalLocked = true
-                HapticsEngine.shared.tap(milliseconds: 12)
-            } label: {
-                Image(systemName: "lock.open")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 32, height: 32)
-                    .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
+                Button {
+                    activeSheet = .debug
+                } label: {
+                    Image(systemName: "waveform.path.ecg")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 32, height: 32)
+                        .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.textSecondary)
+                .accessibilityLabel(L10n.t("诊断"))
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(theme.textSecondary)
-            .accessibilityLabel(L10n.t("排练锁定"))
+            .frame(height: 36)
 
-            Button {
-                activeSheet = .debug
-            } label: {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 32, height: 32)
-                    .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(theme.textSecondary)
-            .accessibilityLabel(L10n.t("诊断"))
+            GlassSegmentedControl(
+                options: [
+                    (option: AppMode.tuner, title: L10n.t("调音"), symbol: "tuningfork"),
+                    (option: AppMode.dual, title: L10n.t("同屏"), symbol: "rectangle.split.2x1"),
+                    (option: AppMode.metronome, title: L10n.t("节拍"), symbol: "metronome"),
+                ],
+                selection: Binding(
+                    get: { store.appMode },
+                    set: { newMode in
+                        guard newMode != store.appMode else { return }
+                        store.appMode = newMode
+                        HapticsEngine.shared.tap(milliseconds: 6)
+                    }),
+                theme: theme, glassOpacity: store.glassOpacity,
+                fontSize: 13, height: 32, equalWidth: true)
         }
-        }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 6)
     }
 
     /// 頂欄文字鈕（母本 .icon-btn 形制：純文字、次級色）。
@@ -295,51 +296,6 @@ struct ContentView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    /// 分段切換（母本 seg：調音／節拍；選中滑塊以 spring 移動，
-    /// 切換震動 haptic(6)——母本 segBtn 呼叫點）。
-    private func modeSegment(theme: TunerTheme, showsLabels: Bool = true) -> some View {
-        HStack(spacing: 2) {
-            segmentButton(mode: .tuner, title: L10n.t("调音"),
-                          symbol: "tuningfork", theme: theme,
-                          showsLabel: showsLabels)
-            segmentButton(mode: .dual, title: L10n.t("同屏"),
-                          symbol: "rectangle.split.2x1", theme: theme,
-                          showsLabel: showsLabels)
-            segmentButton(mode: .metronome, title: L10n.t("节拍"),
-                          symbol: "metronome", theme: theme,
-                          showsLabel: showsLabels)
-        }
-        .padding(3)
-        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-    }
-
-    private func segmentButton(mode target: AppMode, title: String,
-                               symbol: String, theme: TunerTheme,
-                               showsLabel: Bool = true) -> some View {
-        let active = mode == target
-        return Button {
-            guard mode != target else { return }
-            store.appMode = target
-            HapticsEngine.shared.tap(milliseconds: 6)
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: symbol)
-                    .font(.system(size: 12, weight: .semibold))
-                if showsLabel {
-                    Text(title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                }
-            }
-            .foregroundStyle(active ? .white : theme.textSecondary)
-            .padding(.horizontal, showsLabel ? 11 : 8)
-            .frame(height: 28)
-            .background(active ? theme.accent : Color.clear, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
     }
 
     // MARK: - 防誤觸鎖遮罩（補強段）

@@ -36,16 +36,24 @@ struct DualModeView: View {
     }
 
     var body: some View {
-        let theme = TunerTheme.resolve(preference: store.themePreference,
-                                       system: colorScheme)
+        let theme = store.resolvedTheme(system: colorScheme)
         GeometryReader { geo in
-            VStack(spacing: 10) {
-                tunerPanel(theme: theme)
-                    .frame(height: geo.size.height * 0.47)
+            // 【裝機返修】舊版雙面板以分數定高、節拍面板內容
+            // 僅約 170pt 卻占 0.53 高，餘白全壓在面板內造成
+            // 中段大片空白（實機回報）。改：調音面板 0.46 定
+            // 高（主顯示在面板內以明確邊長繪製），節拍面板
+            // 吃滿剩餘高度、內容以上下 Spacer 均分餘白，
+            // 任何機型都不出現單側死區。
+            VStack(spacing: 8) {
+                tunerPanel(theme: theme,
+                           displaySize: min(geo.size.width * 0.56,
+                                            geo.size.height * 0.27))
+                    .frame(height: geo.size.height * 0.46)
                 Divider().overlay(theme.textMuted.opacity(0.25))
                 metronomePanel(theme: theme)
-                    .frame(height: max(180, geo.size.height * 0.53 - 21))
+                    .frame(maxHeight: .infinity)
             }
+            .frame(height: geo.size.height)
             .padding(.horizontal, 16)
             .padding(.top, 6)
             .padding(.bottom, 10)
@@ -63,7 +71,7 @@ struct DualModeView: View {
 
     // MARK: - 緊湊調音（與調音頁同源：顯示模式、判準、鎖定全同）
 
-    private func tunerPanel(theme: TunerTheme) -> some View {
+    private func tunerPanel(theme: TunerTheme, displaySize: CGFloat) -> some View {
         VStack(spacing: 6) {
             HStack(spacing: 8) {
                 Text(store.selectedInstrument.displayName)
@@ -100,7 +108,8 @@ struct DualModeView: View {
                         theme: theme)
                 }
             }
-            .frame(maxHeight: .infinity)
+            .frame(width: displaySize, height: displaySize)
+            .frame(maxWidth: .infinity)
 
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(tunerViewModel.noteText)
@@ -145,6 +154,7 @@ struct DualModeView: View {
     private func metronomePanel(theme: TunerTheme) -> some View {
         let vm = metronomeViewModel
         return VStack(spacing: 8) {
+            Spacer(minLength: 0)
             // 拍點列（母本 beat dots 的緊湊形）：圓點大小隨重音
             // 等級，現行拍以 pulse 放大＋ accent 色標記。
             HStack(spacing: 7) {
@@ -220,6 +230,7 @@ struct DualModeView: View {
                 }
                 .buttonStyle(.plain)
             }
+            Spacer(minLength: 0)
         }
     }
 

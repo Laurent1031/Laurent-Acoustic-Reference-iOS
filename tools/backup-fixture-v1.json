@@ -1,1 +1,90 @@
-{"app":"LAURENT-Acoustic-Reference","profile":{"autoMicOnEnter":true,"customInstruments":[{"cat":"western_wind","catLabel":"CUSTOM · 自订乐器","en":"My Bassoon","id":"custom_1730000000001","keyName":"1 = C","maxF":698.46,"minF":58.27,"name":"我的巴松","trans":0},{"cat":"custom","id":"custom_1730000000002","maxF":880.0,"minF":110.0,"name":"练习琴","trans":-2},{"cat":"band","en":"Broken","id":"custom_broken","keyName":"1 = C","maxF":100.0,"minF":500.0,"name":"坏笔","trans":0}],"damping":"fast","defaultA4":440.5,"defaultBeats":3,"defaultBpm":96,"defaultNoteUnit":4,"defaultTimbre":"wittner","dottedBeat":false,"droneFollow":true,"droneTimbre":"clarinet","favoriteInstIds":["custom_1730000000001","alto_sax","violin","bogus_removed_id"],"justTonicPc":7,"metroPresets":[{"beats":6,"bpm":88,"id":"mp1730000000001","name":"晨练","noteUnit":8,"subdivision":2,"timbre":"marimba"},{"beats":4,"bpm":60,"id":"mp1730000000002","name":"慢练 60","noteUnit":4,"subdivision":1,"timbre":"woodblock"}],"noiseGate":"low","pitchMode":"concert","primaryInstId":"custom_1730000000001","temperament":"just","tolerance":1.5},"settings":{"bgColor":"#123456","bgKind":"color","customBgDataUrl":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==","glassAlpha":72,"hapticsOn":false,"lang":"ja","mode":"metronome","soundsOn":true,"themeMode":"dark"},"v":1}
+{
+  "app": "LAURENT-Acoustic-Reference",
+  "profile": {
+    "autoMicOnEnter": true,
+    "customInstruments": [
+      {
+        "cat": "western_wind",
+        "catLabel": "CUSTOM · 自订乐器",
+        "en": "My Bassoon",
+        "id": "custom_1730000000001",
+        "keyName": "1 = C",
+        "maxF": 698.46,
+        "minF": 58.27,
+        "name": "我的巴松",
+        "trans": 0
+      },
+      {
+        "cat": "custom",
+        "id": "custom_1730000000002",
+        "maxF": 880.0,
+        "minF": 110.0,
+        "name": "练习琴",
+        "trans": -2
+      },
+      {
+        "cat": "band",
+        "en": "Broken",
+        "id": "custom_broken",
+        "keyName": "1 = C",
+        "maxF": 100.0,
+        "minF": 500.0,
+        "name": "坏笔",
+        "trans": 0
+      }
+    ],
+    "damping": "fast",
+    "defaultA4": 440.5,
+    "defaultBeats": 3,
+    "defaultBpm": 96,
+    "defaultNoteUnit": 4,
+    "defaultTimbre": "wittner",
+    "dottedBeat": false,
+    "droneFollow": true,
+    "droneTimbre": "clarinet",
+    "favoriteInstIds": [
+      "custom_1730000000001",
+      "alto_sax",
+      "violin",
+      "bogus_removed_id"
+    ],
+    "justTonicPc": 7,
+    "metroPresets": [
+      {
+        "beats": 6,
+        "bpm": 88,
+        "id": "mp1730000000001",
+        "name": "晨练",
+        "noteUnit": 8,
+        "subdivision": 2,
+        "timbre": "marimba"
+      },
+      {
+        "beats": 4,
+        "bpm": 60,
+        "id": "mp1730000000002",
+        "name": "慢练 60",
+        "noteUnit": 4,
+        "subdivision": 1,
+        "timbre": "woodblock"
+      }
+    ],
+    "noiseGate": "low",
+    "pitchMode": "concert",
+    "primaryInstId": "custom_1730000000001",
+    "temperament": "just",
+    "tolerance": 1.5
+  },
+  "settings": {
+    "bgColor": "#FF9F0A",
+    "bgKind": "color",
+    "customBgDataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    "glassAlpha": 72,
+    "hapticsOn": false,
+    "lang": "ja",
+    "mode": "metronome",
+    "soundsOn": true,
+    "themeMode": "custom"
+  },
+  "v": 1
+}

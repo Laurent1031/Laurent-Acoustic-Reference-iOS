@@ -2547,7 +2547,11 @@
       "未随备份汇入": "Nicht übernommen",
       "注意事项": "Hinweise",
       "备份文件无法识别，请确认选择的是网页版导出的备份": "Backup-Datei nicht erkannt. Bitte ein aus der Webversion exportiertes Backup wählen.",
-      "选择备份文件": "Backup-Datei wählen"
+      "选择备份文件": "Backup-Datei wählen",
+      "自定义背景": "Eigener Hintergrund",
+      "选择图片": "Bild wählen",
+      "清除背景": "Hintergrund entfernen",
+      "自定义背景已保存": "Eigener Hintergrund gespeichert"
     },
     "en": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics unavailable (system vibration fallback)",
@@ -2648,7 +2652,11 @@
       "未随备份汇入": "Not carried over",
       "注意事项": "Notes",
       "备份文件无法识别，请确认选择的是网页版导出的备份": "Unrecognized backup file. Please choose a backup exported from the web version.",
-      "选择备份文件": "Choose Backup File"
+      "选择备份文件": "Choose Backup File",
+      "自定义背景": "Custom Background",
+      "选择图片": "Choose Photo",
+      "清除背景": "Clear Background",
+      "自定义背景已保存": "Custom background saved"
     },
     "fr": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics indisponible (vibration système)",
@@ -2749,7 +2757,11 @@
       "未随备份汇入": "Non repris",
       "注意事项": "Remarques",
       "备份文件无法识别，请确认选择的是网页版导出的备份": "Fichier de sauvegarde non reconnu. Veuillez choisir une sauvegarde exportée depuis la version Web.",
-      "选择备份文件": "Choisir le fichier de sauvegarde"
+      "选择备份文件": "Choisir le fichier de sauvegarde",
+      "自定义背景": "Arrière-plan personnalisé",
+      "选择图片": "Choisir une photo",
+      "清除背景": "Effacer l'arrière-plan",
+      "自定义背景已保存": "Arrière-plan personnalisé enregistré"
     },
     "ja": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics 利用不可（システム振動にフォールバック）",
@@ -2850,7 +2862,11 @@
       "未随备份汇入": "引き継がれない項目",
       "注意事项": "注意事項",
       "备份文件无法识别，请确认选择的是网页版导出的备份": "バックアップファイルを認識できません。Web版からエクスポートしたバックアップを選択してください。",
-      "选择备份文件": "バックアップファイルを選択"
+      "选择备份文件": "バックアップファイルを選択",
+      "自定义背景": "カスタム背景",
+      "选择图片": "画像を選択",
+      "清除背景": "背景をクリア",
+      "自定义背景已保存": "カスタム背景を保存しました"
     },
     "ko": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics 사용 불가(시스템 진동으로 대체)",
@@ -2951,7 +2967,11 @@
       "未随备份汇入": "가져오지 않는 항목",
       "注意事项": "주의 사항",
       "备份文件无法识别，请确认选择的是网页版导出的备份": "백업 파일을 인식할 수 없습니다. 웹 버전에서 내보낸 백업을 선택하세요.",
-      "选择备份文件": "백업 파일 선택"
+      "选择备份文件": "백업 파일 선택",
+      "自定义背景": "사용자 지정 배경",
+      "选择图片": "사진 선택",
+      "清除背景": "배경 지우기",
+      "自定义背景已保存": "사용자 지정 배경이 저장됨"
     },
     "ru": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics недоступен (системная вибрация)",
@@ -3052,7 +3072,11 @@
       "未随备份汇入": "Не переносится",
       "注意事项": "Примечания",
       "备份文件无法识别，请确认选择的是网页版导出的备份": "Файл резервной копии не распознан. Выберите копию, экспортированную из веб-версии.",
-      "选择备份文件": "Выбрать файл копии"
+      "选择备份文件": "Выбрать файл копии",
+      "自定义背景": "Свой фон",
+      "选择图片": "Выбрать фото",
+      "清除背景": "Сбросить фон",
+      "自定义背景已保存": "Свой фон сохранён"
     },
     "zh-TW": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics 不可用（降級為系統震動）",
@@ -3153,7 +3177,11 @@
       "未随备份汇入": "未隨備份匯入",
       "注意事项": "注意事項",
       "备份文件无法识别，请确认选择的是网页版导出的备份": "備份文件無法識別，請確認選擇的是網頁版導出的備份",
-      "选择备份文件": "選擇備份文件"
+      "选择备份文件": "選擇備份文件",
+      "自定义背景": "自訂背景",
+      "选择图片": "選擇圖片",
+      "清除背景": "清除背景",
+      "自定义背景已保存": "自訂背景已儲存"
     }
   }
 }

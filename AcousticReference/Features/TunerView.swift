@@ -61,8 +61,7 @@ struct TunerView: View {
     }
 
     var body: some View {
-        let theme = TunerTheme.resolve(preference: store.themePreference,
-                                       system: colorScheme)
+        let theme = store.resolvedTheme(system: colorScheme)
         let performance = store.performanceMode
 
         GeometryReader { geo in
@@ -293,9 +292,8 @@ struct TunerView: View {
     // MARK: - Row 1：樂器觸發鈕＋記譜/實音分段（母本行 5231）
 
     private func headerRow(theme: TunerTheme) -> some View {
-        // 玻璃成簇分組（階段 6）：樂器鈕＋記譜/實音分段的
-        // 玻璃以 GlassEffectContainer 統一合成。
-        GlassEffectContainer(spacing: 8) {
+        // 【裝機返修】撤 GlassEffectContainer 包裹（合成通道
+        // 疑似造成樂器卡重影，見 TunerTheme.GlassSurface 註解）。
         HStack(spacing: 8) {
             Button {
                 showLibrary = true
@@ -329,78 +327,45 @@ struct TunerView: View {
 
             pitchModeSegment(theme: theme)
         }
-        }
     }
 
     /// 記譜／實音分段（母本 pitchModeSeg，行 5243）：切換寫入
-    /// profile.pitchMode 並保存（母本行 8320）。
+    /// profile.pitchMode 並保存（母本行 8320）。【裝機返修】
+    /// 改液態玻璃鏡片切換（Laurent 指定：所有選項控件皆然）。
     private func pitchModeSegment(theme: TunerTheme) -> some View {
-        HStack(spacing: 2) {
-            pitchModeButton(mode: .written, title: L10n.t("记谱"), theme: theme)
-            pitchModeButton(mode: .concert, title: L10n.t("实音"), theme: theme)
-        }
-        .padding(3)
-        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-    }
-
-    private func pitchModeButton(mode: PitchMode, title: String,
-                                 theme: TunerTheme) -> some View {
-        let active = store.pitchMode == mode
-        return Button {
-            guard store.pitchMode != mode else { return }
-            store.pitchMode = mode
-        } label: {
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .foregroundStyle(active ? .white : theme.textSecondary)
-                .padding(.horizontal, 11)
-                .frame(height: 30)
-                .background(active ? theme.accent : Color.clear, in: Capsule())
-        }
-        .buttonStyle(.plain)
+        GlassSegmentedControl(
+            options: [
+                (option: PitchMode.written, title: L10n.t("记谱"), symbol: nil),
+                (option: PitchMode.concert, title: L10n.t("实音"), symbol: nil),
+            ],
+            selection: Binding(
+                get: { store.pitchMode },
+                set: { store.pitchMode = $0 }),
+            theme: theme, glassOpacity: store.glassOpacity,
+            fontSize: 13, height: 30)
     }
 
     // MARK: - 主顯示模式切換（頻閃主模式段新增）
 
-    /// 頻閃／指針分段（形制同記譜/實音分段的縮小版）：寫入
-    /// store.tunerDisplayMode 即存即生效；純顯示偏好，不觸碰
-    /// 引擎、判準與觸感（與 pitchModeSegment 同，無觸感呼叫）。
+    /// 頻閃／指針分段（縮小版）：寫入 store.tunerDisplayMode
+    /// 即存即生效；純顯示偏好，不觸碰引擎、判準與觸感。
+    /// 【裝機返修】改液態玻璃鏡片切換。
     private func displayModeToggle(theme: TunerTheme) -> some View {
-        HStack(spacing: 2) {
-            displayModeButton(mode: .strobe, title: L10n.t("频闪"), theme: theme)
-            displayModeButton(mode: .needle, title: L10n.t("指针"), theme: theme)
-        }
-        .padding(3)
-        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-    }
-
-    private func displayModeButton(mode: TunerDisplayMode, title: String,
-                                   theme: TunerTheme) -> some View {
-        let active = store.tunerDisplayMode == mode
-        return Button {
-            guard store.tunerDisplayMode != mode else { return }
-            store.tunerDisplayMode = mode
-        } label: {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .foregroundStyle(active ? .white : theme.textSecondary)
-                .padding(.horizontal, 9)
-                .frame(height: 26)
-                .background(active ? theme.accent : Color.clear, in: Capsule())
-        }
-        .buttonStyle(.plain)
+        GlassSegmentedControl(
+            options: [
+                (option: TunerDisplayMode.strobe, title: L10n.t("频闪"), symbol: nil),
+                (option: TunerDisplayMode.needle, title: L10n.t("指针"), symbol: nil),
+            ],
+            selection: Binding(
+                get: { store.tunerDisplayMode },
+                set: { store.tunerDisplayMode = $0 }),
+            theme: theme, glassOpacity: store.glassOpacity,
+            fontSize: 12, height: 26)
     }
 
     // MARK: - Row 2：收藏晶片列＋A4 步進器（母本行 5252）
 
     private func favoritesRow(theme: TunerTheme) -> some View {
-        // 玻璃成簇分組（階段 6）：收藏晶片列＋A4 步進器的
-        // 玻璃以 GlassEffectContainer 統一合成。
-        GlassEffectContainer(spacing: 8) {
         HStack(spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -431,7 +396,6 @@ struct TunerView: View {
             a4Stepper(theme: theme)
         }
         .frame(height: 34)
-        }
     }
 
     /// 收藏晶片：點按選樂器（母本 selectInstrument 連重選也走
@@ -449,11 +413,13 @@ struct TunerView: View {
         let isDragged = favDragId == inst.id
         return Text(L10n.localizedName(inst.name))
             .font(.system(size: 12.5, weight: .semibold))
-            .foregroundStyle(active ? .white : theme.textPrimary)
+            .foregroundStyle(theme.textPrimary)
             .padding(.horizontal, 11)
             .frame(height: 32)
-            .background(active ? theme.accent : Color.clear, in: Capsule())
-            .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+            .background {
+                GlassChipBackground(selected: active, theme: theme,
+                                    glassOpacity: store.glassOpacity)
+            }
             .background(GeometryReader { proxy in
                 Color.clear.preference(
                     key: FavChipFrameKey.self,
@@ -691,11 +657,13 @@ struct TunerView: View {
                     } label: {
                         Text(PitchMath.noteNames[pc])
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(active ? .white : theme.textPrimary)
+                            .foregroundStyle(theme.textPrimary)
                             .padding(.horizontal, 10)
                             .frame(height: 28)
-                            .background(active ? theme.accent : Color.clear, in: Capsule())
-                            .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+                            .background {
+                                GlassChipBackground(selected: active, theme: theme,
+                                                    glassOpacity: store.glassOpacity)
+                            }
                     }
                     .buttonStyle(.plain)
                 }
@@ -848,12 +816,14 @@ struct TunerView: View {
             Text(label)
                 .font(.system(size: 12.5, weight: .semibold))
                 .foregroundStyle(
-                    active ? .white
+                    active ? theme.textPrimary
                         : (isGreen ? theme.ok : theme.textPrimary))
                 .padding(.horizontal, 11)
                 .frame(height: 32)
-                .background(active ? theme.accent : Color.clear, in: Capsule())
-                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+                .background {
+                    GlassChipBackground(selected: active, theme: theme,
+                                        glassOpacity: store.glassOpacity)
+                }
                 .background(GeometryReader { proxy in
                     Color.clear.preference(
                         key: TargetChipFrameKey.self,
@@ -994,10 +964,18 @@ struct TunerView: View {
             } label: {
                 Text(L10n.t("音高跟随"))
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(store.droneFollow ? .white : theme.textSecondary)
+                    .foregroundStyle(store.droneFollow ? theme.textPrimary : theme.textSecondary)
                     .padding(.horizontal, 11)
                     .frame(height: 30)
-                    .background(store.droneFollow ? theme.accent : Color.clear, in: Capsule())
+                    .background {
+                        if store.droneFollow {
+                            Capsule()
+                                .fill(.clear)
+                                .glassEffect(
+                                    .regular.tint(theme.accent.opacity(0.38)).interactive(),
+                                    in: Capsule())
+                        }
+                    }
                     .padding(.horizontal, 8)
                     .frame(height: 44)
                     .contentShape(Rectangle())
