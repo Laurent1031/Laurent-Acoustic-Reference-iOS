@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// 調音主畫面（階段 2）：最小頂欄（品牌＋目前樂器名）＋錶盤＋音名大字
+/// 調音主畫面：樂器名行＋錶盤＋音名大字
 /// ＋四格數據卡（記譜／實音／音分／頻率）＋穩定度徽章＋麥克風主按鈕。
+/// 頂欄（品牌＋分段切換＋診斷入口）自階段 3 起上移至 ContentView
+/// 殼（調音／節拍兩頁共用），本畫面不再自帶頂欄與診斷 sheet。
 /// 版面：單欄直向堆疊、間距固定、提示列與徽章列預留固定高度，
 /// 任何狀態切換不重排、不遮擋、不重疊；尺寸以螢幕物理高錨定
 /// （音名字級 clamp(36, 6.4vh, 64)，與母本 .pitch-note 同式）。
@@ -10,7 +12,6 @@ struct TunerView: View {
     @ObservedObject var engine: AudioEngine
     @StateObject private var viewModel: TunerViewModel
     @Environment(\.colorScheme) private var colorScheme
-    @State private var showDebug = false
 
     init(engine: AudioEngine) {
         self.engine = engine
@@ -34,7 +35,7 @@ struct TunerView: View {
                 theme.background.ignoresSafeArea()
 
                 VStack(spacing: 10) {
-                    topBar(theme: theme)
+                    instrumentRow(theme: theme)
 
                     GaugeView(
                         cents: viewModel.needleCents,
@@ -67,54 +68,21 @@ struct TunerView: View {
             }
         }
         .onDisappear { viewModel.viewDidDisappear() }
-        .sheet(isPresented: $showDebug) {
-            TunerDebugView(engine: engine)
-        }
     }
 
-    // MARK: - 頂欄
+    // MARK: - 樂器名行（頂欄已上移 ContentView 殼；此處只保留
+    // 目前樂器名，右對齊小字——版面高度因此比階段 2 略增，
+    // 其餘錶盤區由 Spacer 吸收，不遮擋、不重排）
 
-    private func topBar(theme: TunerTheme) -> some View {
-        HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(theme.accent)
-                .frame(width: 34, height: 34)
-                .overlay {
-                    Text("L")
-                        .font(.system(size: 19, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                }
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("LAURENT")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .tracking(2.5)
-                    .foregroundStyle(theme.textPrimary)
-                Text("STUDIO EDITION")
-                    .font(.system(size: 8.5, weight: .medium, design: .rounded))
-                    .tracking(3)
-                    .foregroundStyle(theme.textMuted)
-            }
-
+    private func instrumentRow(theme: TunerTheme) -> some View {
+        HStack {
             Spacer()
-
             Text(viewModel.instrumentDisplayName)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(theme.textSecondary)
                 .lineLimit(1)
-
-            Button {
-                showDebug = true
-            } label: {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 32, height: 32)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(theme.textSecondary)
-            .accessibilityLabel("診斷")
         }
+        .frame(height: 18)
     }
 
     // MARK: - 音名行

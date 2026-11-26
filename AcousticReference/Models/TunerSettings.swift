@@ -75,6 +75,9 @@ struct TunerSettings: Equatable, Sendable {
     var temperament: Temperament = .equal
     /// 純律主音 pitch class（母本 justTonicPc，預設 0）。
     var justTonicPc: Int = 0
+    /// 震動回饋總開關（母本 state.hapticsOn，預設 true）：
+    /// 門控 HapticsEngine 全部輸出（規格書 §3.6）。
+    var hapticsOn: Bool = true
 
     /// A4 步進（母本行 8638／8645）：±0.5 Hz，先 round 到 0.1，再鉗 [430, 450]。
     mutating func stepA4(by delta: Double) {

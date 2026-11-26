@@ -242,10 +242,21 @@ final class TunerViewModel: ObservableObject {
             centsRoll.update(target: reading.cents, now: now)
 
             // 準音鎖定（母本行 9650）：連續入容差 ≥ 650 ms。
+            // 觸感（規格書 §3.6，階段 3 補階段 2 欠筆）：入容差
+            // 上升沿輕震（母本 haptic(14)）、鎖定上升沿震動圖案
+            // [8,35,16]（母本 lock 的 vibrate 呼叫點）；總開關在
+            // HapticsEngine 內部門控（settings.hapticsOn 同步）。
+            let wasInTune = isInTune
             isInTune = reading.isInTune
             if reading.isInTune {
+                if !wasInTune {
+                    HapticsEngine.shared.tap(milliseconds: 14)
+                }
                 if let since = inTuneSince {
-                    if now - since >= 0.650 { noteLocked = true }
+                    if now - since >= 0.650, !noteLocked {
+                        noteLocked = true
+                        HapticsEngine.shared.pattern([8, 35, 16])
+                    }
                 } else {
                     inTuneSince = now
                 }

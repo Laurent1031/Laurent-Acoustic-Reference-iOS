@@ -242,6 +242,9 @@ final class AudioEngine: ObservableObject {
 
     private let core: EngineCore
     private var engine: AVAudioEngine?
+    /// 是否已向 AudioSessionCoordinator 登記（與節拍器共用 session
+    /// 時，setActive(false) 由協調器裁決，避免誤殺對方播放）。
+    private var sessionAcquired = false
     /// 觀察者代幣由專責保管袋持有，本類釋放時代幣隨袋釋放並自動
     /// 移除觀察者（見 SessionObserverBag）；deinit 不再碰隔離狀態。
     private let observerBag = SessionObserverBag()
@@ -264,6 +267,10 @@ final class AudioEngine: ObservableObject {
         do {
             try startEngine()
             isRunning = true
+            if !sessionAcquired {
+                AudioSessionCoordinator.shared.acquire(.tuner)
+                sessionAcquired = true
+            }
         } catch {
             lastError = error.localizedDescription
             isRunning = false
@@ -274,8 +281,15 @@ final class AudioEngine: ObservableObject {
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
-        try? AVAudioSession.sharedInstance().setActive(
-            false, options: [.notifyOthersOnDeactivation])
+        // 僅在協調器確認無其他使用者（節拍器運行中）時才停用
+        // session；未登記者（未成功 start 過）不碰 session。
+        if sessionAcquired {
+            sessionAcquired = false
+            if AudioSessionCoordinator.shared.release(.tuner) {
+                try? AVAudioSession.sharedInstance().setActive(
+                    false, options: [.notifyOthersOnDeactivation])
+            }
+        }
         isRunning = false
     }
 

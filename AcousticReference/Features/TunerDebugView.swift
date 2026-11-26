@@ -6,6 +6,9 @@ import UIKit
 /// 同一個 AudioEngine 實例（外部注入），本視圖不再自建引擎。
 struct TunerDebugView: View {
     @ObservedObject var engine: AudioEngine
+    /// 節拍器診斷（階段 3 起由 ContentView 殼注入；缺省時不顯示該段）。
+    var metronomeEngine: MetronomeEngine?
+    var metronomeViewModel: MetronomeViewModel?
     @State private var logCopied = false
 
     var body: some View {
@@ -161,6 +164,12 @@ struct TunerDebugView: View {
                 .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(.white.opacity(0.45))
 
+            if let metronomeEngine, let metronomeViewModel {
+                MetronomeDebugSection(tunerEngine: engine,
+                                      metronomeEngine: metronomeEngine,
+                                      viewModel: metronomeViewModel)
+            }
+
             HStack(spacing: 12) {
                 Button(logCopied ? "已複製" : "複製診斷記錄") {
                     UIPasteboard.general.string = engine.exportDetectionLog()
@@ -174,6 +183,69 @@ struct TunerDebugView: View {
             .font(.system(size: 13, design: .rounded))
             .foregroundStyle(.white.opacity(0.7))
         }
+    }
+}
+
+/// 節拍器診斷段（階段 3）：調度漂移統計（排程樣本時間計算）、
+/// 震動總開關（母本 state.hapticsOn；正式設定頁屬階段 5，此處為
+/// 過渡入口）、藍牙補償（母本設定項，0–300 ms 步進 10）。
+private struct MetronomeDebugSection: View {
+    @ObservedObject var tunerEngine: AudioEngine
+    @ObservedObject var metronomeEngine: MetronomeEngine
+    @ObservedObject var viewModel: MetronomeViewModel
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Divider().overlay(.white.opacity(0.25))
+
+            Text(metronomeDiagnosticsText)
+                .font(.system(size: 12, design: .rounded))
+                .foregroundStyle(.white.opacity(0.45))
+                .monospacedDigit()
+                .multilineTextAlignment(.center)
+
+            Toggle("震動回饋", isOn: $tunerEngine.settings.hapticsOn)
+                .font(.system(size: 14, design: .rounded))
+                .foregroundStyle(.white.opacity(0.85))
+                .tint(Color(red: 0.039, green: 0.518, blue: 1.0))
+
+            HStack(spacing: 10) {
+                Text("藍牙補償")
+                    .font(.system(size: 14, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
+                Slider(value: bluetoothBinding, in: 0...300, step: 10)
+                Text("\(viewModel.settings.bluetoothCompMs) ms")
+                    .font(.system(size: 13, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .frame(minWidth: 58)
+            }
+
+            Text(HapticsEngine.shared.supportsHaptics
+                 ? "Core Haptics 可用"
+                 : "Core Haptics 不可用（降級為系統震動）")
+                .font(.system(size: 12, design: .rounded))
+                .foregroundStyle(.white.opacity(0.45))
+        }
+    }
+
+    private var bluetoothBinding: Binding<Double> {
+        Binding(
+            get: { Double(viewModel.settings.bluetoothCompMs) },
+            set: { viewModel.settings.bluetoothCompMs = Int($0.rounded()) }
+        )
+    }
+
+    private var metronomeDiagnosticsText: String {
+        let d = metronomeEngine.diagnostics
+        let state = metronomeEngine.isPlaying ? "運行中" : "已停止"
+        guard d.beatsScheduled > 0 else {
+            return "節拍器 \(state) · 尚無排程拍"
+        }
+        return String(
+            format: "節拍器 %@ · 已排程主拍 %d · 最近拍距 %.2f ms\n平均|偏差| %.3f ms · 最大 %.3f ms · 最小調度餘量 %.1f ms",
+            state, d.beatsScheduled, d.lastIntervalMs,
+            d.meanAbsDeviationMs, d.maxAbsDeviationMs, d.minHeadroomMs)
     }
 }
 
