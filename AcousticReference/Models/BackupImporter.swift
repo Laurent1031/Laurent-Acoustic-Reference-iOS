@@ -462,7 +462,7 @@ extension AppStore {
 /// 背景圖大於 2 MB 時比照母本省略並標 bgOmitted。
 enum BackupExporter {
 
-    static func makeBackupData(store: AppStore) -> Data? {
+    @MainActor static func makeBackupData(store: AppStore) -> Data? {
         let tuner = store.tunerSettings
 
         var profile: [String: Any] = [:]
@@ -557,7 +557,7 @@ enum BackupExporter {
     }
 
     /// 寫入暫存檔供 ShareLink 分享（檔名對齊母本導出口徑）。
-    static func writeTempFile(store: AppStore) -> URL? {
+    @MainActor static func writeTempFile(store: AppStore) -> URL? {
         guard let data = makeBackupData(store: store) else { return nil }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("LAURENT-Acoustic-Reference-backup.json")

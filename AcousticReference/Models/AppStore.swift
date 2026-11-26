@@ -351,7 +351,9 @@ final class AppStore: ObservableObject {
         customBgData = nil
     }
 
-    static func parseHexColor(_ string: String) -> UInt32? {
+    /// 純函數（字串→色值），供 nonisolated 的匯入器呼叫，
+    /// 故標 nonisolated（CI run #27 實證：否則隔離錯誤）。
+    nonisolated static func parseHexColor(_ string: String) -> UInt32? {
         var s = string.trimmingCharacters(in: .whitespaces)
         if s.hasPrefix("#") { s.removeFirst() }
         guard s.count == 6, let value = UInt32(s, radix: 16) else { return nil }
