@@ -216,39 +216,7 @@ extension MetronomeSettings: Codable {
     }
 }
 
-/// 節拍器設定的佔位持久化（UserDefaults＋JSON）。
-/// 階段 4 數據層落地後由正式儲存取代；此處只保證「重開 App 不丟
-/// 設定與自訂預置」的行為等價（母本存 localStorage profile）。
-final class MetronomeStore {
-    private let defaults: UserDefaults
-    private let settingsKey = "laurent.metro.settings.v1"
-    private let presetsKey = "laurent.metro.userPresets.v1"
-
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-    }
-
-    func loadSettings() -> MetronomeSettings {
-        guard let data = defaults.data(forKey: settingsKey),
-              let decoded = try? JSONDecoder().decode(MetronomeSettings.self, from: data)
-        else { return MetronomeSettings() }
-        return decoded
-    }
-
-    func saveSettings(_ settings: MetronomeSettings) {
-        guard let data = try? JSONEncoder().encode(settings) else { return }
-        defaults.set(data, forKey: settingsKey)
-    }
-
-    func loadUserPresets() -> [MetronomePreset] {
-        guard let data = defaults.data(forKey: presetsKey),
-              let decoded = try? JSONDecoder().decode([MetronomePreset].self, from: data)
-        else { return [] }
-        return decoded
-    }
-
-    func saveUserPresets(_ presets: [MetronomePreset]) {
-        guard let data = try? JSONEncoder().encode(presets) else { return }
-        defaults.set(data, forKey: presetsKey)
-    }
-}
+/// 節拍器設定的佔位持久化（MetronomeStore，UserDefaults）已於
+/// 階段 4 由 Models/AppStore.swift 的單一數據層取代；舊鍵
+/// laurent.metro.settings.v1／laurent.metro.userPresets.v1 在
+/// AppStore 首次啟動時遷移並刪除（見 AppStore.migratedSnapshot）。

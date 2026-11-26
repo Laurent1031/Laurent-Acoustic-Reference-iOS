@@ -10,6 +10,9 @@ final class AudioSessionCoordinator: @unchecked Sendable {
     enum User: Hashable, Sendable {
         case tuner
         case metronome
+        /// Drone 持續音（階段 4）：純播放，與調音錄音／節拍器同
+        /// session 共存，規則一致。
+        case drone
     }
 
     private let lock = NSLock()

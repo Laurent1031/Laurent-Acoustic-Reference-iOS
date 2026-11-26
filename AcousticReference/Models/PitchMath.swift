@@ -39,6 +39,29 @@ enum PitchMath {
         return noteNames[pc] + String(octave)
     }
 
+    /// 母本 noteStringToMidi（行 8867）：音名字串 → MIDI；
+    /// 格式 ^([A-G])([♯♭#b]?)(-?\d+)$，不合格式回 69（母本原式）。
+    static func midi(noteString: String) -> Int {
+        let chars = Array(noteString)
+        guard chars.count >= 2, let base = baseSemitones[chars[0]] else { return 69 }
+        var semitone = base
+        var idx = 1
+        if idx < chars.count {
+            switch chars[idx] {
+            case "♯", "#": semitone += 1; idx += 1
+            case "♭", "b": semitone -= 1; idx += 1
+            default: break
+            }
+        }
+        let octaveText = String(chars[idx...])
+        guard !octaveText.isEmpty, let octave = Int(octaveText) else { return 69 }
+        return (octave + 1) * 12 + semitone
+    }
+
+    private static let baseSemitones: [Character: Int] = [
+        "C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11,
+    ]
+
     /// 母本 temperamentOffsetCents（行 8882）：僅純律（just）時非零；
     /// pc 以主音（justTonicPc）為原點。
     static func temperamentOffsetCents(targetMidi: Int, temperament: Temperament, justTonicPc: Int) -> Double {
@@ -57,7 +80,7 @@ enum PitchMath {
 }
 
 /// 律制（母本 profile.temperament，預設 "equal"，行 6225）。
-enum Temperament: String, CaseIterable, Sendable {
+enum Temperament: String, CaseIterable, Codable, Sendable {
     case equal
     case just
 }

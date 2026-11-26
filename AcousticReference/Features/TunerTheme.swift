@@ -21,6 +21,9 @@ struct TunerTheme {
     let textMuted: Color
     /// 偏差弧偏高色（母本 #FF9F0A 寫死）。
     let sharp: Color
+    /// 警示色（母本 --warn：深色 #FFD60A／淺色 #FF9500，行 157／196）：
+    /// 收藏星標蹦出特效的火花色（母本 .burst-dot）。
+    let warn: Color
 
     static func resolve(_ scheme: ColorScheme) -> TunerTheme {
         if scheme == .dark {
@@ -33,7 +36,8 @@ struct TunerTheme {
                 textPrimary: Color(hex: 0xF5F5F7),
                 textSecondary: Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.6),
                 textMuted: Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.34),
-                sharp: Color(hex: 0xFF9F0A)
+                sharp: Color(hex: 0xFF9F0A),
+                warn: Color(hex: 0xFFD60A)
             )
         }
         return TunerTheme(
@@ -45,7 +49,8 @@ struct TunerTheme {
             textPrimary: Color(hex: 0x1D1D1F),
             textSecondary: Color(hex: 0x334155),
             textMuted: Color(hex: 0x526071),
-            sharp: Color(hex: 0xFF9F0A)
+            sharp: Color(hex: 0xFF9F0A),
+            warn: Color(hex: 0xFF9500)
         )
     }
 

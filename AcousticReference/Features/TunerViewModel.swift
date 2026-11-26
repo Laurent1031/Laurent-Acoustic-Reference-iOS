@@ -104,6 +104,14 @@ private final class DisplayLinkProxy: NSObject {
     }
 }
 
+/// 目標音晶片一筆（母本 renderTargetStrip 的 items，行 8515）。
+struct TargetChipItem: Identifiable, Equatable {
+    var label: String
+    var note: String
+    var isGreen: Bool
+    var id: String { label + "|" + note }
+}
+
 /// 調音主畫面的顯示狀態機：把 AudioEngine 的 PitchReading 流轉成
 /// 錶盤／讀數的發佈狀態。逐項對照母本 pitchLoop 的 UI 行為：
 /// - 針值直接取 PitchSmoother 的 spring 輸出與兩層尾跡（每幀 reading 攜帶）；
@@ -151,19 +159,30 @@ final class TunerViewModel: ObservableObject {
         return (displayCents > 0 ? "+" + body : body) + " ¢"
     }
 
-    /// 目前樂器顯示名。階段 4 樂器庫落地後改由目錄數據提供，
-    /// 現階段只有內建預設樂器（母本 INSTRUMENTS[0]）。
-    var instrumentDisplayName: String {
-        switch engine.range.id {
-        case "alto_sax": return "中音薩克斯 · Alto Sax"
-        default: return engine.range.id
-        }
+    // MARK: - 鎖定目標音（母本 state.lockedTargetNote，僅執行期）
+
+    /// 鎖定目標音的音名字串；nil = 自動識別。變更同步進引擎核心
+    /// （音分判準）與 Drone 目標音（母本目標晶片處理，行 8562）。
+    @Published private(set) var lockedTargetNote: String?
+
+    var lockedTargetMidi: Int? {
+        lockedTargetNote.map { PitchMath.midi(noteString: $0) }
     }
+
+    /// 滑奏中（目標列拖動）：點按的「再點取消鎖定」不生效、Drone
+    /// 改頻走滑音常數（母本 droneGlide，行 8576）。
+    private(set) var isGliding = false
 
     // MARK: - 內部狀態
 
     let engine: AudioEngine
+    let store: AppStore
+    let drone: DroneEngine
     private var cancellables: Set<AnyCancellable> = []
+
+    /// #12 音高跟隨的候選音與起始時刻（母本 droneFollowTimer）。
+    private var followCandidate: Int?
+    private var followSince: TimeInterval?
 
     private var lastReading: PitchReading?
     private var hadValidPitch = false
@@ -182,9 +201,49 @@ final class TunerViewModel: ObservableObject {
         "♯4 Fi", "5 Sol", "♭6 Le", "6 La", "♭7 Te", "7 Ti",
     ]
 
-    init(engine: AudioEngine) {
+    init(engine: AudioEngine, store: AppStore, drone: DroneEngine) {
         self.engine = engine
+        self.store = store
+        self.drone = drone
         linkProxy.owner = self
+
+        // 選樂器（母本 selectInstrument，行 8485）：清鎖定目標、
+        // 清音高軌跡統計；Drone 播放中因鎖定清除改頻回 A4
+        // （母本行 8504 的 updateDroneFrequency）。訂閱 selectionPulse
+        // 而非 selectedInstrumentId：同名重選母本同樣清鎖定。
+        store.$selectionPulse
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.lockedTargetNote = nil
+                    self.engine.setLockedTarget(midi: nil)
+                    self.stability.reset()
+                    self.followCandidate = nil
+                    self.followSince = nil
+                    self.refreshBadgeText()
+                    if self.drone.isPlaying {
+                        self.drone.retarget(midi: 69, glide: false)
+                    }
+                }
+            }
+            .store(in: &cancellables)
+
+        // 記譜/實音切換：以最後一幀有效讀數即時重算主顯示音名
+        // （母本 pitchLoop 每幀重繪，效果相同）。
+        store.$pitchMode
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self,
+                          let reading = self.lastReading,
+                          reading.hasPitch,
+                          let targetMidi = reading.targetMidi
+                    else { return }
+                    self.updateNoteDisplay(targetMidi: targetMidi)
+                }
+            }
+            .store(in: &cancellables)
 
         engine.$latestReading
             .receive(on: DispatchQueue.main)
@@ -225,21 +284,35 @@ final class TunerViewModel: ObservableObject {
             hadValidPitch = true
             lastStableCents = reading.cents
 
-            // 音名（實音為主顯示；母本 pitchMode 預設實音，記譜走數據卡）。
-            let pc = ((targetMidi % 12) + 12) % 12
-            noteText = PitchMath.noteNames[pc]
-            octaveText = String(Int(floor(Double(targetMidi) / 12.0)) - 1)
-            hasNote = true
-            concertText = PitchMath.noteName(midi: targetMidi)
-
-            // 記譜音 = 實音 − trans（母本行 9606）；唱名取記譜 pitch class。
-            let writtenMidi = targetMidi - engine.range.transposition
-            writtenText = PitchMath.noteName(midi: writtenMidi)
-            let writtenPc = ((writtenMidi % 12) + 12) % 12
-            solfegeText = "本調 " + Self.solfegeMap[writtenPc]
+            updateNoteDisplay(targetMidi: targetMidi)
 
             frequencyText = String(format: "%.1f Hz", reading.smoothedFrequency)
             centsRoll.update(target: reading.cents, now: now)
+
+            // #12 音高跟隨（母本行 9614）：droneFollow 開時，偵測音
+            // （平滑頻率的最近音，與鎖定狀態無關）恆定 ≥ 1000 ms
+            // 且 ≠ 目前目標（無鎖定以 69 計）→ 鎖定改為該音、
+            // Drone 播放中即改頻、計時重置。
+            let detectedMidi = Int(PitchMath.exactMidi(
+                frequency: reading.smoothedFrequency,
+                a4: engine.settings.a4).rounded())
+            let currentTarget = lockedTargetMidi ?? 69
+            if store.droneFollow, detectedMidi != currentTarget {
+                if followCandidate == detectedMidi, let since = followSince {
+                    if now - since >= 1.0 {
+                        applyLock(note: PitchMath.noteName(midi: detectedMidi),
+                                  midi: detectedMidi)
+                        followCandidate = nil
+                        followSince = nil
+                    }
+                } else {
+                    followCandidate = detectedMidi
+                    followSince = now
+                }
+            } else {
+                followCandidate = nil
+                followSince = nil
+            }
 
             // 準音鎖定（母本行 9650）：連續入容差 ≥ 650 ms。
             // 觸感（規格書 §3.6，階段 3 補階段 2 欠筆）：入容差
@@ -284,6 +357,150 @@ final class TunerViewModel: ObservableObject {
         if needsMotion {
             ensureDisplayLink()
         }
+    }
+
+    // MARK: - 音名顯示（母本 pitchLoop 行 9598–9612）
+
+    /// 主顯示音名依 pitchMode：written → 記譜音、concert → 實音
+    /// （母本 displayMidi 選擇）；數據卡恆雙列記譜／實音；唱名恆
+    /// 取記譜 pitch class（母本行 9610）。
+    private func updateNoteDisplay(targetMidi: Int) {
+        let writtenMidi = targetMidi - engine.range.transposition
+        writtenText = PitchMath.noteName(midi: writtenMidi)
+        concertText = PitchMath.noteName(midi: targetMidi)
+        let writtenPc = ((writtenMidi % 12) + 12) % 12
+        solfegeText = "本調 " + Self.solfegeMap[writtenPc]
+
+        let displayed = store.pitchMode == .written ? writtenMidi : targetMidi
+        let pc = ((displayed % 12) + 12) % 12
+        noteText = PitchMath.noteNames[pc]
+        octaveText = String(Int(floor(Double(displayed) / 12.0)) - 1)
+        hasNote = true
+    }
+
+    // MARK: - 鎖定目標音（母本 renderTargetStrip 晶片處理，行 8557）
+
+    private func applyLock(note: String, midi: Int) {
+        lockedTargetNote = note
+        engine.setLockedTarget(midi: midi)
+        if drone.isPlaying {
+            drone.retarget(midi: midi, glide: isGliding)
+        }
+    }
+
+    private func clearLock() {
+        lockedTargetNote = nil
+        engine.setLockedTarget(midi: nil)
+        if drone.isPlaying {
+            drone.retarget(midi: 69, glide: isGliding)
+        }
+    }
+
+    /// 晶片點按：自動識別晶片（note = nil）清除鎖定；同一音再點
+    /// 取消鎖定（滑奏中除外）；其餘設為鎖定。母本 haptic(5)。
+    func tapTargetChip(note: String?) {
+        HapticsEngine.shared.tap(milliseconds: 5)
+        guard let note else {
+            clearLock()
+            return
+        }
+        if lockedTargetNote == note, !isGliding {
+            clearLock()
+        } else {
+            applyLock(note: note, midi: PitchMath.midi(noteString: note))
+        }
+    }
+
+    /// 目標列拖動滑奏：經過的晶片直接接管鎖定（不切換取消）。
+    func glideToTarget(note: String) {
+        if lockedTargetNote != note {
+            applyLock(note: note, midi: PitchMath.midi(noteString: note))
+        }
+    }
+
+    func setGliding(_ gliding: Bool) {
+        isGliding = gliding
+        if !gliding, drone.isPlaying {
+            // 滑奏結束：改頻常數回一般值（母本 droneGlide=false 後
+            // 下一次 updateDroneFrequency 回 0.045；此處以目前目標
+            // 重發一次使常數即時復位，頻率不變）。
+            drone.retarget(midi: lockedTargetMidi ?? 69, glide: false)
+        }
+    }
+
+    /// 目標晶片清單（母本 renderTargetStrip，行 8515）：古箏 →
+    /// 目前調號 21 弦（弦號 21→1、綠弦 3/8/13/18）；有 strings →
+    /// 弦晶片；其餘 → refTargets，無則母本預設五晶片。
+    var targetChipItems: [TargetChipItem] {
+        let inst = store.selectedInstrument
+        if inst.isGuzheng {
+            let notes = InstrumentCatalog.guzhengTuning(key: store.guzhengKey)
+            return notes.enumerated().map { idx, note in
+                let stringNumber = 21 - idx
+                return TargetChipItem(
+                    label: "\(stringNumber)弦 \(note)", note: note,
+                    isGreen: [3, 8, 13, 18].contains(stringNumber))
+            }
+        }
+        if let strings = inst.stringNotes {
+            return strings.enumerated().map { idx, note in
+                TargetChipItem(label: "\(idx + 1)弦·\(note)", note: note, isGreen: false)
+            }
+        }
+        if let refs = inst.refTargets {
+            return refs.map {
+                TargetChipItem(label: $0.label, note: $0.note, isGreen: false)
+            }
+        }
+        return [
+            TargetChipItem(label: "標準 A4", note: "A4", isGreen: false),
+            TargetChipItem(label: "管樂 B♭4", note: "B♭4", isGreen: false),
+            TargetChipItem(label: "中央 C4", note: "C4", isGreen: false),
+            TargetChipItem(label: "F4", note: "F4", isGreen: false),
+            TargetChipItem(label: "G4", note: "G4", isGreen: false),
+        ]
+    }
+
+    // MARK: - Drone 控制（母本 droneCapsule，行 10217）
+
+    /// Drone 目標音：鎖定音 ?? A4(69)（母本 droneTargetFreq）。
+    var droneTargetMidi: Int { lockedTargetMidi ?? 69 }
+
+    /// 主鈕文案（母本 droneBtnText）：停止 (X)／基準音 X。
+    var droneButtonText: String {
+        let note = lockedTargetNote ?? "A4"
+        return drone.isPlaying ? "停止 (\(note))" : "基準音 \(note)"
+    }
+
+    /// 開關 Drone（母本 toggleDrone）：開 haptic(12)、關 haptic(8)。
+    func toggleDrone() {
+        if drone.isPlaying {
+            drone.stop()
+            HapticsEngine.shared.tap(milliseconds: 8)
+        } else {
+            drone.start(targetMidi: droneTargetMidi, timbre: store.droneTimbre)
+            HapticsEngine.shared.tap(milliseconds: 12)
+        }
+    }
+
+    /// 音高跟隨開關（母本 followBtn）：切換 haptic(7)；關閉時清
+    /// 跟隨候選（母本 droneFollowTimer 隨之失效）。
+    func toggleDroneFollow() {
+        store.droneFollow.toggle()
+        if !store.droneFollow {
+            followCandidate = nil
+            followSince = nil
+        }
+        HapticsEngine.shared.tap(milliseconds: 7)
+    }
+
+    // MARK: - 純律主音（母本 #24 justTonicPill／Strip，行 7031）
+
+    /// 純律主音快選：寫入設定（ContentView 同步進引擎與 Drone
+    /// 改頻），母本 haptic(8)。
+    func setJustTonic(_ pc: Int) {
+        store.tunerSettings.justTonicPc = pc
+        HapticsEngine.shared.tap(milliseconds: 8)
     }
 
     // MARK: - 顯示時鐘

@@ -28,6 +28,9 @@ final class EngineCore: @unchecked Sendable {
     private let lock = NSLock()
     private var settings: TunerSettings
     private var range: InstrumentRange
+    /// 鎖定目標音（母本 state.lockedTargetNote 的 MIDI 形）：非 nil
+    /// 時音分判準對此音而非最近音（PitchSmoother 的 lockedTargetMidi）。
+    private var lockedTargetMidi: Int?
     private var sampleRate: Double = 48000
 
     private var ring = [Float](repeating: 0, count: EngineCore.ringCapacity)
@@ -60,6 +63,12 @@ final class EngineCore: @unchecked Sendable {
         lock.lock()
         self.settings = settings
         self.range = range
+        lock.unlock()
+    }
+
+    func setLockedTarget(midi: Int?) {
+        lock.lock()
+        lockedTargetMidi = midi
         lock.unlock()
     }
 
@@ -169,6 +178,7 @@ final class EngineCore: @unchecked Sendable {
         lock.lock()
         let settingsSnapshot = settings
         let rangeSnapshot = range
+        let lockedSnapshot = lockedTargetMidi
         let sr = sampleRate
         lock.unlock()
 
@@ -182,7 +192,8 @@ final class EngineCore: @unchecked Sendable {
             rmsGate: settingsSnapshot.noiseGate.rmsThreshold
         )
         let now = ProcessInfo.processInfo.systemUptime
-        let reading = smoother.process(detection: detection, now: now)
+        let reading = smoother.process(
+            detection: detection, now: now, lockedTargetMidi: lockedSnapshot)
         log.append(reading: reading, now: now)
         onReading?(reading)
 
@@ -291,6 +302,12 @@ final class AudioEngine: ObservableObject {
             }
         }
         isRunning = false
+    }
+
+    /// 鎖定目標音接線（階段 4）：TunerViewModel 的鎖定狀態變更時
+    /// 呼叫；nil = 自動識別（最近音）。
+    func setLockedTarget(midi: Int?) {
+        core.setLockedTarget(midi: midi)
     }
 
     func exportDetectionLog() -> String {

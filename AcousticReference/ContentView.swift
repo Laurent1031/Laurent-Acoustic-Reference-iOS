@@ -1,39 +1,55 @@
 import SwiftUI
 import UIKit
 
-/// App 模式（母本 state.mode 的 tuner/metro 子集；母本的 dual
-/// 同屏模式在豎屏手機上不適用——母本自身在豎屏亦強制單頁，
-/// 見階段 3 報告的有意差異）。
-enum AppMode: String {
-    case tuner
-    case metronome
-}
-
-/// App 殼（階段 3）：頂欄（品牌＋調音/節拍分段切換＋診斷入口，
+/// App 殼（階段 4）：頂欄（品牌＋調音/節拍分段切換＋診斷入口，
 /// 對照母本頂欄）＋兩頁保活切換＋節拍器背景膠囊＋螢幕常亮管理。
 /// 兩頁以 ZStack 疊放、僅切透明度與命中測試：任一頁的執行期
 /// 狀態（調音分析、節拍調度、動畫時鐘）在切頁後不中斷——
 /// 對照母本「兩者可同時運行」（節拍器運行時切回調音頁，
 /// 節拍器照常發聲、膠囊常駐）。
+///
+/// 數據流（階段 4 數據層）：AppStore 為唯一真源——啟動時以
+/// store 的已存值初始化三個引擎；其後 store 變更經下方 onChange
+/// 單向同步進引擎（設定／音域／Drone 上下文與音色），節拍器
+/// ViewModel 的持久化出口反向注入 store。mode 自階段 4 起亦
+/// 歸 store 落盤（取代階段 3 的 UserDefaults 佔位鍵，已遷移）。
 struct ContentView: View {
-    /// 全 App 共用同一個調音引擎實例（主畫面與診斷頁共用）。
-    @StateObject private var engine = AudioEngine()
+    @StateObject private var store: AppStore
+    @StateObject private var engine: AudioEngine
     @StateObject private var metronomeEngine: MetronomeEngine
     @StateObject private var metronomeViewModel: MetronomeViewModel
-    @State private var mode: AppMode
+    @StateObject private var droneEngine: DroneEngine
     @State private var showDebug = false
     @Environment(\.colorScheme) private var colorScheme
 
-    private static let modeKey = "laurent.app.mode"
-
     init() {
-        let metroEngine = MetronomeEngine(settings: MetronomeSettings())
+        let store = AppStore()
+        _store = StateObject(wrappedValue: store)
+
+        let tunerEngine = AudioEngine()
+        tunerEngine.settings = store.tunerSettings
+        tunerEngine.range = store.effectiveRange
+        _engine = StateObject(wrappedValue: tunerEngine)
+
+        let metroEngine = MetronomeEngine(settings: store.metronomeSettings)
         _metronomeEngine = StateObject(wrappedValue: metroEngine)
-        _metronomeViewModel = StateObject(
-            wrappedValue: MetronomeViewModel(engine: metroEngine))
-        let saved = UserDefaults.standard.string(forKey: Self.modeKey)
-        _mode = State(initialValue: AppMode(rawValue: saved ?? "") ?? .tuner)
+        let metroViewModel = MetronomeViewModel(
+            engine: metroEngine,
+            persisted: (settings: store.metronomeSettings,
+                        userPresets: store.metronomeUserPresets))
+        metroViewModel.persistSettings = { store.metronomeSettings = $0 }
+        metroViewModel.persistUserPresets = { store.metronomeUserPresets = $0 }
+        _metronomeViewModel = StateObject(wrappedValue: metroViewModel)
+
+        let drone = DroneEngine()
+        drone.updateContext(
+            a4: store.tunerSettings.a4,
+            temperament: store.tunerSettings.temperament,
+            justTonicPc: store.tunerSettings.justTonicPc)
+        _droneEngine = StateObject(wrappedValue: drone)
     }
+
+    private var mode: AppMode { store.appMode }
 
     var body: some View {
         let theme = TunerTheme.resolve(colorScheme)
@@ -41,7 +57,7 @@ struct ContentView: View {
             topBar(theme: theme)
 
             ZStack {
-                TunerView(engine: engine)
+                TunerView(engine: engine, store: store, drone: droneEngine)
                     .opacity(mode == .tuner ? 1 : 0)
                     .allowsHitTesting(mode == .tuner)
                     .accessibilityHidden(mode != .tuner)
@@ -70,14 +86,26 @@ struct ContentView: View {
             HapticsEngine.shared.isEnabled = engine.settings.hapticsOn
             updateIdleTimer()
         }
-        .onChange(of: engine.settings.hapticsOn) { _, on in
-            HapticsEngine.shared.isEnabled = on
+        // store → 引擎單向同步（store 為唯一真源）。
+        .onChange(of: store.tunerSettings) { _, newSettings in
+            engine.settings = newSettings
+            HapticsEngine.shared.isEnabled = newSettings.hapticsOn
+            droneEngine.updateContext(
+                a4: newSettings.a4,
+                temperament: newSettings.temperament,
+                justTonicPc: newSettings.justTonicPc)
+        }
+        .onChange(of: store.selectedInstrumentId) { _, _ in
+            engine.range = store.effectiveRange
+        }
+        .onChange(of: store.guzhengKey) { _, _ in
+            engine.range = store.effectiveRange
+        }
+        .onChange(of: store.droneTimbre) { _, newTimbre in
+            droneEngine.setTimbre(newTimbre)
         }
         .onChange(of: engine.isRunning) { _, _ in updateIdleTimer() }
         .onChange(of: metronomeEngine.isPlaying) { _, _ in updateIdleTimer() }
-        .onChange(of: mode) { _, newMode in
-            UserDefaults.standard.set(newMode.rawValue, forKey: Self.modeKey)
-        }
     }
 
     // MARK: - 頂欄（母本 topBar：品牌＋分段＋診斷）
@@ -143,7 +171,7 @@ struct ContentView: View {
         let active = mode == target
         return Button {
             guard mode != target else { return }
-            mode = target
+            store.appMode = target
             HapticsEngine.shared.tap(milliseconds: 6)
         } label: {
             HStack(spacing: 5) {

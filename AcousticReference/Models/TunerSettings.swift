@@ -2,7 +2,7 @@ import Foundation
 
 /// 噪聲門三檔（母本 gateMap，行 9530）：以置中訊號 RMS 為門檻，
 /// 低於門檻視為無聲、檢測直接回絕。
-enum NoiseGateProfile: String, CaseIterable, Sendable {
+enum NoiseGateProfile: String, CaseIterable, Codable, Sendable {
     case low
     case mid
     case high
@@ -18,7 +18,7 @@ enum NoiseGateProfile: String, CaseIterable, Sendable {
 }
 
 /// 阻尼（平滑）三檔（母本 dampingCfg，行 9577）。
-enum DampingProfile: String, CaseIterable, Sendable {
+enum DampingProfile: String, CaseIterable, Codable, Sendable {
     case fast
     case balanced
     case smooth
@@ -65,7 +65,7 @@ enum DampingProfile: String, CaseIterable, Sendable {
 /// 調音器設定快照。預設值 = 母本 createDefaultProfile（行 6211）與
 /// state 初始值（行 6249 起）：A4 442.0、容差 3、阻尼 balanced、
 /// 噪聲門 mid、律制 equal、純律主音 pc 0。
-struct TunerSettings: Equatable, Sendable {
+struct TunerSettings: Equatable, Codable, Sendable {
     /// A4 基準頻率，範圍 430–450（母本 setA4 鉗制，行 8631）。
     var a4: Double = 442.0
     /// 準音容差（音分），母本預設 3（行 6222）。

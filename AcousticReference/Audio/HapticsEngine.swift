@@ -105,6 +105,15 @@ final class HapticsEngine: @unchecked Sendable {
                       atHostTimeSeconds: nil)
     }
 
+    /// 步進定位觸感（Laurent 架構意見採納項：A4／BPM 步進鈕的
+    /// detent 回饋）：短促高銳度 transient，與 tap 的映射分開，
+    /// 每次步進一記（長按連調時逐記跟隨）。
+    func detent() {
+        guard isEnabled else { return }
+        playTransient(intensity: 0.35, sharpness: 0.95,
+                      key: "detent", atHostTimeSeconds: nil)
+    }
+
     /// 震動圖案：母本 vibrate([震, 停, 震, …]) 毫秒陣列
     /// （調音鎖定 [8,35,16]、重音重置 [8,30,12] 等）。
     func pattern(_ segmentsMs: [Double]) {

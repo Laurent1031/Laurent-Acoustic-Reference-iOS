@@ -1,0 +1,887 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "western_wind",
+      "name": "西洋管樂"
+    },
+    {
+      "id": "western_str",
+      "name": "弦樂鍵盤"
+    },
+    {
+      "id": "chinese",
+      "name": "民族樂團"
+    },
+    {
+      "id": "band",
+      "name": "現代樂隊"
+    },
+    {
+      "id": "custom",
+      "name": "自訂"
+    }
+  ],
+  "instruments": [
+    {
+      "id": "alto_sax",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "中音薩克斯",
+      "englishName": "Alto Sax",
+      "keyName": "1 = E♭",
+      "transposition": -9,
+      "minFrequency": 130,
+      "maxFrequency": 1200,
+      "refTargets": [
+        {
+          "note": "A4",
+          "label": "樂團A4（記F♯5）"
+        },
+        {
+          "note": "B♭4",
+          "label": "管樂B♭4（記G5）"
+        },
+        {
+          "note": "E♭4",
+          "label": "本調Do（實E♭4）"
+        }
+      ],
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "soprano_sax",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "高音薩克斯",
+      "englishName": "Soprano Sax",
+      "keyName": "1 = B♭",
+      "transposition": -2,
+      "minFrequency": 200,
+      "maxFrequency": 1600,
+      "refTargets": [
+        {
+          "note": "A4",
+          "label": "樂團A4（記B4）"
+        },
+        {
+          "note": "B♭4",
+          "label": "管樂B♭4（記C5）"
+        }
+      ],
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "tenor_sax",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "次中音薩克斯",
+      "englishName": "Tenor Sax",
+      "keyName": "1 = B♭",
+      "transposition": -2,
+      "minFrequency": 100,
+      "maxFrequency": 950,
+      "refTargets": [
+        {
+          "note": "A4",
+          "label": "樂團A4（記B4）"
+        },
+        {
+          "note": "B♭3",
+          "label": "管樂B♭3（記C4）"
+        }
+      ],
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "bari_sax",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "上低音薩克斯",
+      "englishName": "Baritone Sax",
+      "keyName": "1 = E♭",
+      "transposition": -21,
+      "minFrequency": 60,
+      "maxFrequency": 650,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "flute",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "長笛",
+      "englishName": "Concert Flute",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 240,
+      "maxFrequency": 2400,
+      "refTargets": [
+        {
+          "note": "A4",
+          "label": "標準 A4"
+        },
+        {
+          "note": "B♭4",
+          "label": "管樂 B♭4"
+        },
+        {
+          "note": "C5",
+          "label": "C5"
+        }
+      ],
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "piccolo",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "短笛",
+      "englishName": "Piccolo",
+      "keyName": "1 = C (+8)",
+      "transposition": 12,
+      "minFrequency": 500,
+      "maxFrequency": 4200,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "oboe",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "雙簧管",
+      "englishName": "Oboe",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 220,
+      "maxFrequency": 1800,
+      "refTargets": [
+        {
+          "note": "A4",
+          "label": "首席基準 A4"
+        },
+        {
+          "note": "B♭4",
+          "label": "B♭4"
+        }
+      ],
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "english_horn",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "英國管",
+      "englishName": "Cor Anglais",
+      "keyName": "1 = F",
+      "transposition": -7,
+      "minFrequency": 150,
+      "maxFrequency": 1200,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "clarinet_bb",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "降B單簧管",
+      "englishName": "B♭ Clarinet",
+      "keyName": "1 = B♭",
+      "transposition": -2,
+      "minFrequency": 140,
+      "maxFrequency": 1900,
+      "refTargets": [
+        {
+          "note": "A4",
+          "label": "樂團A4（記B4）"
+        },
+        {
+          "note": "B♭4",
+          "label": "管樂B♭4（記C5）"
+        }
+      ],
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "clarinet_a",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "A調單簧管",
+      "englishName": "A Clarinet",
+      "keyName": "1 = A",
+      "transposition": -3,
+      "minFrequency": 130,
+      "maxFrequency": 1800,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "bassoon",
+      "category": "western_wind",
+      "categoryLabel": "WOODWIND · 西洋木管",
+      "name": "大管（巴松）",
+      "englishName": "Bassoon",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 55,
+      "maxFrequency": 700,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "trumpet_bb",
+      "category": "western_wind",
+      "categoryLabel": "BRASS · 西洋銅管",
+      "name": "降B調小號",
+      "englishName": "B♭ Trumpet",
+      "keyName": "1 = B♭",
+      "transposition": -2,
+      "minFrequency": 150,
+      "maxFrequency": 1200,
+      "refTargets": [
+        {
+          "note": "B♭4",
+          "label": "管樂B♭4（記C5）"
+        },
+        {
+          "note": "A4",
+          "label": "樂團A4（記B4）"
+        }
+      ],
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "trumpet_c",
+      "category": "western_wind",
+      "categoryLabel": "BRASS · 西洋銅管",
+      "name": "C調小號",
+      "englishName": "C Trumpet",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 165,
+      "maxFrequency": 1300,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "horn_f",
+      "category": "western_wind",
+      "categoryLabel": "BRASS · 西洋銅管",
+      "name": "F調圓號",
+      "englishName": "French Horn",
+      "keyName": "1 = F",
+      "transposition": -7,
+      "minFrequency": 60,
+      "maxFrequency": 880,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "trombone",
+      "category": "western_wind",
+      "categoryLabel": "BRASS · 西洋銅管",
+      "name": "長號",
+      "englishName": "Trombone",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 60,
+      "maxFrequency": 700,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "tuba",
+      "category": "western_wind",
+      "categoryLabel": "BRASS · 西洋銅管",
+      "name": "大號",
+      "englishName": "Tuba",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 35,
+      "maxFrequency": 450,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "piano",
+      "category": "western_str",
+      "categoryLabel": "KEYBOARD · 鍵盤樂器",
+      "name": "交響鋼琴",
+      "englishName": "Grand Piano",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 27.5,
+      "maxFrequency": 4186,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "violin",
+      "category": "western_str",
+      "categoryLabel": "STRINGS · 弓弦樂器",
+      "name": "小提琴",
+      "englishName": "Violin",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 185,
+      "maxFrequency": 3200,
+      "refTargets": null,
+      "stringNotes": [
+        "G3",
+        "D4",
+        "A4",
+        "E5"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "viola",
+      "category": "western_str",
+      "categoryLabel": "STRINGS · 弓弦樂器",
+      "name": "中提琴",
+      "englishName": "Viola",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 125,
+      "maxFrequency": 1800,
+      "refTargets": null,
+      "stringNotes": [
+        "C3",
+        "G3",
+        "D4",
+        "A4"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "cello",
+      "category": "western_str",
+      "categoryLabel": "STRINGS · 弓弦樂器",
+      "name": "大提琴",
+      "englishName": "Violoncello",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 62,
+      "maxFrequency": 1000,
+      "refTargets": null,
+      "stringNotes": [
+        "C2",
+        "G2",
+        "D3",
+        "A3"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "double_bass",
+      "category": "western_str",
+      "categoryLabel": "STRINGS · 弓弦樂器",
+      "name": "低音提琴",
+      "englishName": "Double Bass",
+      "keyName": "1 = C",
+      "transposition": -12,
+      "minFrequency": 38,
+      "maxFrequency": 400,
+      "refTargets": null,
+      "stringNotes": [
+        "E1",
+        "A1",
+        "D2",
+        "G2"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "harp",
+      "category": "western_str",
+      "categoryLabel": "STRINGS · 撥弦樂器",
+      "name": "豎琴",
+      "englishName": "Concert Harp",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 32,
+      "maxFrequency": 3500,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "guzheng",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族彈撥",
+      "name": "古箏（21弦）",
+      "englishName": "Guzheng",
+      "keyName": "1 = D",
+      "transposition": 2,
+      "minFrequency": 65,
+      "maxFrequency": 1200,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": true,
+      "isCustom": false
+    },
+    {
+      "id": "yangqin",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族擊弦",
+      "name": "揚琴",
+      "englishName": "Yangqin",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 65,
+      "maxFrequency": 2600,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "pipa",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族彈撥",
+      "name": "琵琶",
+      "englishName": "Pipa",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 110,
+      "maxFrequency": 1600,
+      "refTargets": null,
+      "stringNotes": [
+        "A2",
+        "D3",
+        "E3",
+        "A3"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "zhongruan",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族彈撥",
+      "name": "中阮",
+      "englishName": "Zhongruan",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 90,
+      "maxFrequency": 900,
+      "refTargets": null,
+      "stringNotes": [
+        "G2",
+        "D3",
+        "G3",
+        "D4"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "erhu",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族拉弦",
+      "name": "二胡",
+      "englishName": "Erhu",
+      "keyName": "1 = D",
+      "transposition": 2,
+      "minFrequency": 260,
+      "maxFrequency": 2000,
+      "refTargets": null,
+      "stringNotes": [
+        "D4",
+        "A4"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "dizi_c",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族吹管",
+      "name": "C調曲笛",
+      "englishName": "Dizi (C)",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 240,
+      "maxFrequency": 2400,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "dizi_d",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族吹管",
+      "name": "D調曲笛",
+      "englishName": "Dizi (D)",
+      "keyName": "1 = D",
+      "transposition": 2,
+      "minFrequency": 270,
+      "maxFrequency": 2600,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "dizi_f",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族吹管",
+      "name": "F調梆笛",
+      "englishName": "Dizi (F)",
+      "keyName": "1 = F",
+      "transposition": 5,
+      "minFrequency": 320,
+      "maxFrequency": 3000,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "dizi_g",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族吹管",
+      "name": "G調梆笛",
+      "englishName": "Dizi (G)",
+      "keyName": "1 = G",
+      "transposition": 7,
+      "minFrequency": 360,
+      "maxFrequency": 3200,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "xiao_g",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族吹管",
+      "name": "G調洞簫",
+      "englishName": "Xiao (G)",
+      "keyName": "1 = G",
+      "transposition": 7,
+      "minFrequency": 180,
+      "maxFrequency": 1600,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "xiao_f",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族吹管",
+      "name": "F調洞簫",
+      "englishName": "Xiao (F)",
+      "keyName": "1 = F",
+      "transposition": 5,
+      "minFrequency": 165,
+      "maxFrequency": 1500,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "suona_d",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族吹管",
+      "name": "D調嗩吶",
+      "englishName": "Suona (D)",
+      "keyName": "1 = D",
+      "transposition": 2,
+      "minFrequency": 280,
+      "maxFrequency": 2600,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "suona_g",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族吹管",
+      "name": "G調嗩吶",
+      "englishName": "Suona (G)",
+      "keyName": "1 = G",
+      "transposition": 7,
+      "minFrequency": 200,
+      "maxFrequency": 2200,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "sheng",
+      "category": "chinese",
+      "categoryLabel": "CHINESE · 民族簧管",
+      "name": "笙",
+      "englishName": "Sheng",
+      "keyName": "1 = C",
+      "transposition": 0,
+      "minFrequency": 180,
+      "maxFrequency": 2200,
+      "refTargets": null,
+      "stringNotes": null,
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "guitar_std",
+      "category": "band",
+      "categoryLabel": "BAND · 現代撥弦",
+      "name": "六弦吉他",
+      "englishName": "Guitar",
+      "keyName": "EADGBE",
+      "transposition": 0,
+      "minFrequency": 75,
+      "maxFrequency": 1200,
+      "refTargets": null,
+      "stringNotes": [
+        "E2",
+        "A2",
+        "D3",
+        "G3",
+        "B3",
+        "E4"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "bass_4",
+      "category": "band",
+      "categoryLabel": "BAND · 電聲低音",
+      "name": "四弦貝斯",
+      "englishName": "4-Bass",
+      "keyName": "EADG",
+      "transposition": 0,
+      "minFrequency": 38,
+      "maxFrequency": 450,
+      "refTargets": null,
+      "stringNotes": [
+        "E1",
+        "A1",
+        "D2",
+        "G2"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "bass_5",
+      "category": "band",
+      "categoryLabel": "BAND · 電聲低音",
+      "name": "五弦貝斯",
+      "englishName": "5-Bass",
+      "keyName": "BEADG",
+      "transposition": 0,
+      "minFrequency": 29,
+      "maxFrequency": 450,
+      "refTargets": null,
+      "stringNotes": [
+        "B0",
+        "E1",
+        "A1",
+        "D2",
+        "G2"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    },
+    {
+      "id": "ukulele",
+      "category": "band",
+      "categoryLabel": "BAND · 現代撥弦",
+      "name": "尤克里里",
+      "englishName": "Ukulele",
+      "keyName": "GCEA",
+      "transposition": 0,
+      "minFrequency": 240,
+      "maxFrequency": 1200,
+      "refTargets": null,
+      "stringNotes": [
+        "G4",
+        "C4",
+        "E4",
+        "A4"
+      ],
+      "isGuzheng": false,
+      "isCustom": false
+    }
+  ],
+  "guzheng": {
+    "keyOrder": [
+      "D",
+      "G",
+      "C",
+      "F",
+      "A"
+    ],
+    "keySemitones": {
+      "C": 0,
+      "D": 2,
+      "F": 5,
+      "G": 7,
+      "A": 9
+    },
+    "tunings": {
+      "D": [
+        "D2",
+        "E2",
+        "F♯2",
+        "A2",
+        "B2",
+        "D3",
+        "E3",
+        "F♯3",
+        "A3",
+        "B3",
+        "D4",
+        "E4",
+        "F♯4",
+        "A4",
+        "B4",
+        "D5",
+        "E5",
+        "F♯5",
+        "A5",
+        "B5",
+        "D6"
+      ],
+      "G": [
+        "D2",
+        "E2",
+        "G2",
+        "A2",
+        "B2",
+        "D3",
+        "E3",
+        "G3",
+        "A3",
+        "B3",
+        "D4",
+        "E4",
+        "G4",
+        "A4",
+        "B4",
+        "D5",
+        "E5",
+        "G5",
+        "A5",
+        "B5",
+        "D6"
+      ],
+      "C": [
+        "C2",
+        "D2",
+        "E2",
+        "G2",
+        "A2",
+        "C3",
+        "D3",
+        "E3",
+        "G3",
+        "A3",
+        "C4",
+        "D4",
+        "E4",
+        "G4",
+        "A4",
+        "C5",
+        "D5",
+        "E5",
+        "G5",
+        "A5",
+        "C6"
+      ],
+      "F": [
+        "C2",
+        "D2",
+        "F2",
+        "G2",
+        "A2",
+        "C3",
+        "D3",
+        "F3",
+        "G3",
+        "A3",
+        "C4",
+        "D4",
+        "F4",
+        "G4",
+        "A4",
+        "C5",
+        "D5",
+        "F5",
+        "G5",
+        "A5",
+        "C6"
+      ],
+      "A": [
+        "C♯2",
+        "E2",
+        "F♯2",
+        "A2",
+        "B2",
+        "C♯3",
+        "E3",
+        "F♯3",
+        "A3",
+        "B3",
+        "C♯4",
+        "E4",
+        "F♯4",
+        "A4",
+        "B4",
+        "C♯5",
+        "E5",
+        "F♯5",
+        "A5",
+        "B5",
+        "C♯6"
+      ]
+    }
+  }
+}

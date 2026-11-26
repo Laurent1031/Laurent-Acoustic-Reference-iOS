@@ -1,0 +1,47 @@
+=== 樂器目錄抽取核對報告 ===
+母本: /home/hatch/workspace/tuner-metronome/index.html
+抽出樂器總數: 40
+分類計數: {"western_wind":16,"western_str":6,"chinese":14,"band":4}
+zh-TW 查表未命中（保留源串）: C5 | B♭4
+逐種比對不一致: 0
+--- 逐種清單 ---
+alto_sax           cat=western_wind  trans=  -9 minF=130 maxF=1200 ref=3 strings=- name=中音薩克斯
+soprano_sax        cat=western_wind  trans=  -2 minF=200 maxF=1600 ref=2 strings=- name=高音薩克斯
+tenor_sax          cat=western_wind  trans=  -2 minF=100 maxF=950 ref=2 strings=- name=次中音薩克斯
+bari_sax           cat=western_wind  trans= -21 minF=60 maxF=650 ref=- strings=- name=上低音薩克斯
+flute              cat=western_wind  trans=   0 minF=240 maxF=2400 ref=3 strings=- name=長笛
+piccolo            cat=western_wind  trans=  12 minF=500 maxF=4200 ref=- strings=- name=短笛
+oboe               cat=western_wind  trans=   0 minF=220 maxF=1800 ref=2 strings=- name=雙簧管
+english_horn       cat=western_wind  trans=  -7 minF=150 maxF=1200 ref=- strings=- name=英國管
+clarinet_bb        cat=western_wind  trans=  -2 minF=140 maxF=1900 ref=2 strings=- name=降B單簧管
+clarinet_a         cat=western_wind  trans=  -3 minF=130 maxF=1800 ref=- strings=- name=A調單簧管
+bassoon            cat=western_wind  trans=   0 minF=55 maxF=700 ref=- strings=- name=大管（巴松）
+trumpet_bb         cat=western_wind  trans=  -2 minF=150 maxF=1200 ref=2 strings=- name=降B調小號
+trumpet_c          cat=western_wind  trans=   0 minF=165 maxF=1300 ref=- strings=- name=C調小號
+horn_f             cat=western_wind  trans=  -7 minF=60 maxF=880 ref=- strings=- name=F調圓號
+trombone           cat=western_wind  trans=   0 minF=60 maxF=700 ref=- strings=- name=長號
+tuba               cat=western_wind  trans=   0 minF=35 maxF=450 ref=- strings=- name=大號
+piano              cat=western_str   trans=   0 minF=27.5 maxF=4186 ref=- strings=- name=交響鋼琴
+violin             cat=western_str   trans=   0 minF=185 maxF=3200 ref=- strings=4 name=小提琴
+viola              cat=western_str   trans=   0 minF=125 maxF=1800 ref=- strings=4 name=中提琴
+cello              cat=western_str   trans=   0 minF=62 maxF=1000 ref=- strings=4 name=大提琴
+double_bass        cat=western_str   trans= -12 minF=38 maxF=400 ref=- strings=4 name=低音提琴
+harp               cat=western_str   trans=   0 minF=32 maxF=3500 ref=- strings=- name=豎琴
+guzheng            cat=chinese       trans=   2 minF=65 maxF=1200 ref=- strings=- name=古箏（21弦）
+yangqin            cat=chinese       trans=   0 minF=65 maxF=2600 ref=- strings=- name=揚琴
+pipa               cat=chinese       trans=   0 minF=110 maxF=1600 ref=- strings=4 name=琵琶
+zhongruan          cat=chinese       trans=   0 minF=90 maxF=900 ref=- strings=4 name=中阮
+erhu               cat=chinese       trans=   2 minF=260 maxF=2000 ref=- strings=2 name=二胡
+dizi_c             cat=chinese       trans=   0 minF=240 maxF=2400 ref=- strings=- name=C調曲笛
+dizi_d             cat=chinese       trans=   2 minF=270 maxF=2600 ref=- strings=- name=D調曲笛
+dizi_f             cat=chinese       trans=   5 minF=320 maxF=3000 ref=- strings=- name=F調梆笛
+dizi_g             cat=chinese       trans=   7 minF=360 maxF=3200 ref=- strings=- name=G調梆笛
+xiao_g             cat=chinese       trans=   7 minF=180 maxF=1600 ref=- strings=- name=G調洞簫
+xiao_f             cat=chinese       trans=   5 minF=165 maxF=1500 ref=- strings=- name=F調洞簫
+suona_d            cat=chinese       trans=   2 minF=280 maxF=2600 ref=- strings=- name=D調嗩吶
+suona_g            cat=chinese       trans=   7 minF=200 maxF=2200 ref=- strings=- name=G調嗩吶
+sheng              cat=chinese       trans=   0 minF=180 maxF=2200 ref=- strings=- name=笙
+guitar_std         cat=band          trans=   0 minF=75 maxF=1200 ref=- strings=6 name=六弦吉他
+bass_4             cat=band          trans=   0 minF=38 maxF=450 ref=- strings=4 name=四弦貝斯
+bass_5             cat=band          trans=   0 minF=29 maxF=450 ref=- strings=5 name=五弦貝斯
+ukulele            cat=band          trans=   0 minF=240 maxF=1200 ref=- strings=4 name=尤克里里

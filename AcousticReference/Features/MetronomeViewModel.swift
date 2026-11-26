@@ -101,7 +101,10 @@ final class MetronomeViewModel: ObservableObject {
     // MARK: - 內部
 
     let engine: MetronomeEngine
-    private let store = MetronomeStore()
+    /// 持久化出口（階段 4 起由 AppStore 承接，ContentView 注入；
+    /// 取代階段 3 的 MetronomeStore 佔位）。預設 no-op 供 Preview。
+    var persistSettings: @MainActor (MetronomeSettings) -> Void = { _ in }
+    var persistUserPresets: @MainActor ([MetronomePreset]) -> Void = { _ in }
     private var cancellables: Set<AnyCancellable> = []
 
     private let linkProxy = MetroDisplayLinkProxy()
@@ -120,13 +123,15 @@ final class MetronomeViewModel: ObservableObject {
     private var persistTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
 
-    init(engine: MetronomeEngine) {
+    init(engine: MetronomeEngine,
+         persisted: (settings: MetronomeSettings,
+                     userPresets: [MetronomePreset])? = nil) {
         self.engine = engine
         linkProxy.owner = self
 
-        let loaded = store.loadSettings()
+        let loaded = persisted?.settings ?? MetronomeSettings()
         settings = loaded
-        userPresets = store.loadUserPresets()
+        userPresets = persisted?.userPresets ?? []
         engine.updateSettings(loaded)
         odoValue = loaded.bpm
         fillDisp = Double(loaded.bpm)
@@ -396,7 +401,7 @@ final class MetronomeViewModel: ObservableObject {
             userPresets.append(preset)
             activePresetId = preset.id
         }
-        store.saveUserPresets(userPresets)
+        persistUserPresets(userPresets)
         HapticsEngine.shared.tap(milliseconds: 10)
         showToast("已保存預設")
         return true
@@ -407,7 +412,7 @@ final class MetronomeViewModel: ObservableObject {
               let idx = userPresets.firstIndex(where: { $0.id == id }) else { return }
         userPresets.remove(at: idx)
         activePresetId = nil
-        store.saveUserPresets(userPresets)
+        persistUserPresets(userPresets)
     }
 
     // MARK: - 漸速（母本 applyRampQuickScheme/startCustomRamp）
@@ -645,7 +650,7 @@ final class MetronomeViewModel: ObservableObject {
         persistTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 600_000_000)
             guard !Task.isCancelled, let self else { return }
-            self.store.saveSettings(self.settings)
+            self.persistSettings(self.settings)
         }
     }
 
