@@ -78,8 +78,8 @@ struct BackupImportSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    private func section(theme: TunerTheme, title: String,
-                         @ViewBuilder content: () -> some View) -> some View {
+    private func section<Content: View>(theme: TunerTheme, title: String,
+                         @ViewBuilder content: @escaping () -> Content) -> some View {
         SettingsGroup(theme: theme, glassOpacity: store.glassOpacity) {
             SettingsLabel(theme: theme, title: title)
             content()
