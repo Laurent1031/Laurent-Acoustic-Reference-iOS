@@ -367,10 +367,10 @@ struct MetronomeView: View {
 
     private func steppersRow(theme: TunerTheme) -> some View {
         HStack(spacing: 8) {
-            MetronomeHoldRepeatButton(title: "−5") { viewModel.stepBpm(-5) }
-            MetronomeHoldRepeatButton(title: "−1") { viewModel.stepBpm(-1) }
-            MetronomeHoldRepeatButton(title: "+1") { viewModel.stepBpm(1) }
-            MetronomeHoldRepeatButton(title: "+5") { viewModel.stepBpm(5) }
+            MetronomeHoldRepeatButton(title: "−5", theme: theme, glassOpacity: store.glassOpacity) { viewModel.stepBpm(-5) }
+            MetronomeHoldRepeatButton(title: "−1", theme: theme, glassOpacity: store.glassOpacity) { viewModel.stepBpm(-1) }
+            MetronomeHoldRepeatButton(title: "+1", theme: theme, glassOpacity: store.glassOpacity) { viewModel.stepBpm(1) }
+            MetronomeHoldRepeatButton(title: "+5", theme: theme, glassOpacity: store.glassOpacity) { viewModel.stepBpm(5) }
         }
     }
 
@@ -847,6 +847,8 @@ private final class HoldRepeater: ObservableObject {
 /// 長按連調步進鈕（母本 addHoldRepeat）。
 private struct MetronomeHoldRepeatButton: View {
     let title: String
+    let theme: TunerTheme
+    let glassOpacity: Int
     let action: () -> Void
     @StateObject private var repeater = HoldRepeater()
 
@@ -855,7 +857,7 @@ private struct MetronomeHoldRepeatButton: View {
             .font(.system(size: 15, weight: .semibold))
             .frame(maxWidth: .infinity)
             .frame(height: 40)
-            .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
+            .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous), theme: theme, glassOpacity: glassOpacity)
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .gesture(
                 DragGesture(minimumDistance: 0)
