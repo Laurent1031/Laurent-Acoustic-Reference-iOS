@@ -78,6 +78,8 @@ struct TunerTheme {
         case .dark: return .dark
         case .light: return .light
         case .system: return system == .dark ? .dark : .light
+        // 無 payload 的保底（正式路徑走四參數版）：隨系統。
+        case .custom: return system == .dark ? .dark : .light
         }
     }
 
@@ -294,7 +296,10 @@ struct GlassSurface<S: Shape>: View {
                 shape.fill(opacityTint(t: t))
             }
             .overlay {
-                shape.strokeBorder(
+                // 泛型 S 只保證 Shape（strokeBorder 屬
+                // InsettableShape，CI run #28 實證編不過）；
+                // 1pt 置中描邊與內描邊視差可忽略。
+                shape.stroke(
                     theme.isDark ? Color.white.opacity(0.16)
                                  : Color.black.opacity(0.10),
                     lineWidth: 1)
