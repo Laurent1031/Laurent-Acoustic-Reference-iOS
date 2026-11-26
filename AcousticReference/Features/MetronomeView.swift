@@ -1144,19 +1144,19 @@ private struct MetroKeyboardShortcuts: ViewModifier {
     func body(content: Content) -> some View {
         content
             .focusable()
-            .onKeyPress(.upArrow) { _ in
+            .onKeyPress(.upArrow) {
                 viewModel.stepBpm(1)
                 return .handled
             }
-            .onKeyPress(.downArrow) { _ in
+            .onKeyPress(.downArrow) {
                 viewModel.stepBpm(-1)
                 return .handled
             }
-            .onKeyPress(.pageUp) { _ in
+            .onKeyPress(.pageUp) {
                 viewModel.stepBpm(10)
                 return .handled
             }
-            .onKeyPress(.pageDown) { _ in
+            .onKeyPress(.pageDown) {
                 viewModel.stepBpm(-10)
                 return .handled
             }
