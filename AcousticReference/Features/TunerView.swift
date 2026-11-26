@@ -382,7 +382,7 @@ struct TunerView: View {
                             .foregroundStyle(theme.accent)
                             .padding(.horizontal, 11)
                             .frame(height: 32)
-                            .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+                            .glassEffect(theme.glass(store.glassOpacity, interactive: true), in: Capsule())
                     }
                     .buttonStyle(GlassPressButtonStyle())
                 }
@@ -874,10 +874,8 @@ struct TunerView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 7)
-        .background(
-            theme.isDark ? Color.white.opacity(0.04) : Color.white.opacity(0.45),
-            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-        )
+        .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous),
+                         theme: theme, glassOpacity: store.glassOpacity)
     }
 
     // MARK: - 穩定度徽章（母本 trace-stats-badge；輕點切換定格）

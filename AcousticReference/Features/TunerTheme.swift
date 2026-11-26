@@ -255,115 +255,55 @@ struct TunerTheme {
     }
 }
 
-// MARK: - 玻璃不透明度（階段 5 材質版 → 階段 6 真折射）
+extension TunerTheme {
+    /// 玻璃 tint 色版：淺＝白、深＝#1C1C1E、樂池＝深紅黑。
+    var glassTintBase: Color {
+        switch kind {
+        case .light: return .white
+        case .dark: return Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
+        case .pit: return Color(red: 26 / 255, green: 9 / 255, blue: 9 / 255)
+        }
+    }
 
-/// 玻璃表面（階段 6 升級；裝機返修批重做）：系統 Liquid
-/// Glass 真折射（glassEffect）為渲染主體——部署目標
-/// iOS 27、CI runner 為 Xcode 26.x（SDK ≥ 26，glassEffect
-/// 自 iOS 26 SDK 起可用），API 無條件可達，不需
-/// availability 分支。
+    /// 全 App 統一的玻璃配方（對齊 iOS 27 系統玻璃）：
+    /// tint alpha = 0.02 + 0.34t（t = (不透明度−8)/88，
+    /// 預設 50 → ≈0.18）。interactive 版供「整體即玻璃」
+    /// 的按鍵本體（頂欄圓鈕等），按壓形變由玻璃本體給出。
+    func glass(_ opacity: Int, interactive: Bool = false) -> Glass {
+        let t = min(1, max(0, (Double(opacity) - 8) / 88))
+        let base = Glass.regular.tint(glassTintBase.opacity(0.02 + 0.34 * t))
+        return interactive ? base.interactive() : base
+    }
+}
+
+// MARK: - 液態玻璃（全量替換・2026-11-26 Laurent 指示）
+
+/// 玻璃表面：系統 Liquid Glass 真折射（glassEffect）單層
+/// 渲染，無任何自製覆蓋與描邊——Laurent 指示「液態玻璃
+/// 部分全部替換、做好做精、尤其是細節」。
 ///
-/// 【裝機返修・2026-11-26】Laurent 實機回報「按鍵糊、字不
-/// 明顯、配色奇怪、尤其右上角」：歸因於舊版在折射層之上
-/// 再壓一層白色覆蓋（×0.55 曲線）把玻璃悶成磨砂塑料、
-/// 且表面無描邊、淺色下邊界消失。本版處置：
-/// 1. 覆蓋層權重降至 ×0.30（保留不透明度滑桿的相對節律，
-///    不再悶死折射與高光）；
-/// 2. 每面補 1pt 內描邊（淺 黑 0.10／深 白 0.16／pit 沿
-///    深色），邊界在任何背景上可辨；
-/// 3. 全 App 撤除 GlassEffectContainer 包裹——其合成通道
-///    疑似造成樂器卡重影（實機截圖），玻璃逐面獨立渲染。
+/// 沿革：第一版在折射層上壓白色覆蓋（×0.55）＋手繪描邊，
+/// 實機成乳白磨砂（Laurent 特寫截圖自評「一坨」）；返修
+/// 批降覆蓋至 ×0.30 仍屬貼補。本版全量替換為純系統玻璃：
+/// 折射、高光、邊緣光暈全由 glassEffect 本體給出，這正是
+/// Apple 液態玻璃與仿製材質的分野。
 ///
-/// 玻璃不透明度（8–96）的語義映射：glassEffect 無 opacity
-/// 參數，以兩條同向單調的通道保留可感差異——
-/// 1. Glass tint：以主題表面色（深 (28,28,30)／淺白／pit
-///    (26,9,9)）染色，alpha = 0.08 + 0.30t；
-/// 2. 覆蓋層：母本 iOS 支曲線（t = (值−8)/88；深 0.05+
-///    0.90t／淺 0.10+0.86t，pit 沿深色）× 0.30。
-/// interactive 不加於本背景層：按壓形變應作用在控件本體
-/// 而非其背景襯底，加了只會讓襯底與內容脫步。
+/// 不透明度（8–96）語義：只走 tint 單通道——alpha =
+/// 0.02 + 0.34t（t = (值−8)/88）。預設 50 → ≈0.18，
+/// 對齊 iOS 27 系統玻璃的清透濃度（重 tint 是仿製材質
+/// 發塑料感的主因，Apple 官方亦明示 tint 須透）；拉高
+/// 趨近實色、拉低趨近清透，全程不離折射本體。
+/// interactive 不加於本背景層：按壓形變作用在控件本體
+/// （GlassPressButtonStyle／鏡片），不加在襯底。
 struct GlassSurface<S: Shape>: View {
     let shape: S
     let theme: TunerTheme
     let glassOpacity: Int
 
     var body: some View {
-        let t = min(1, max(0, (Double(glassOpacity) - 8) / 88))
         shape
             .fill(.clear)
-            .glassEffect(glassVariant(t: t), in: shape)
-            .overlay {
-                shape.fill(opacityTint(t: t))
-            }
-            .overlay {
-                // 泛型 S 只保證 Shape（strokeBorder 屬
-                // InsettableShape，CI run #28 實證編不過）；
-                // 1pt 置中描邊與內描邊視差可忽略。
-                shape.stroke(
-                    theme.isDark ? Color.white.opacity(0.16)
-                                 : Color.black.opacity(0.10),
-                    lineWidth: 1)
-            }
-    }
-
-    /// 主題表面色（tint 與覆蓋層共用色版）。
-    private var surfaceColor: Color {
-        switch theme.kind {
-        case .light:
-            return .white
-        case .dark:
-            return Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
-        case .pit:
-            return Color(red: 26 / 255, green: 9 / 255, blue: 9 / 255)
-        }
-    }
-
-    private func glassVariant(t: Double) -> Glass {
-        Glass.regular.tint(surfaceColor.opacity(0.08 + 0.30 * t))
-    }
-
-    private func opacityTint(t: Double) -> Color {
-        let curve: Double
-        switch theme.kind {
-        case .light:
-            curve = 0.10 + 0.86 * t
-        case .dark, .pit:
-            curve = 0.05 + 0.90 * t
-        }
-        return surfaceColor.opacity(curve * 0.30)
-    }
-}
-
-/// 階段 5 的材質版玻璃（回退保留）：ultraThinMaterial＋色版
-/// 覆蓋。階段 6 起 GlassSurface 已切真折射，本結構保留給
-/// 「效果不符」時的逐點回退用途——目前無呼叫點（全 App
-/// 玻璃經 glassBackground 統一走 GlassSurface），保留是
-/// 為裝機驗收若發現某處折射觀感不符，可單點切回而不動
-/// 其餘 36 處（回退點須在該處註明理由）。
-struct MaterialGlassSurface<S: Shape>: View {
-    let shape: S
-    let theme: TunerTheme
-    let glassOpacity: Int
-
-    var body: some View {
-        ZStack {
-            shape.fill(.ultraThinMaterial)
-            shape.fill(tint)
-        }
-    }
-
-    private var tint: Color {
-        let t = min(1, max(0, (Double(glassOpacity) - 8) / 88))
-        switch theme.kind {
-        case .light:
-            return Color.white.opacity(0.10 + 0.86 * t)
-        case .dark:
-            return Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
-                .opacity(0.05 + 0.90 * t)
-        case .pit:
-            return Color(red: 26 / 255, green: 9 / 255, blue: 9 / 255)
-                .opacity(0.05 + 0.90 * t)
-        }
+            .glassEffect(theme.glass(glassOpacity), in: shape)
     }
 }
 

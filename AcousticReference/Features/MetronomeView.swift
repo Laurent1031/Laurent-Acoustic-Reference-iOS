@@ -231,13 +231,10 @@ struct MetronomeView: View {
             Circle().fill(theme.accent.opacity(0.18))
                 .overlay { Circle().strokeBorder(theme.accent, lineWidth: 1.5) }
         case 1:
+            // 純玻璃點：邊緣高光由 glassEffect 本體給出，
+            // 不再手繪描邊（液態玻璃全量替換原則）。
             GlassSurface(shape: Circle(), theme: theme,
                          glassOpacity: store.glassOpacity)
-                .overlay {
-                    Circle().strokeBorder(
-                        theme.isDark ? Color.white.opacity(0.25) : Color.black.opacity(0.15),
-                        lineWidth: 1)
-                }
         default:
             Circle()
                 .strokeBorder(Color(red: 128 / 255, green: 128 / 255, blue: 140 / 255,
@@ -355,17 +352,18 @@ struct MetronomeView: View {
                 .frame(height: 14)
 
             ZStack(alignment: .bottom) {
+                // 【液態玻璃全量替換】軌道改系統真玻璃單層
+                // （原 Material＋漸層 tint 的仿製疊層撤除）：
+                // 母本軌 tint 近白——深色以白 0.14 染、淺色
+                // 以中灰 0.16 染，折射與邊緣高光由本體給出。
                 Capsule()
-                    .fill(.ultraThinMaterial)
-                Capsule()
-                    .fill(LinearGradient(
-                        colors: dark
-                            ? [Color.white.opacity(0.20), Color.white.opacity(0.09)]
-                            : [Color(red: 120 / 255, green: 120 / 255,
-                                     blue: 128 / 255).opacity(0.20),
-                               Color(red: 120 / 255, green: 120 / 255,
-                                     blue: 128 / 255).opacity(0.20)],
-                        startPoint: .top, endPoint: .bottom))
+                    .fill(.clear)
+                    .glassEffect(
+                        .regular.tint(dark
+                            ? Color.white.opacity(0.14)
+                            : Color(red: 120 / 255, green: 120 / 255,
+                                    blue: 128 / 255).opacity(0.16)),
+                        in: Capsule())
 
                 // 亮填充（母本 .bpm-fader-fill）：頂邊平直、
                 // 底部隨膠囊裁切；漸層白為主、底緣淡藍灰，
@@ -406,15 +404,8 @@ struct MetronomeView: View {
             .frame(width: 57, height: railH)
             .clipShape(Capsule())
             .overlay {
-                Capsule()
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [Color.white.opacity(dark ? 0.35 : 0.65),
-                                     Color.white.opacity(dark ? 0.08 : 0.0)],
-                            startPoint: .top, endPoint: .center),
-                        lineWidth: 1)
-            }
-            .overlay {
+                // 母本軌邊 1px（深 白 0.26／淺 黑 0.06）：
+                // 控制中心膠囊在亮背景上的輪廓線，保留。
                 Capsule()
                     .strokeBorder(dark ? Color.white.opacity(0.26)
                                        : Color.black.opacity(0.06),

@@ -270,10 +270,18 @@ private struct InstrumentCard: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(
-            isActive ? theme.accent.opacity(theme.isDark ? 0.16 : 0.10)
-                     : (theme.isDark ? Color.white.opacity(0.04) : Color.white.opacity(0.5)),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background {
+            // 【液態玻璃全量替換】卡面改真玻璃；選中態以
+            // accent 淡色墊在玻璃之後襯色（不覆蓋玻璃面）。
+            ZStack {
+                if isActive {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(theme.accent.opacity(theme.isDark ? 0.16 : 0.10))
+                }
+                GlassSurface(shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
+                             theme: theme, glassOpacity: store.glassOpacity)
+            }
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(isActive ? theme.accent.opacity(0.65) : Color.clear,

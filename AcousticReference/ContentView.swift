@@ -251,7 +251,7 @@ struct ContentView: View {
                     Image(systemName: "lock.open")
                         .font(.system(size: 14, weight: .semibold))
                         .frame(width: 32, height: 32)
-                        .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
+                        .glassEffect(theme.glass(store.glassOpacity, interactive: true), in: Circle())
                 }
                 .buttonStyle(GlassPressButtonStyle())
                 .foregroundStyle(theme.textSecondary)
@@ -263,7 +263,7 @@ struct ContentView: View {
                     Image(systemName: "waveform.path.ecg")
                         .font(.system(size: 14, weight: .semibold))
                         .frame(width: 32, height: 32)
-                        .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
+                        .glassEffect(theme.glass(store.glassOpacity, interactive: true), in: Circle())
                 }
                 .buttonStyle(GlassPressButtonStyle())
                 .foregroundStyle(theme.textSecondary)
