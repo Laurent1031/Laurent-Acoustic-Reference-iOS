@@ -47,6 +47,9 @@
 		A10000000000000000000043 /* SharedSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000042 /* SharedSnapshot.swift */; };
 		A10000000000000000000044 /* MetronomeActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000043 /* MetronomeActivityAttributes.swift */; };
 		A10000000000000000000045 /* MetronomeActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000043 /* MetronomeActivityAttributes.swift */; };
+		A10000000000000000000050 /* BackupImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000051 /* BackupImporter.swift */; };
+		A10000000000000000000051 /* BackupImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000052 /* BackupImportView.swift */; };
+		A10000000000000000000052 /* DualModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000053 /* DualModeView.swift */; };
 		A10000000000000000000046 /* MetronomeLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000044 /* MetronomeLiveActivityController.swift */; };
 		A10000000000000000000047 /* HapticPatternTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000045 /* HapticPatternTable.swift */; };
 		A10000000000000000000048 /* AcousticWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000047 /* AcousticWidgets.swift */; };
@@ -88,6 +91,9 @@
 		B10000000000000000000020 /* StrobeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrobeView.swift; sourceTree = "<group>"; };
 		B10000000000000000000021 /* UISoundEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UISoundEngine.swift; sourceTree = "<group>"; };
 		B10000000000000000000022 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
+		B10000000000000000000051 /* BackupImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupImporter.swift; sourceTree = "<group>"; };
+		B10000000000000000000052 /* BackupImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupImportView.swift; sourceTree = "<group>"; };
+		B10000000000000000000053 /* DualModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DualModeView.swift; sourceTree = "<group>"; };
 		B10000000000000000000023 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B10000000000000000000024 /* localization.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = localization.json; sourceTree = "<group>"; };
 		B10000000000000000000040 /* OrientationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationManager.swift; sourceTree = "<group>"; };
@@ -197,6 +203,7 @@
 				B10000000000000000000022 /* L10n.swift */,
 				B10000000000000000000042 /* SharedSnapshot.swift */,
 				B10000000000000000000043 /* MetronomeActivityAttributes.swift */,
+				B10000000000000000000051 /* BackupImporter.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -216,6 +223,8 @@
 				B1000000000000000000001D /* HoldRepeater.swift */,
 				B10000000000000000000023 /* SettingsView.swift */,
 				B10000000000000000000041 /* ImmersiveTunerView.swift */,
+				B10000000000000000000052 /* BackupImportView.swift */,
+				B10000000000000000000053 /* DualModeView.swift */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -398,6 +407,9 @@
 				A10000000000000000000041 /* ImmersiveTunerView.swift in Sources */,
 				A10000000000000000000042 /* SharedSnapshot.swift in Sources */,
 				A10000000000000000000044 /* MetronomeActivityAttributes.swift in Sources */,
+				A10000000000000000000050 /* BackupImporter.swift in Sources */,
+				A10000000000000000000051 /* BackupImportView.swift in Sources */,
+				A10000000000000000000052 /* DualModeView.swift in Sources */,
 				A10000000000000000000046 /* MetronomeLiveActivityController.swift in Sources */,
 				A10000000000000000000047 /* HapticPatternTable.swift in Sources */,
 			);

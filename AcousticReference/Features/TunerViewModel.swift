@@ -225,6 +225,13 @@ final class TunerViewModel: ObservableObject {
         "♯4 Fi", "5 Sol", "♭6 Le", "6 La", "♭7 Te", "7 Ti",
     ]
 
+    /// 副作用總開關（階段 7 同屏補齊）：ContentView 的 ZStack
+    /// 常駐調音頁與同屏頁兩個 TunerViewModel 實例；同屏實例
+    /// 須設 false 純顯示——不發觸感／音效、不改 Drone 頻率與
+    /// 引擎鎖定狀態（由調音頁正規實例單一發出，防雙實例在
+    /// 鎖定／跟隨時重複觸發）。預設 true，調音頁行為不變。
+    var drivesSideEffects = true
+
     init(engine: AudioEngine, store: AppStore, drone: DroneEngine) {
         self.engine = engine
         self.store = store
@@ -246,7 +253,7 @@ final class TunerViewModel: ObservableObject {
                     self.followCandidate = nil
                     self.followSince = nil
                     self.refreshBadgeText()
-                    if self.drone.isPlaying {
+                    if self.drivesSideEffects, self.drone.isPlaying {
                         self.drone.retarget(midi: 69, glide: false)
                     }
                 }
@@ -355,7 +362,7 @@ final class TunerViewModel: ObservableObject {
                 frequency: reading.smoothedFrequency,
                 a4: engine.settings.a4).rounded())
             let currentTarget = lockedTargetMidi ?? 69
-            if store.droneFollow, detectedMidi != currentTarget {
+            if drivesSideEffects, store.droneFollow, detectedMidi != currentTarget {
                 if followCandidate == detectedMidi, let since = followSince {
                     if now - since >= 1.0 {
                         applyLock(note: PitchMath.noteName(midi: detectedMidi),
@@ -380,17 +387,19 @@ final class TunerViewModel: ObservableObject {
             let wasInTune = isInTune
             isInTune = reading.isInTune
             if reading.isInTune {
-                if !wasInTune {
+                if drivesSideEffects, !wasInTune {
                     HapticsEngine.shared.tap(milliseconds: 14)
                 }
                 if let since = inTuneSince {
                     if now - since >= 0.650, !noteLocked {
                         noteLocked = true
-                        // 階段 6：鎖定棘輪專屬圖樣（形制沿母本
-                        // [8, 35, 16]，數值見 HapticPatternTable）。
-                        HapticsEngine.shared.inTuneLock()
-                        // 母本 uiSound("lock")（行 9655，同呼叫點）。
-                        UISoundEngine.shared.play(.lock)
+                        if drivesSideEffects {
+                            // 階段 6：鎖定棘輪專屬圖樣（形制沿母本
+                            // [8, 35, 16]，數值見 HapticPatternTable）。
+                            HapticsEngine.shared.inTuneLock()
+                            // 母本 uiSound("lock")（行 9655，同呼叫點）。
+                            UISoundEngine.shared.play(.lock)
+                        }
                     }
                 } else {
                     inTuneSince = now

@@ -28,26 +28,18 @@
 	<true/>
 	<key>UILaunchScreen</key>
 	<dict/>
-	<!-- 方向（階段 6）：三向為能力宣告；實際鎖定由 AppDelegate
-	     回傳 OrientationManager 的 mask（預設恆豎屏，僅沉浸
-	     調音期間暫放橫屏）——橫屏鐵律的執行點在管理器，
-	     非本宣告。 -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<!-- 背景音訊（規格書 §3.7）：節拍器／Drone 鎖屏與切後台續播。 -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
 	</array>
-	<!-- Live Activity（階段 6）：節拍器運行態上鎖屏／靈動島。 -->
 	<key>NSSupportsLiveActivities</key>
 	<true/>
-	<!-- 小組件深連結（階段 6）：laurent-acoustic://tuner／
-	     metronome／metronome/start。 -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -61,5 +53,20 @@
 	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>LAURENT Backup JSON</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.json</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

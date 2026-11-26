@@ -53,6 +53,9 @@ struct MetronomeView: View {
         .onChange(of: engine.lastError) { _, error in
             if let error { viewModel.showToast(error) }
         }
+        // 外接鍵盤（母本行 12152，階段 7 補齊）：↑↓ ±1、
+        // PageUp／PageDown ±10 BPM。
+        .metroKeyboardShortcuts(viewModel: viewModel)
         .overlay(alignment: .bottom) {
             if let toast = viewModel.toast {
                 Text(L10n.t(toast))

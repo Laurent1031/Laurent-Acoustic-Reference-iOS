@@ -8,6 +8,11 @@ import WidgetKit
 enum AppMode: String, Codable, Sendable {
     case tuner
     case metronome
+    /// 同屏（母本 mode "dual"，頂欄 btnModeDual，行 5209）：
+    /// 調音與節拍器雙面板同時在場（各自緊湊形態）。階段 7
+    /// 驗收審計發現前段漏項、就地補齊（DualModeView）；rawValue
+    /// 與母本 settings.mode 的 "dual" 一致，備份匯入直通。
+    case dual
 }
 
 /// 主顯示音名模式（母本 profile.pitchMode，行 6223）：written 記譜／
@@ -193,6 +198,12 @@ final class AppStore: ObservableObject {
     /// 上次值）；非 nil 時 ContentView 啟動以此播種 ViewModel
     /// （對齊母本啟動套用 profile 默認的語義）。
     @Published var metronomeDefault: MetronomeSettings? = nil { didSet { persist() } }
+
+    /// 待確認的備份匯入計劃（階段 8）：檔案選取／分享表單入的
+    /// 備份先組裝成 plan 掛在此處，ContentView 以 sheet 呈現
+    /// 確認畫面，用戶按下匯入才 applyImport；不落盤（AppStateFile
+    /// 不含此欄，persist 的顯式組裝天然不寫它）。
+    @Published var pendingImportPlan: BackupImporter.ImportPlan?
 
     /// 選樂器脈衝：每次 selectInstrument 呼叫 +1（含同名重選——
     /// 母本 selectInstrument 連重選也清鎖定與軌跡，行 8485）。

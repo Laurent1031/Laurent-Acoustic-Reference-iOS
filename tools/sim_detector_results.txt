@@ -1,0 +1,30 @@
+=== A. Pure sine, reference pitches (N=4096, bounds 100-1500) ===
+sine 440.0 Hz                                frames= 20 rej=  0 med= -0.000c p95|e|= 0.004c max|e|= 0.004c
+sine 442.0 Hz                                frames= 20 rej=  0 med= -0.001c p95|e|= 0.001c max|e|= 0.001c
+=== B. Harmonic tones across range ===
+harmonic 110.00 (A2, N=8192, b 80-600)       frames= 21 rej=  0 med= +0.000c p95|e|= 0.001c max|e|= 0.001c
+harmonic 196.00 (G3, N=4096, b 100-1500)     frames= 20 rej=  0 med= +0.000c p95|e|= 0.005c max|e|= 0.005c
+harmonic 220.00 (A3)                         frames= 20 rej=  0 med= +0.001c p95|e|= 0.004c max|e|= 0.004c
+harmonic 440.00 (A4)                         frames= 20 rej=  0 med= +0.005c p95|e|= 0.007c max|e|= 0.007c
+harmonic 880.00 (A5)                         frames= 20 rej=  0 med= -0.025c p95|e|= 0.030c max|e|= 0.031c
+harmonic 1046.50 (C6)                        frames= 20 rej=  0 med= -0.062c p95|e|= 0.076c max|e|= 0.087c
+harmonic 55.00 (A1, N=16384, b 32-300)       frames= 41 rej=  0 med= -0.000c p95|e|= 0.000c max|e|= 0.000c
+harmonic 1567.98 (G6, N=4096, b 200-3000)    frames= 20 rej=  0 med= -0.274c p95|e|= 0.291c max|e|= 0.293c
+=== C. Known detune (measure the detune itself) ===
+harmonic 440 +5c                             frames= 20 rej=  0 med= -0.006c p95|e|= 0.013c max|e|= 0.016c
+harmonic 440 +10c                            frames= 20 rej=  0 med= +0.003c p95|e|= 0.004c max|e|= 0.004c
+harmonic 440 -7c                             frames= 20 rej=  0 med= -0.002c p95|e|= 0.005c max|e|= 0.006c
+harmonic 440 +25c                            frames= 20 rej=  0 med= -0.002c p95|e|= 0.004c max|e|= 0.004c
+=== D. Noise (SNR on harmonic 440) ===
+harmonic 440 + noise 20 dB SNR               frames= 20 rej=  0 med= -0.141c p95|e|= 0.478c max|e|= 0.510c
+harmonic 440 + noise 10 dB SNR               frames= 20 rej=  0 med= +0.503c p95|e|= 3.465c max|e|= 4.305c
+=== E. Strong 2nd harmonic / odd-harmonic (octave guard) ===
+H2>H1 (0.5,1.0,0.3) 220                      frames= 20 rej=  0 med= +0.000c p95|e|= 0.003c max|e|= 0.003c
+clarinet odd-only 233.08                     frames= 20 rej=  0 med= +0.000c p95|e|= 0.004c max|e|= 0.004c
+=== F. Hard clipping (ff overload, peak=1.0 clip 0.75) ===
+clipped harmonic 196                         frames= 20 rej=  0 med= -0.002c p95|e|= 0.009c max|e|= 0.009c
+clipped sine 440                             frames= 20 rej=  0 med= +0.009c p95|e|= 0.011c max|e|= 0.011c
+=== G. Vibrato tracking (440 +-35c @ 5.5 Hz, per-frame vs instantaneous) ===
+vibrato frames=53 med=+0.94c p95|e|=10.81c max|e|=10.90c (window smearing expected: window spans 85 ms of a 182 ms vibrato period)
+=== H. Quiet pp tone near gate (RMS ~0.012, gate mid 0.009) ===
+quiet harmonic 440 (rms~0.012)               frames= 20 rej=  0 med= +0.005c p95|e|= 0.007c max|e|= 0.007c

@@ -2541,7 +2541,13 @@
       "频闪": "Stroboskop",
       "高": "Hoch",
       "麦克风权限被拒绝，请到系统设置开启": "Mikrofonzugriff verweigert — in den Einstellungen aktivieren",
-      "默认 A4": "Standard-A4"
+      "默认 A4": "Standard-A4",
+      "确认导入": "Import bestätigen",
+      "将汇入的内容": "Wird importiert",
+      "未随备份汇入": "Nicht übernommen",
+      "注意事项": "Hinweise",
+      "备份文件无法识别，请确认选择的是网页版导出的备份": "Backup-Datei nicht erkannt. Bitte ein aus der Webversion exportiertes Backup wählen.",
+      "选择备份文件": "Backup-Datei wählen"
     },
     "en": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics unavailable (system vibration fallback)",
@@ -2636,7 +2642,13 @@
       "频闪": "Strobe",
       "高": "High",
       "麦克风权限被拒绝，请到系统设置开启": "Microphone access denied — enable it in Settings",
-      "默认 A4": "Default A4"
+      "默认 A4": "Default A4",
+      "确认导入": "Confirm Import",
+      "将汇入的内容": "Will be imported",
+      "未随备份汇入": "Not carried over",
+      "注意事项": "Notes",
+      "备份文件无法识别，请确认选择的是网页版导出的备份": "Unrecognized backup file. Please choose a backup exported from the web version.",
+      "选择备份文件": "Choose Backup File"
     },
     "fr": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics indisponible (vibration système)",
@@ -2731,7 +2743,13 @@
       "频闪": "Stroboscope",
       "高": "Haut",
       "麦克风权限被拒绝，请到系统设置开启": "Micro désactivé — activez-le dans Réglages",
-      "默认 A4": "A4 par défaut"
+      "默认 A4": "A4 par défaut",
+      "确认导入": "Confirmer l'import",
+      "将汇入的内容": "Contenu à importer",
+      "未随备份汇入": "Non repris",
+      "注意事项": "Remarques",
+      "备份文件无法识别，请确认选择的是网页版导出的备份": "Fichier de sauvegarde non reconnu. Veuillez choisir une sauvegarde exportée depuis la version Web.",
+      "选择备份文件": "Choisir le fichier de sauvegarde"
     },
     "ja": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics 利用不可（システム振動にフォールバック）",
@@ -2826,7 +2844,13 @@
       "频闪": "ストロボ",
       "高": "高",
       "麦克风权限被拒绝，请到系统设置开启": "マイクの許可が拒否されました。設定で有効にしてください",
-      "默认 A4": "既定のA4"
+      "默认 A4": "既定のA4",
+      "确认导入": "インポートを確認",
+      "将汇入的内容": "インポートされる内容",
+      "未随备份汇入": "引き継がれない項目",
+      "注意事项": "注意事項",
+      "备份文件无法识别，请确认选择的是网页版导出的备份": "バックアップファイルを認識できません。Web版からエクスポートしたバックアップを選択してください。",
+      "选择备份文件": "バックアップファイルを選択"
     },
     "ko": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics 사용 불가(시스템 진동으로 대체)",
@@ -2921,7 +2945,13 @@
       "频闪": "스트로브",
       "高": "높음",
       "麦克风权限被拒绝，请到系统设置开启": "마이크 권한이 거부되었습니다. 설정에서 켜주세요",
-      "默认 A4": "기본 A4"
+      "默认 A4": "기본 A4",
+      "确认导入": "가져오기 확인",
+      "将汇入的内容": "가져올 내용",
+      "未随备份汇入": "가져오지 않는 항목",
+      "注意事项": "주의 사항",
+      "备份文件无法识别，请确认选择的是网页版导出的备份": "백업 파일을 인식할 수 없습니다. 웹 버전에서 내보낸 백업을 선택하세요.",
+      "选择备份文件": "백업 파일 선택"
     },
     "ru": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics недоступен (системная вибрация)",
@@ -3016,7 +3046,13 @@
       "频闪": "Стробоскоп",
       "高": "Высокий",
       "麦克风权限被拒绝，请到系统设置开启": "Доступ к микрофону запрещён — включите в Настройках",
-      "默认 A4": "A4 по умолчанию"
+      "默认 A4": "A4 по умолчанию",
+      "确认导入": "Подтвердить импорт",
+      "将汇入的内容": "Будет импортировано",
+      "未随备份汇入": "Не переносится",
+      "注意事项": "Примечания",
+      "备份文件无法识别，请确认选择的是网页版导出的备份": "Файл резервной копии не распознан. Выберите копию, экспортированную из веб-версии.",
+      "选择备份文件": "Выбрать файл копии"
     },
     "zh-TW": {
       "Core Haptics 不可用（降级为系统震动）": "Core Haptics 不可用（降級為系統震動）",
@@ -3111,7 +3147,13 @@
       "频闪": "頻閃",
       "高": "高",
       "麦克风权限被拒绝，请到系统设置开启": "麥克風權限被拒絕，請到系統設定開啟",
-      "默认 A4": "預設 A4"
+      "默认 A4": "預設 A4",
+      "确认导入": "確認匯入",
+      "将汇入的内容": "將匯入的內容",
+      "未随备份汇入": "未隨備份匯入",
+      "注意事项": "注意事項",
+      "备份文件无法识别，请确认选择的是网页版导出的备份": "備份文件無法識別，請確認選擇的是網頁版導出的備份",
+      "选择备份文件": "選擇備份文件"
     }
   }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 設定兩面（階段 5），入口在 ContentView 頂欄（比照母本頂欄的
 /// 「偏好」「设置」兩鈕與兩張頂部錨定 sheet）：
@@ -23,7 +24,7 @@ import SwiftUI
 // MARK: - 共用組件
 
 /// 設定分組卡（玻璃面＋組內分隔線）。
-private struct SettingsGroup<Content: View>: View {
+struct SettingsGroup<Content: View>: View {
     let theme: TunerTheme
     let glassOpacity: Int
     @ViewBuilder var content: () -> Content
@@ -40,7 +41,7 @@ private struct SettingsGroup<Content: View>: View {
 }
 
 /// 標籤＋副標（母本 .setting-label/.setting-sub）。
-private struct SettingsLabel: View {
+struct SettingsLabel: View {
     let theme: TunerTheme
     let title: String
     var sub: String? = nil
@@ -358,6 +359,11 @@ struct SystemSettingsView: View {
     @ObservedObject var metronomeViewModel: MetronomeViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    /// 備份匯入（階段 8）：檔案選取器與錯誤提示的本地狀態；
+    /// plan 組裝成功後掛 store.pendingImportPlan，由根視圖的
+    /// 確認 sheet 接手（本 sheet 關閉後仍能呈現）。
+    @State private var showBackupImporter = false
+    @State private var backupImportError = false
 
     var body: some View {
         let theme = TunerTheme.resolve(preference: store.themePreference,
@@ -372,6 +378,7 @@ struct SystemSettingsView: View {
                         feedbackGroup(theme: theme)
                         bluetoothGroup(theme: theme)
                         screenOnGroup(theme: theme)
+                        backupGroup(theme: theme)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -386,6 +393,49 @@ struct SystemSettingsView: View {
             }
         }
         .presentationDetents([.large])
+        .fileImporter(isPresented: $showBackupImporter,
+                      allowedContentTypes: [.json],
+                      allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                switch BackupFileAccess.loadPlan(from: url) {
+                case .success(let plan):
+                    // 先關本 sheet，待其退場後再掛 plan 觸發根視圖
+                    // 的確認 sheet，避免兩 sheet 同帧競態被吞。
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        store.pendingImportPlan = plan
+                    }
+                case .failure:
+                    backupImportError = true
+                }
+            case .failure:
+                backupImportError = true
+            }
+        }
+        .alert(L10n.t("备份文件无法识别，请确认选择的是网页版导出的备份"),
+               isPresented: $backupImportError) {
+            Button(L10n.t("关闭"), role: .cancel) {}
+        }
+    }
+
+    // MARK: 數據備份（階段 8：網頁版備份匯入）
+
+    private func backupGroup(theme: TunerTheme) -> some View {
+        SettingsGroup(theme: theme, glassOpacity: store.glassOpacity) {
+            SettingsLabel(theme: theme,
+                          title: L10n.t("数据备份 · Backup"),
+                          sub: L10n.t("导出自订乐器、收藏与全部设置，换机或清数据后可导入恢复"))
+            Button {
+                showBackupImporter = true
+            } label: {
+                Text(L10n.t("选择备份文件"))
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(theme.accent)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     // MARK: 語言

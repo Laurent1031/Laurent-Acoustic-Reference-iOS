@@ -86,6 +86,12 @@ struct ContentView: View {
                     .opacity(mode == .metronome ? 1 : 0)
                     .allowsHitTesting(mode == .metronome)
                     .accessibilityHidden(mode != .metronome)
+                DualModeView(engine: engine, store: store,
+                             drone: droneEngine,
+                             metronomeViewModel: metronomeViewModel)
+                    .opacity(mode == .dual ? 1 : 0)
+                    .allowsHitTesting(mode == .dual)
+                    .accessibilityHidden(mode != .dual)
             }
         }
         .overlay(alignment: .bottom) {
@@ -136,8 +142,22 @@ struct ContentView: View {
         }
         // 小組件深連結（階段 6）：laurent-acoustic://tuner／
         // metronome／metronome/start（切頁並直接開始）。
+        // 備份分享入（階段 8）：檔案 App／分享表單送入的 .json
+        // 檔案 URL → 組裝 plan 掛 store，確認 sheet 隨之呈現；
+        // 組裝失敗靜默忽略（設定頁的檔案選取路徑有完整錯誤提示）。
         .onOpenURL { url in
-            handleDeepLink(url)
+            if url.isFileURL {
+                if case .success(let plan) = BackupFileAccess.loadPlan(from: url) {
+                    store.pendingImportPlan = plan
+                }
+            } else {
+                handleDeepLink(url)
+            }
+        }
+        // 備份匯入確認（階段 8）：兩個入口（設定頁選檔／分享入）
+        // 共用此 sheet；確認才套用、取消零副作用。
+        .sheet(item: $store.pendingImportPlan) { plan in
+            BackupImportSheet(store: store, plan: plan)
         }
         // 語言唯一真源在 store；變更單向同步進 L10n（所有
         // @ObservedObject store 的視圖隨 @Published 變更重繪，
@@ -149,7 +169,7 @@ struct ContentView: View {
         // 模式時啟動（啟動落在調音由 onAppear 處理；調音頁
         // 點按任意處由 TunerView 的手勢處理）。
         .onChange(of: store.appMode) { _, newMode in
-            if newMode == .tuner { startMicIfAutoEnabled() }
+            if newMode != .metronome { startMicIfAutoEnabled() }
         }
         // store → 引擎單向同步（store 為唯一真源）。
         .onChange(of: store.tunerSettings) { _, newSettings in
@@ -283,6 +303,9 @@ struct ContentView: View {
         HStack(spacing: 2) {
             segmentButton(mode: .tuner, title: L10n.t("调音"),
                           symbol: "tuningfork", theme: theme,
+                          showsLabel: showsLabels)
+            segmentButton(mode: .dual, title: L10n.t("同屏"),
+                          symbol: "rectangle.split.2x1", theme: theme,
                           showsLabel: showsLabels)
             segmentButton(mode: .metronome, title: L10n.t("节拍"),
                           symbol: "metronome", theme: theme,
@@ -429,7 +452,7 @@ struct ContentView: View {
     /// permissionDenied 狀態，調音頁顯示提示）。關時全不觸發
     /// （母本預設關，零回退）。
     private func startMicIfAutoEnabled() {
-        guard store.autoMicOnEnter, store.appMode == .tuner,
+        guard store.autoMicOnEnter, store.appMode != .metronome,
               !engine.isRunning else { return }
         Task { await engine.start() }
     }
