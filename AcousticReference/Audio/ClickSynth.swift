@@ -117,7 +117,7 @@ enum ClickSynth {
         case .woodblock:
             // 母本：sine f1 ＋ sine 1.48f1（g2 包絡 0.32→0.01@18ms），
             // 外加敲擊噪聲（bandpass f1×2.2、Q 3.0、無 room send）。
-            let f1 = isSub ? 680 : (level == 3 ? 988 : level == 2 ? 830 : 740)
+            let f1: Double = isSub ? 680 : (level == 3 ? 988 : level == 2 ? 830 : 740)
             let sig = tonePair(f0: f1, ratio: 1.48,
                                harmonicGain: { t in envExpHold(t: t, from: 0.32, to: 0.01, dur: 0.018) },
                                seconds: 0.048, sr: sr) { t in
