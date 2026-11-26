@@ -347,10 +347,10 @@ struct MetronomeView: View {
 
     private func steppersRow(theme: TunerTheme) -> some View {
         HStack(spacing: 8) {
-            HoldRepeatButton(title: "−5") { viewModel.stepBpm(-5) }
-            HoldRepeatButton(title: "−1") { viewModel.stepBpm(-1) }
-            HoldRepeatButton(title: "+1") { viewModel.stepBpm(1) }
-            HoldRepeatButton(title: "+5") { viewModel.stepBpm(5) }
+            MetronomeHoldRepeatButton(title: "−5") { viewModel.stepBpm(-5) }
+            MetronomeHoldRepeatButton(title: "−1") { viewModel.stepBpm(-1) }
+            MetronomeHoldRepeatButton(title: "+1") { viewModel.stepBpm(1) }
+            MetronomeHoldRepeatButton(title: "+5") { viewModel.stepBpm(5) }
         }
     }
 
@@ -796,7 +796,7 @@ private final class HoldRepeater: ObservableObject {
 }
 
 /// 長按連調步進鈕（母本 addHoldRepeat）。
-private struct HoldRepeatButton: View {
+private struct MetronomeHoldRepeatButton: View {
     let title: String
     let action: () -> Void
     @StateObject private var repeater = HoldRepeater()
