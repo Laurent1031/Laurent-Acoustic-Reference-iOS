@@ -2,14 +2,8 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        ZStack {
-            Color.black
-                .ignoresSafeArea()
-            Text("LAURENT")
-                .font(.system(size: 34, weight: .bold, design: .default))
-                .tracking(10)
-                .foregroundStyle(.white)
-        }
+        // 階段 1：最小驗證介面（階段 2 起換成錶盤主畫面）。
+        TunerDebugView()
     }
 }
 
