@@ -9,9 +9,12 @@ import SwiftUI
 final class HoldRepeatController: ObservableObject {
     private var task: Task<Void, Never>?
     private var fired = false
+    /// 按壓中（供 label 亮斑回饋，母本 .glass-press）。
+    @Published private(set) var isPressing = false
 
     func pressBegan(action: @escaping () -> Void) {
         guard task == nil else { return }
+        isPressing = true
         fired = false
         task = Task { @MainActor [weak self] in
             do {
@@ -29,6 +32,7 @@ final class HoldRepeatController: ObservableObject {
     }
 
     func pressEnded(action: () -> Void) {
+        isPressing = false
         task?.cancel()
         task = nil
         if !fired { action() }
@@ -44,11 +48,20 @@ struct HoldRepeatButton<Label: View>: View {
 
     var body: some View {
         label()
+            .brightness(repeater.isPressing ? 0.10 : 0)
+            .animation(.easeOut(duration: 0.25), value: repeater.isPressing)
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in repeater.pressBegan(action: action) }
-                    .onEnded { _ in repeater.pressEnded(action: action) }
-            )
+            // 同 MetronomeHoldRepeatButton：系統長按識別器
+            // pressing 回調驅動（DragGesture 版實機不觸發）。
+            .onLongPressGesture(minimumDuration: 0.34, maximumDistance: 12,
+                                pressing: { pressing in
+                                    if pressing {
+                                        repeater.pressBegan(action: action)
+                                    } else {
+                                        repeater.pressEnded(action: action)
+                                    }
+                                },
+                                perform: {})
+            .accessibilityAddTraits(.isButton)
     }
 }

@@ -117,7 +117,7 @@ struct TunerTheme {
         beatStrongGradient: [Color(hex: 0x3CE068), Color(hex: 0x28B850)],
         beatNormalGradient: [Color(hex: 0x2B95FF), Color(hex: 0x0A84FF)],
         countInGradient: [Color(hex: 0xFFB340), Color(hex: 0xFF9F0A)],
-        faderFillColors: [Color.white, Color(hex: 0xE9EFFC), Color(hex: 0xCCDAF6)],
+        faderFillColors: [Color.white, Color.white, Color(hex: 0xEDF1F9)],
         faderGlyphCovered: Color(hex: 0x0B4FD6),
         faderGlyphUncovered: .white,
         favoriteStar: Color(hex: 0xFFD60A)
@@ -505,5 +505,21 @@ extension Color {
             green: Double((hex >> 8) & 0xFF) / 255,
             blue: Double(hex & 0xFF) / 255
         )
+    }
+}
+
+/// 全域按壓回饋（母本 .glass-press）：按下 brightness
+/// 1.12＋saturate 1.12、0.25 s 緩動。原生多數按鍵此前用
+/// .plain、無任何按壓回饋，按下如石沉大海——Laurent 實機
+/// 「按不到或沒用」的一半是這個。此 style 只改亮度/飽和，
+/// 不動版面；逐處以 .plain 換用（玻璃鏡片內部按鍵除外，
+/// 其回饋由鏡片動畫本身給出）。
+struct GlassPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .brightness(configuration.isPressed ? 0.10 : 0)
+            .saturation(configuration.isPressed ? 1.12 : 1)
+            .animation(.easeOut(duration: 0.25),
+                       value: configuration.isPressed)
     }
 }

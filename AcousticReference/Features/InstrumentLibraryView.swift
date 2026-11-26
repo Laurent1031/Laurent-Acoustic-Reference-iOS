@@ -112,7 +112,7 @@ struct InstrumentLibraryView: View {
                                                     bareUnselected: true)
                             }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GlassPressButtonStyle())
                 }
             }
             .padding(3)
@@ -138,7 +138,7 @@ struct InstrumentLibraryView: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(theme.textMuted)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
             }
         }
         .padding(.horizontal, 12)
@@ -206,7 +206,7 @@ struct InstrumentLibraryView: View {
                 .frame(height: 44)
                 .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassPressButtonStyle())
     }
 }
 
@@ -242,7 +242,7 @@ private struct InstrumentCard: View {
                             .foregroundStyle(theme.textSecondary)
                             .frame(width: 24, height: 24)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GlassPressButtonStyle())
                     Button { tapDelete() } label: {
                         Text(confirmingDelete ? L10n.t("确认删除？") : "✕")
                             .font(.system(size: confirmingDelete ? 10.5 : 11,
@@ -250,7 +250,7 @@ private struct InstrumentCard: View {
                             .foregroundStyle(confirmingDelete ? theme.clipWarning : theme.textSecondary)
                             .frame(height: 24)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GlassPressButtonStyle())
                 }
                 starButton
             }
@@ -294,7 +294,7 @@ private struct InstrumentCard: View {
                 .frame(width: 26, height: 26)
                 .overlay { burstDots }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassPressButtonStyle())
     }
 
     /// 六顆火花：角度 2πi/6＋0.4、距離 20＋(i%2)×6 px、480 ms、
@@ -520,7 +520,7 @@ private struct CustomInstrumentFormView: View {
                             .frame(height: 46)
                             .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GlassPressButtonStyle())
                     Button { save() } label: {
                         Text(editing == nil ? L10n.t("保存自订乐器") : L10n.t("保存修改"))
                             .font(.system(size: 15, weight: .semibold))
@@ -530,7 +530,7 @@ private struct CustomInstrumentFormView: View {
                             .background(theme.accent,
                                         in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GlassPressButtonStyle())
                 }
             }
             .padding(.horizontal, 16)

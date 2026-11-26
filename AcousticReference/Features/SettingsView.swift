@@ -209,7 +209,7 @@ struct PreferencesView: View {
                             .foregroundStyle(theme.textPrimary)
                             .frame(height: 32)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GlassPressButtonStyle())
                     HoldRepeatButton(action: { stepDraftA4(0.5) }, label: {
                         Text("+")
                             .font(.system(size: 15, weight: .semibold))
@@ -314,7 +314,7 @@ struct PreferencesView: View {
                 }
                 .font(.system(size: 13.5, weight: .semibold))
                 .foregroundStyle(theme.accent)
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
             }
         }
     }
@@ -428,7 +428,7 @@ struct SystemSettingsView: View {
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(theme.accent)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
             Divider()
             if let backupExportURL {
                 ShareLink(item: backupExportURL) {
@@ -444,7 +444,7 @@ struct SystemSettingsView: View {
                         .font(.system(size: 13.5, weight: .semibold))
                         .foregroundStyle(theme.accent)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
             }
         }
     }
@@ -542,7 +542,7 @@ struct SystemSettingsView: View {
                             }
                         }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
                 .accessibilityLabel(String(format: "#%06X", hex))
             }
         }
@@ -585,7 +585,7 @@ struct SystemSettingsView: View {
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(theme.clipWarning)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
         }
     }
 

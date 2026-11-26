@@ -143,7 +143,7 @@ struct MetronomeView: View {
                     }
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
 
             Spacer()
 
@@ -157,7 +157,7 @@ struct MetronomeView: View {
                     .frame(height: 34)
                     .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
         }
     }
 
@@ -334,47 +334,105 @@ struct MetronomeView: View {
     // MARK: - 推子（母本 .fader：相對拖動、吸附、橡皮筋、spring 填充）
 
     private func faderView(theme: TunerTheme, height: CGFloat) -> some View {
-        let fillH = max(14, height * CGFloat(viewModel.faderRatio))
+        // 【對照母本審計・Laurent 點名】母本推子是 iOS 控制
+        // 中心式膠囊（.bpm-fader-rail 注解原文）：全圓膠囊
+        // 軌（寬 57）、上下限籤在軌的上下同軸、亮填充自底
+        // 升起＋深度內影、字形隨填充覆蓋變色。舊原生是寬 46
+        // 圓角 14 的矩形軌＋籤列在左側，形狀與位置皆不符。
+        let railH = max(76, height - 36)
+        let fillH = max(14, railH * CGFloat(viewModel.faderRatio))
         let glyphCovered = fillH > 23
+        let adjusting = faderStartBpm != nil
         let rubber = min(faderRubber, 60)
         let sx = 1 + (rubber / 60) * 0.07
         let sy = 1 + (rubber / 60) * 0.025
-        return HStack(alignment: .center, spacing: 5) {
-            VStack {
-                Text("\(viewModel.settings.bpmMaxNow)")
-                    .font(.system(size: 10, weight: .semibold))
-                Spacer()
-                Text("\(MetronomeSettings.bpmMin)")
-                    .font(.system(size: 10, weight: .semibold))
-            }
-            .foregroundStyle(theme.textMuted)
-            .frame(height: height)
+        let dark = theme.isDark
+        return VStack(spacing: 4) {
+            Text("\(viewModel.settings.bpmMaxNow)")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.5)
+                .foregroundStyle(theme.textSecondary)
+                .frame(height: 14)
 
             ZStack(alignment: .bottom) {
-                GlassSurface(shape: RoundedRectangle(cornerRadius: 14, style: .continuous),
-                             theme: theme, glassOpacity: store.glassOpacity)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(theme.isDark ? Color.white.opacity(0.18)
-                                              : Color.black.opacity(0.10),
-                                          lineWidth: 1)
-                    }
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                Capsule()
+                    .fill(LinearGradient(
+                        colors: dark
+                            ? [Color.white.opacity(0.20), Color.white.opacity(0.09)]
+                            : [Color(red: 120 / 255, green: 120 / 255,
+                                     blue: 128 / 255).opacity(0.20),
+                               Color(red: 120 / 255, green: 120 / 255,
+                                     blue: 128 / 255).opacity(0.20)],
+                        startPoint: .top, endPoint: .bottom))
+
+                // 亮填充（母本 .bpm-fader-fill）：頂邊平直、
+                // 底部隨膠囊裁切；漸層白為主、底緣淡藍灰，
+                // 深度靠三層內影（頂緣高光／頂內側陰影／
+                // 底緣藍調）。
+                Rectangle()
                     .fill(LinearGradient(
                         colors: theme.faderFillColors,
                         startPoint: .top, endPoint: .bottom))
                     .frame(height: fillH)
+                    .overlay(alignment: .top) {
+                        VStack(spacing: 0) {
+                            Rectangle()
+                                .fill(Color.white)
+                                .frame(height: 1)
+                            LinearGradient(
+                                colors: [Color.black.opacity(0.16), .clear],
+                                startPoint: .top, endPoint: .bottom)
+                                .frame(height: 12)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                    .overlay(alignment: .bottom) {
+                        LinearGradient(
+                            colors: [.clear, Color(hex: 0x0A3C8C).opacity(0.10)],
+                            startPoint: .top, endPoint: .bottom)
+                            .frame(height: 16)
+                    }
+                    .shadow(color: .black.opacity(dark ? 0 : 0.06),
+                            radius: 6, x: 0, y: -2)
+
                 Image(systemName: "gauge.with.dots.needle.33percent")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 23, weight: .semibold))
                     .foregroundStyle(glyphCovered ? theme.faderGlyphCovered
                                      : theme.faderGlyphUncovered)
                     .padding(.bottom, 12)
             }
-            .frame(width: 46, height: height)
+            .frame(width: 57, height: railH)
+            .clipShape(Capsule())
+            .overlay {
+                Capsule()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(dark ? 0.35 : 0.65),
+                                     Color.white.opacity(dark ? 0.08 : 0.0)],
+                            startPoint: .top, endPoint: .center),
+                        lineWidth: 1)
+            }
+            .overlay {
+                Capsule()
+                    .strokeBorder(dark ? Color.white.opacity(0.26)
+                                       : Color.black.opacity(0.06),
+                                  lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(adjusting ? 0.42 : (dark ? 0.28 : 0.10)),
+                    radius: adjusting ? 22 : 15, x: 0, y: adjusting ? 20 : 12)
+            .brightness(adjusting ? 0.05 : 0)
             .scaleEffect(x: sx, y: sy)
+
+            Text("\(MetronomeSettings.bpmMin)")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.5)
+                .foregroundStyle(theme.textSecondary)
+                .frame(height: 14)
         }
         .contentShape(Rectangle())
-        .highPriorityGesture(faderDrag(railHeight: height))
+        .highPriorityGesture(faderDrag(railHeight: railH))
     }
 
     // MARK: - 步進鈕與編輯器
@@ -402,10 +460,10 @@ struct MetronomeView: View {
                 .foregroundStyle(theme.textMuted)
             Spacer()
             Button(L10n.t("取消")) { showEditor = false }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
                 .foregroundStyle(theme.textSecondary)
             Button(L10n.t("确定")) { commitEditor() }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(theme.accent)
         }
@@ -449,7 +507,7 @@ struct MetronomeView: View {
                                                     glassOpacity: store.glassOpacity)
                             }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GlassPressButtonStyle())
                 }
             }
         }
@@ -498,7 +556,7 @@ struct MetronomeView: View {
                                   value: viewModel.currentGrouping
                                     .map(String.init).joined(separator: "+"))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GlassPressButtonStyle())
                 }
                 Button {
                     showGapClick = true
@@ -508,7 +566,7 @@ struct MetronomeView: View {
                                 ? L10n.t("发声") + " \(viewModel.settings.gapSoundBars) · " + L10n.t("静音") + " \(viewModel.settings.gapSilentBars)"
                                 : L10n.t("关闭"))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
             }
             wideMenuRow(theme: theme, title: L10n.t("预设"),
                         value: viewModel.activePreset.map {
@@ -590,7 +648,7 @@ struct MetronomeView: View {
                     .foregroundStyle(theme.textMuted)
                     .frame(width: 24, height: 24)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
             .accessibilityLabel(L10n.t("重置重音"))
         }
     }
@@ -686,7 +744,7 @@ struct MetronomeView: View {
             .frame(height: 52)
             .brightness(viewModel.isPlaying && breathing ? 0.09 : 0)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassPressButtonStyle())
         .onChange(of: viewModel.isPlaying) { _, playing in
             // 母本 metroRunBreathe：1.5 s ease-in-out 往復，僅運行中。
             // 以 withAnimation 啟停，避免 repeatForever 在回程殘留。
@@ -718,7 +776,7 @@ struct MetronomeView: View {
                 }
                 guard let start = dialStartBpm else { return }
                 let dy = dialStartY - value.location.y
-                viewModel.setBpm(start + Int((Double(dy) * 0.55).rounded()))
+                viewModel.setBpmFromDrag(Double(start) + Double(dy) * 0.55)
                 viewModel.dragTickBpm(viewModel.settings.bpm)
             }
             .onEnded { _ in
@@ -749,9 +807,9 @@ struct MetronomeView: View {
                 }
                 switch numMode {
                 case .scrub:
-                    viewModel.setBpm(start + Int((Double(dx) * 0.25).rounded()))
+                    viewModel.setBpmFromDrag(Double(start) + Double(dx) * 0.25)
                 case .dial:
-                    viewModel.setBpm(start + Int((Double(-dy) * 0.55).rounded()))
+                    viewModel.setBpmFromDrag(Double(start) + Double(-dy) * 0.55)
                 case .undecided:
                     break
                 }
@@ -807,7 +865,7 @@ struct MetronomeView: View {
                     HapticsEngine.shared.tap(milliseconds: 8)
                 }
                 faderSnapped = snappedNow
-                viewModel.setBpm(Int(target.rounded()))
+                viewModel.setBpmFromDrag(target)
                 viewModel.dragTickBpm(viewModel.settings.bpm)
             }
             .onEnded { _ in
@@ -827,9 +885,12 @@ struct MetronomeView: View {
 private final class HoldRepeater: ObservableObject {
     private var task: Task<Void, Never>?
     private var fired = false
+    /// 按壓中（供按壓亮斑回饋，母本 .glass-press）。
+    @Published private(set) var isPressing = false
 
     func pressBegan(action: @escaping () -> Void) {
         guard task == nil else { return }
+        isPressing = true
         fired = false
         task = Task { @MainActor [weak self] in
             do {
@@ -847,6 +908,7 @@ private final class HoldRepeater: ObservableObject {
     }
 
     func pressEnded(action: () -> Void) {
+        isPressing = false
         task?.cancel()
         task = nil
         if !fired { action() }
@@ -868,12 +930,24 @@ private struct MetronomeHoldRepeatButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 40)
             .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous), theme: theme, glassOpacity: glassOpacity)
+            .brightness(repeater.isPressing ? 0.10 : 0)
+            .animation(.easeOut(duration: 0.25), value: repeater.isPressing)
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in repeater.pressBegan(action: action) }
-                    .onEnded { _ in repeater.pressEnded(action: action) }
-            )
+            // 【對照母本審計】改用系統長按識別器的 pressing
+            // 回調驅動連調：舊版 DragGesture(minimumDistance: 0)
+            // 在實機上長按不觸發連調（Laurent 點名）；pressing
+            // 於觸下即回 true、抬手回 false，與 HoldRepeater
+            // 的 340/62 時序正好對接，單擊由 pressEnded 補發。
+            .onLongPressGesture(minimumDuration: 0.34, maximumDistance: 12,
+                                pressing: { pressing in
+                                    if pressing {
+                                        repeater.pressBegan(action: action)
+                                    } else {
+                                        repeater.pressEnded(action: action)
+                                    }
+                                },
+                                perform: {})
+            .accessibilityAddTraits(.isButton)
     }
 }
 

@@ -90,6 +90,11 @@ final class MetronomeViewModel: ObservableObject {
     @Published private(set) var faderRatio: Double = 0
     /// 轉盤／推子／數字拖動中（里程表與填充直跟、繞過 spring）。
     var bpmAdjusting = false
+    /// 拖動中的連續 BPM（未取整）：母本拖動時數字條與填充
+    /// 皆 1:1 直跟連續值（.bpm-live 殺過渡），取整值只供
+    /// settings／引擎；舊原生把連續值先取整再餵里程表，
+    /// 數字逐格跳動、與母本滾動感不同（Laurent 實機點名）。
+    private var liveAdjustValue: Double?
 
     var capsuleVisible: Bool { isPlaying || capsulePaused }
     /// 背景膠囊文字：以 L10n 片段組裝（節拍器運行中／已暫停
@@ -258,8 +263,19 @@ final class MetronomeViewModel: ObservableObject {
 
     func beginAdjust() { bpmAdjusting = true }
     func endAdjust() {
+        liveAdjustValue = nil
         bpmAdjusting = false
         syncBpmRender()
+    }
+
+    /// 拖動路徑專用：連續值餵里程表／填充（1:1 直跟），
+    /// 取整值走 setBpm 落 settings（吸附已由呼叫端處理）。
+    func setBpmFromDrag(_ continuous: Double) {
+        liveAdjustValue = continuous
+        setBpm(Int(continuous.rounded()))
+        // setBpm 在值未變時不觸發 render；連續值仍須刷新
+        // 里程表／填充的直跟位置。
+        if bpmAdjusting { syncBpmRender() }
     }
 
     // MARK: - 拍號／細分／音色／重音
@@ -703,7 +719,11 @@ final class MetronomeViewModel: ObservableObject {
     private func syncOdometerTarget() {
         let v = settings.bpm
         if bpmAdjusting {
-            setOdometerImmediate(v)
+            if let live = liveAdjustValue {
+                setOdometerContinuous(live)
+            } else {
+                setOdometerImmediate(v)
+            }
             return
         }
         let dir = v > odoValue ? 1 : (v < odoValue ? -1 : 0)
@@ -730,6 +750,20 @@ final class MetronomeViewModel: ObservableObject {
             odoCols[c].vel = 0
         }
         odoValue = v
+        odoSettled = true
+        publishOdo()
+    }
+
+    /// 拖動直跟：三柱位置 = 連續值的百／十／個位投影
+    /// （publishOdo 取 mod 10），數字隨指尖連續滾動。
+    private func setOdometerContinuous(_ v: Double) {
+        let positions = [v / 100, v / 10, v]
+        for c in 0..<3 {
+            odoCols[c].pos = positions[c]
+            odoCols[c].targetPos = positions[c]
+            odoCols[c].vel = 0
+        }
+        odoValue = settings.bpm
         odoSettled = true
         publishOdo()
     }
@@ -770,7 +804,7 @@ final class MetronomeViewModel: ObservableObject {
 
     private func syncFillTarget() {
         if bpmAdjusting {
-            fillDisp = Double(settings.bpm)
+            fillDisp = liveAdjustValue ?? Double(settings.bpm)
             fillVel = 0
             fillSettled = true
             publishFill()

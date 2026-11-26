@@ -253,7 +253,7 @@ struct ContentView: View {
                         .frame(width: 32, height: 32)
                         .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
                 .foregroundStyle(theme.textSecondary)
                 .accessibilityLabel(L10n.t("排练锁定"))
 
@@ -265,7 +265,7 @@ struct ContentView: View {
                         .frame(width: 32, height: 32)
                         .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
                 .foregroundStyle(theme.textSecondary)
                 .accessibilityLabel(L10n.t("诊断"))
             }
@@ -304,7 +304,7 @@ struct ContentView: View {
                 .frame(height: 32)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassPressButtonStyle())
     }
 
     // MARK: - 防誤觸鎖遮罩（補強段）
@@ -379,7 +379,7 @@ struct ContentView: View {
             }
             .opacity(metronomeViewModel.isPlaying ? 1 : 0.75)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassPressButtonStyle())
     }
 
     // MARK: - 螢幕常亮（母本 Wake Lock 的原生等價）

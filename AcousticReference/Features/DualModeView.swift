@@ -145,7 +145,7 @@ struct DualModeView: View {
                 .glassBackground(in: Capsule(), theme: theme,
                                  glassOpacity: store.glassOpacity)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
         }
     }
 
@@ -215,7 +215,7 @@ struct DualModeView: View {
                         .glassBackground(in: Capsule(), theme: theme,
                                          glassOpacity: store.glassOpacity)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
 
                 Button {
                     vm.togglePlay()
@@ -228,7 +228,7 @@ struct DualModeView: View {
                         .background(vm.isPlaying ? theme.clipWarning : theme.accent,
                                     in: Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
             }
             Spacer(minLength: 0)
         }

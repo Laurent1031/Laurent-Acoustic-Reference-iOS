@@ -264,7 +264,7 @@ struct TunerView: View {
                 .frame(height: 26)
                 .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassPressButtonStyle())
         .accessibilityLabel(L10n.t("进入极简全屏调音"))
     }
 
@@ -285,7 +285,7 @@ struct TunerView: View {
                 .frame(width: 26, height: 26)
                 .glassBackground(in: Circle(), theme: theme, glassOpacity: store.glassOpacity)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassPressButtonStyle())
         .accessibilityLabel(store.performanceMode ? L10n.t("退出演奏态") : L10n.t("演奏态"))
     }
 
@@ -323,7 +323,7 @@ struct TunerView: View {
                 .frame(height: 44)
                 .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
 
             pitchModeSegment(theme: theme)
         }
@@ -384,7 +384,7 @@ struct TunerView: View {
                             .frame(height: 32)
                             .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GlassPressButtonStyle())
                 }
                 .padding(.vertical, 1)
                 .onPreferenceChange(FavChipFrameKey.self) { frames in
@@ -549,7 +549,7 @@ struct TunerView: View {
                     .foregroundStyle(theme.textPrimary)
                     .frame(height: 32)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
             HoldRepeatButton(action: {
                 store.tunerSettings.stepA4(by: 0.5)
                 HapticsEngine.shared.detent()
@@ -638,7 +638,7 @@ struct TunerView: View {
                             Capsule().strokeBorder(theme.accent.opacity(0.35), lineWidth: 1)
                         }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GlassPressButtonStyle())
             }
         }
         .frame(maxWidth: .infinity)
@@ -665,7 +665,7 @@ struct TunerView: View {
                                                     glassOpacity: store.glassOpacity)
                             }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GlassPressButtonStyle())
                 }
             }
             .padding(.vertical, 1)
@@ -830,7 +830,7 @@ struct TunerView: View {
                         value: [chipId: proxy.frame(in: .named("targetStrip"))])
                 })
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassPressButtonStyle())
     }
 
     // MARK: - Row 5：數據卡（母本四格：WRITTEN／CONCERT／CENTS／FREQ）
@@ -896,7 +896,7 @@ struct TunerView: View {
                     .padding(.vertical, 4)
                     .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
             Spacer()
         }
         .frame(height: 24)
@@ -921,7 +921,7 @@ struct TunerView: View {
                 .frame(height: 44)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
 
             Rectangle()
                 .fill(theme.textMuted.opacity(0.25))
@@ -980,7 +980,7 @@ struct TunerView: View {
                     .frame(height: 44)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
         }
         .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
         .overlay {
@@ -1037,7 +1037,7 @@ struct TunerView: View {
                     )
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
         }
     }
 }
