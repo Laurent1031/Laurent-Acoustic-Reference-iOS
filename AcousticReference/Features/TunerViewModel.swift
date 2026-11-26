@@ -90,8 +90,16 @@ private final class DisplayLinkProxy: NSObject {
     weak var owner: TunerViewModel?
 
     @objc func onTick(_ link: CADisplayLink) {
+        // 先在閉包外取值：assumeIsolated 的 @Sendable 閉包若直接捕獲
+        // non-Sendable 的 self（代理）與 link（CADisplayLink），Swift 6
+        // 會報 sending data race。timestamp 是 Double、owner 是
+        // @MainActor 隔離類別，兩者捕獲皆安全（與 AudioEngine 捕獲
+        // @MainActor self 的既定模式一致）。assumeIsolated 同步執行，
+        // timestamp 取的仍是回調當刻的 link.timestamp，語義不變。
+        let timestamp = link.timestamp
+        let owner = self.owner
         MainActor.assumeIsolated {
-            owner?.displayTick(now: link.timestamp)
+            owner?.displayTick(now: timestamp)
         }
     }
 }
