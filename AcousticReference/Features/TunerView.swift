@@ -1009,7 +1009,7 @@ struct TunerView: View {
 
 /// 收藏晶片 frames 匯集（鍵 = 樂器 id，值 = "favBar" 座標 frame）。
 private struct FavChipFrameKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
+    static var defaultValue: [String: CGRect] { [:] }
     static func reduce(value: inout [String: CGRect],
                        nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }
@@ -1018,7 +1018,7 @@ private struct FavChipFrameKey: PreferenceKey {
 
 /// 目標晶片 frames 匯集（鍵 = 晶片 id，值 = "targetStrip" 視口座標 frame）。
 private struct TargetChipFrameKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
+    static var defaultValue: [String: CGRect] { [:] }
     static func reduce(value: inout [String: CGRect],
                        nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }
@@ -1028,7 +1028,7 @@ private struct TargetChipFrameKey: PreferenceKey {
 /// 目標列內容整體 frame（"targetStrip" 座標）：minX 變化即
 /// 內容捲動量，供滑奏／捲動判別。
 private struct TargetContentFrameKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
+    static var defaultValue: CGRect { .zero }
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
         value = nextValue()
     }
