@@ -1038,7 +1038,7 @@ private struct GapClickSheet: View {
                     Text("循環播放：先響若干小節，再靜音若干小節。靜音期間拍點照常顯示，但不出聲、不震動。")
                 }
                 if viewModel.settings.gapEnabled {
-                    Section("循環") {
+                    Section {
                         Stepper(value: Binding(
                             get: { viewModel.settings.gapSoundBars },
                             set: { viewModel.setGapSoundBars($0) }),
@@ -1051,6 +1051,8 @@ private struct GapClickSheet: View {
                                 in: MetronomeSettings.gapBarsRange) {
                             Text("靜音小節 · \(viewModel.settings.gapSilentBars)")
                         }
+                    } header: {
+                        Text("循環")
                     } footer: {
                         Text("預備拍不計入循環；漸速計步包含靜音小節。播放中修改即時生效（循環位置不重置）。")
                     }
