@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 
 /// 音訊會話診斷值（規格書 §3.1：IO buffer 壓低並實測延遲）。
 /// 這裡是系統回報的採集側延遲組成；真正的端到端實測在階段 7 驗收做。
@@ -109,13 +110,20 @@ final class EngineCore: @unchecked Sendable {
                 pcmFormat: target, frameCapacity: buffer.frameLength + 1024)
         else { return nil }
         var error: NSError?
-        var consumed = false
+        // 輸入回調是 @Sendable 閉包，捕獲並修改 var 會觸發並發警告；
+        // 改以 Sendable 的 OSAllocatedUnfairLock<Bool> 承載一次性旗標。
+        // 回調由 convert 同步串行呼叫，旗標語義與原 var 完全相同。
+        let consumed = OSAllocatedUnfairLock(initialState: false)
         let status = converter.convert(to: out, error: &error) { _, outStatus in
-            if consumed {
+            let isFirstCall = consumed.withLock { flag -> Bool in
+                let wasConsumed = flag
+                flag = true
+                return !wasConsumed
+            }
+            guard isFirstCall else {
                 outStatus.pointee = .noDataNow
                 return nil
             }
-            consumed = true
             outStatus.pointee = .haveData
             return buffer
         }
@@ -184,6 +192,31 @@ final class EngineCore: @unchecked Sendable {
     }
 }
 
+/// 通知觀察者代幣的保管袋。
+///
+/// AudioEngine 是 @MainActor 隔離類別，其 deinit 為 nonisolated，
+/// 不得存取隔離的 stored property（否則 Swift 6 編譯錯誤）。故把
+/// 代幣陣列移出 AudioEngine、收進這個非隔離的專責類別：AudioEngine
+/// 釋放時連帶釋放本袋，deinit 在此移除全部觀察者——時機與原本在
+/// AudioEngine.deinit 內移除等價。代幣僅在 MainActor 上註冊，
+/// deinit 只讀自身陣列並呼叫 thread-safe 的 removeObserver，
+/// 無跨隔離域的並發存取。
+private final class SessionObserverBag {
+    private var tokens: [NSObjectProtocol] = []
+
+    var isEmpty: Bool { tokens.isEmpty }
+
+    func add(_ token: NSObjectProtocol) {
+        tokens.append(token)
+    }
+
+    deinit {
+        for token in tokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+}
+
 /// 音訊引擎門面：AVAudioSession 測量模式＋AVAudioEngine 麥克風管線。
 ///
 /// 母本對應：getUserMedia {echoCancellation:false, autoGainControl:false,
@@ -209,16 +242,12 @@ final class AudioEngine: ObservableObject {
 
     private let core: EngineCore
     private var engine: AVAudioEngine?
-    private var observers: [NSObjectProtocol] = []
+    /// 觀察者代幣由專責保管袋持有，本類釋放時代幣隨袋釋放並自動
+    /// 移除觀察者（見 SessionObserverBag）；deinit 不再碰隔離狀態。
+    private let observerBag = SessionObserverBag()
 
     init() {
         core = EngineCore(settings: TunerSettings(), range: .altoSax)
-    }
-
-    deinit {
-        for observer in observers {
-            NotificationCenter.default.removeObserver(observer)
-        }
     }
 
     // MARK: - 啟停
@@ -298,11 +327,11 @@ final class AudioEngine: ObservableObject {
     }
 
     private func registerSessionObservers() {
-        guard observers.isEmpty else { return }
+        guard observerBag.isEmpty else { return }
         let center = NotificationCenter.default
         let session = AVAudioSession.sharedInstance()
 
-        observers.append(center.addObserver(
+        observerBag.add(center.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: session, queue: nil
         ) { [weak self] note in
@@ -326,7 +355,7 @@ final class AudioEngine: ObservableObject {
             }
         })
 
-        observers.append(center.addObserver(
+        observerBag.add(center.addObserver(
             forName: AVAudioSession.mediaServicesWereResetNotification,
             object: nil, queue: nil
         ) { [weak self] _ in
