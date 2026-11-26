@@ -23,6 +23,10 @@ struct PitchReading: Sendable {
     var clarity: Double
     /// 本幀置中 RMS，診斷用。
     var rms: Double
+    /// 頻閃顯示狀態（頻閃主模式段）：由 EngineCore 在 smoother
+    /// 之後以 StrobePhaseTracker 填入；smoother 本身不寫此欄，
+    /// 預設為無訊號（相位 0、角速度 0、可信度 0）。
+    var strobe: StrobeState = StrobeState()
 }
 
 /// 中位數＋阻尼平滑狀態機，逐項對照母本 pitchLoop（行 9577–9600）與

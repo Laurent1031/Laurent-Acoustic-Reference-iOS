@@ -4,7 +4,8 @@ import SwiftUI
 /// （index.html 行 5230 起）：
 /// Row 1 樂器觸發鈕（分類標籤＋樂器名＋調號籤）＋記譜/實音分段；
 /// Row 2 收藏晶片列＋A4 步進器，其下收藏圓點指示（#25）；
-/// Row 3 錶盤＋音名行（唱名籤＋純律主音籤 #24 與主音快選列）；
+/// Row 3 主顯示區（頻閃／錶盤可切換，頻閃主模式段）＋音名行
+/// （唱名籤＋純律主音籤 #24 與主音快選列）；
 /// Row 4 目標音列（古箏調號選擇＋目標晶片橫滑）；
 /// Row 5 四格數據卡＋穩定度徽章；底部 Drone 膠囊＋麥克風主按鈕。
 /// 頂欄（品牌＋分段切換＋診斷入口）在 ContentView 殼，本畫面不含。
@@ -51,18 +52,41 @@ struct TunerView: View {
 
                     favoritesDots(theme: theme)
 
-                    GaugeView(
-                        cents: viewModel.needleCents,
-                        trail1Cents: viewModel.trail1Cents,
-                        trail2Cents: viewModel.trail2Cents,
-                        ghostCents: viewModel.ghostCents,
-                        ghostOpacity: viewModel.ghostOpacity,
-                        micActive: engine.isRunning,
-                        inTune: viewModel.isInTune,
-                        tolerance: engine.settings.toleranceCents,
-                        theme: theme
-                    )
-                    .frame(height: gaugeHeight)
+                    // 主顯示區（頻閃主模式段）：頻閃（預設主模式）
+                    // 與錶盤（輔助）共用同一高度預算，切換鈕浮在
+                    // 顯示區右上角的空白角（兩種顯示在該角皆無
+                    // 內容：錶盤弧線與頻閃外環都不及），不佔列高、
+                    // 不擠壓任何既有列。
+                    ZStack(alignment: .topTrailing) {
+                        if store.tunerDisplayMode == .strobe {
+                            StrobeView(
+                                phase: viewModel.strobePhase,
+                                rate: viewModel.strobeRate,
+                                anchorDate: viewModel.strobeAnchorDate,
+                                confidence: viewModel.strobeConfidence,
+                                micActive: engine.isRunning,
+                                inTune: viewModel.isInTune,
+                                theme: theme
+                            )
+                            .frame(height: gaugeHeight)
+                        } else {
+                            GaugeView(
+                                cents: viewModel.needleCents,
+                                trail1Cents: viewModel.trail1Cents,
+                                trail2Cents: viewModel.trail2Cents,
+                                ghostCents: viewModel.ghostCents,
+                                ghostOpacity: viewModel.ghostOpacity,
+                                micActive: engine.isRunning,
+                                inTune: viewModel.isInTune,
+                                tolerance: engine.settings.toleranceCents,
+                                theme: theme
+                            )
+                            .frame(height: gaugeHeight)
+                        }
+
+                        displayModeToggle(theme: theme)
+                            .padding(.top, 2)
+                    }
 
                     noteRow(theme: theme, noteSize: noteSize, octaveSize: octaveSize)
 
@@ -156,6 +180,37 @@ struct TunerView: View {
                 .foregroundStyle(active ? .white : theme.textSecondary)
                 .padding(.horizontal, 11)
                 .frame(height: 30)
+                .background(active ? theme.accent : Color.clear, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 主顯示模式切換（頻閃主模式段新增）
+
+    /// 頻閃／指針分段（形制同記譜/實音分段的縮小版）：寫入
+    /// store.tunerDisplayMode 即存即生效；純顯示偏好，不觸碰
+    /// 引擎、判準與觸感（與 pitchModeSegment 同，無觸感呼叫）。
+    private func displayModeToggle(theme: TunerTheme) -> some View {
+        HStack(spacing: 2) {
+            displayModeButton(mode: .strobe, title: "頻閃", theme: theme)
+            displayModeButton(mode: .needle, title: "指針", theme: theme)
+        }
+        .padding(3)
+        .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    private func displayModeButton(mode: TunerDisplayMode, title: String,
+                                   theme: TunerTheme) -> some View {
+        let active = store.tunerDisplayMode == mode
+        return Button {
+            guard store.tunerDisplayMode != mode else { return }
+            store.tunerDisplayMode = mode
+        } label: {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(active ? .white : theme.textSecondary)
+                .padding(.horizontal, 9)
+                .frame(height: 26)
                 .background(active ? theme.accent : Color.clear, in: Capsule())
         }
         .buttonStyle(.plain)

@@ -15,6 +15,15 @@ enum PitchMode: String, Codable, Sendable {
     case concert
 }
 
+/// 調音主顯示模式（頻閃主模式段，Laurent 2026-11-26 定版）：
+/// strobe 頻閃為預設主模式、needle 錶盤指針為輔助；母本無此
+/// 概念（母本只有錶盤），屬原生版新增的顯示層偏好，不影響
+/// 檢測與判準。state-v1 缺此欄時預設 strobe。
+enum TunerDisplayMode: String, Codable, Sendable {
+    case strobe
+    case needle
+}
+
 /// 收藏切換結果（母本 toggleFavoriteInstrument，行 6769）：
 /// 加入／移除／因「至少保留 1 個」被拒。
 enum FavoriteToggleOutcome: Sendable {
@@ -38,12 +47,13 @@ private struct AppStateFile: Codable {
     var metronomeUserPresets: [MetronomePreset] = []
     var appMode: String = AppMode.tuner.rawValue
     var guzhengFavMigrationDone: Bool = false
+    var tunerDisplayMode: TunerDisplayMode = .strobe
 
     private enum CodingKeys: String, CodingKey {
         case version, tunerSettings, pitchMode, selectedInstrumentId
         case favoriteInstrumentIds, customInstruments, droneTimbre
         case droneFollow, metronomeSettings, metronomeUserPresets
-        case appMode, guzhengFavMigrationDone
+        case appMode, guzhengFavMigrationDone, tunerDisplayMode
     }
 
     init() {}
@@ -64,6 +74,7 @@ private struct AppStateFile: Codable {
         metronomeUserPresets = try c.decodeIfPresent([MetronomePreset].self, forKey: .metronomeUserPresets) ?? []
         appMode = try c.decodeIfPresent(String.self, forKey: .appMode) ?? AppMode.tuner.rawValue
         guzhengFavMigrationDone = try c.decodeIfPresent(Bool.self, forKey: .guzhengFavMigrationDone) ?? false
+        tunerDisplayMode = try c.decodeIfPresent(TunerDisplayMode.self, forKey: .tunerDisplayMode) ?? .strobe
     }
 }
 
@@ -95,6 +106,8 @@ final class AppStore: ObservableObject {
     @Published var metronomeSettings = MetronomeSettings() { didSet { persist() } }
     @Published var metronomeUserPresets: [MetronomePreset] = [] { didSet { persist() } }
     @Published var appMode: AppMode = .tuner { didSet { persist() } }
+    /// 調音主顯示模式（頻閃／指針）：純顯示偏好，引擎不感知。
+    @Published var tunerDisplayMode: TunerDisplayMode = .strobe { didSet { persist() } }
 
     /// 選樂器脈衝：每次 selectInstrument 呼叫 +1（含同名重選——
     /// 母本 selectInstrument 連重選也清鎖定與軌跡，行 8485）。
@@ -142,6 +155,7 @@ final class AppStore: ObservableObject {
         metronomeSettings = snapshot.metronomeSettings
         metronomeUserPresets = snapshot.metronomeUserPresets
         appMode = AppMode(rawValue: snapshot.appMode) ?? .tuner
+        tunerDisplayMode = snapshot.tunerDisplayMode
         guzhengFavMigrationDone = snapshot.guzhengFavMigrationDone
 
         // 收藏／選中樂器健全化：剔除無法解析的 id；收藏為空時回母本
@@ -215,6 +229,7 @@ final class AppStore: ObservableObject {
         snapshot.metronomeUserPresets = metronomeUserPresets
         snapshot.appMode = appMode.rawValue
         snapshot.guzhengFavMigrationDone = guzhengFavMigrationDone
+        snapshot.tunerDisplayMode = tunerDisplayMode
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         let url = Self.stateFileURL
         try? FileManager.default.createDirectory(

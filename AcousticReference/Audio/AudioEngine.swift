@@ -41,6 +41,9 @@ final class EngineCore: @unchecked Sendable {
 
     private let detector = PitchDetector()
     private var smoother: PitchSmoother
+    /// 頻閃相位追蹤（頻閃主模式段）：只在分析佇列存取（與
+    /// detector／smoother 同紀律），結果寫入 PitchReading.strobe。
+    private let strobeTracker = StrobePhaseTracker()
     let log = DetectionLog()
 
     /// 分析結果回調。須在引擎啟動前設定一次，之後不變更；
@@ -92,9 +95,9 @@ final class EngineCore: @unchecked Sendable {
 
     func handleTapBuffer(_ buffer: AVAudioPCMBuffer) {
         guard let samples = extractSamples(from: buffer) else { return }
-        guard let window = ingest(samples) else { return }
+        guard let (window, hop) = ingest(samples) else { return }
         analysisQueue.async { [self] in
-            analyze(window: window)
+            analyze(window: window, hopSamples: hop)
         }
     }
 
@@ -142,10 +145,12 @@ final class EngineCore: @unchecked Sendable {
         return Array(UnsafeBufferPointer(start: channelData[0], count: count))
     }
 
-    /// 寫入 ring；達分析條件時回傳最新 win 個樣本的快照，否則 nil。
+    /// 寫入 ring；達分析條件時回傳最新 win 個樣本的快照與本窗
+    /// 距上窗的實際 hop（新樣本數，頻閃相位差分的時間基準），
+    /// 否則 nil。
     /// 分析未跟上時丟棄新快照（母本 worklet 為阻塞式背壓，原生版以
     /// 丟幀換取不積壓，檢測結果節律不變）。
-    private func ingest(_ samples: [Float]) -> [Float]? {
+    private func ingest(_ samples: [Float]) -> (window: [Float], hop: Int)? {
         lock.lock()
         defer { lock.unlock() }
         let cap = ring.count
@@ -158,8 +163,12 @@ final class EngineCore: @unchecked Sendable {
 
         let win = range.analysisWindowSize
         guard sinceAnalysis >= EngineCore.analysisHop, filled >= win else { return nil }
-        sinceAnalysis = 0
+        // 分析未跟上時不重置 sinceAnalysis：hop 須涵蓋被丟棄的
+        // 跨度，頻閃相位差分的時間基準才準（檢測本身不受影響，
+        // 觸發條件恆成立、下一個 buffer 立即重試取窗）。
         guard !analysisPending else { return nil }
+        let hop = sinceAnalysis
+        sinceAnalysis = 0
         analysisPending = true
 
         var window = [Float](repeating: 0, count: win)
@@ -169,12 +178,12 @@ final class EngineCore: @unchecked Sendable {
             window[i] = ring[idx]
             idx = (idx + 1) % cap
         }
-        return window
+        return (window, hop)
     }
 
     // MARK: - 分析（串行分析佇列）
 
-    private func analyze(window: [Float]) {
+    private func analyze(window: [Float], hopSamples: Int) {
         lock.lock()
         let settingsSnapshot = settings
         let rangeSnapshot = range
@@ -192,8 +201,18 @@ final class EngineCore: @unchecked Sendable {
             rmsGate: settingsSnapshot.noiseGate.rmsThreshold
         )
         let now = ProcessInfo.processInfo.systemUptime
-        let reading = smoother.process(
+        var reading = smoother.process(
             detection: detection, now: now, lockedTargetMidi: lockedSnapshot)
+        // 頻閃相位追蹤：與檢測共用同一分析窗與設定快照；目標音
+        // 取 smoother 的判準結果（鎖定／自動），與錶盤 cents 同源。
+        reading.strobe = strobeTracker.process(
+            window: window,
+            hopSamples: hopSamples,
+            detection: detection,
+            targetMidi: reading.targetMidi,
+            settings: settingsSnapshot,
+            sampleRate: sr,
+            now: now)
         log.append(reading: reading, now: now)
         onReading?(reading)
 

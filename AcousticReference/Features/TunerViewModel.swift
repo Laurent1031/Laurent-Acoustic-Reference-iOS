@@ -139,6 +139,16 @@ final class TunerViewModel: ObservableObject {
     @Published private(set) var ghostOpacity: Double = 0
     @Published private(set) var isInTune = false
 
+    // MARK: - 發佈狀態（頻閃主顯示）
+
+    /// 頻閃相位錨點：StrobeView 以 strobeRate 自 strobeAnchorDate
+    /// 外推至顯示時刻。錨點隨每幀 reading 更新（≈94 Hz），與
+    /// 針值同源同幀，兩種顯示模式的判讀永遠一致。
+    @Published private(set) var strobePhase: Double = 0
+    @Published private(set) var strobeRate: Double = 0
+    @Published private(set) var strobeConfidence: Double = 0
+    @Published private(set) var strobeAnchorDate: Date = Date()
+
     // MARK: - 發佈狀態（讀數）
 
     @Published private(set) var noteText = "--"
@@ -279,6 +289,15 @@ final class TunerViewModel: ObservableObject {
         trail1Cents = reading.trail1Cents
         trail2Cents = reading.trail2Cents
         let now = ProcessInfo.processInfo.systemUptime
+
+        // 頻閃錨點（兩種模式都更新，切換即時生效）：分析時刻
+        // （uptime）換算為牆鐘錨點，供 StrobeView 的 TimelineView
+        // 以 context.date 外推。
+        let strobe = reading.strobe
+        strobePhase = strobe.phase
+        strobeRate = strobe.angularRate
+        strobeConfidence = strobe.confidence
+        strobeAnchorDate = Date().addingTimeInterval(-(now - strobe.time))
 
         if reading.hasPitch, let targetMidi = reading.targetMidi {
             hadValidPitch = true
@@ -599,6 +618,10 @@ final class TunerViewModel: ObservableObject {
         frequencyText = "0.0 Hz"
         centsRoll.reset()
         displayCents = 0
+        // 頻閃：引擎停止 → 角速度與可信度歸零（相位保留凍結，
+        // StrobeView 在 micActive=false 時恆暫停）。
+        strobeRate = 0
+        strobeConfidence = 0
         inTuneSince = nil
         hadValidPitch = false
         // 母本 reset 不清 ghost（靠 1.5 s 自然到期）；原生版停止時一併
