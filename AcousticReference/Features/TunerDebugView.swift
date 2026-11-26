@@ -2,9 +2,10 @@ import SwiftUI
 import UIKit
 
 /// 階段 1 最小驗證介面：文字顯示頻率／音名／音分＋診斷值＋引擎控制。
-/// 錶盤 UI 是階段 2，本視圖不做錶盤。
+/// 階段 2 起降為診斷頁：由主畫面頂欄以 sheet 喚出，與主畫面共用
+/// 同一個 AudioEngine 實例（外部注入），本視圖不再自建引擎。
 struct TunerDebugView: View {
-    @StateObject private var engine = AudioEngine()
+    @ObservedObject var engine: AudioEngine
     @State private var logCopied = false
 
     var body: some View {
@@ -177,5 +178,5 @@ struct TunerDebugView: View {
 }
 
 #Preview {
-    TunerDebugView()
+    TunerDebugView(engine: AudioEngine())
 }

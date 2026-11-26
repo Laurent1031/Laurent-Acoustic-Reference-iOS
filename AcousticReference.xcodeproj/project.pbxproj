@@ -18,6 +18,10 @@
 		A10000000000000000000009 /* DetectionLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000B /* DetectionLog.swift */; };
 		A1000000000000000000000A /* AudioEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* AudioEngine.swift */; };
 		A1000000000000000000000B /* TunerDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* TunerDebugView.swift */; };
+		A1000000000000000000000C /* TunerTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000E /* TunerTheme.swift */; };
+		A1000000000000000000000D /* TunerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000F /* TunerViewModel.swift */; };
+		A1000000000000000000000E /* GaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000010 /* GaugeView.swift */; };
+		A1000000000000000000000F /* TunerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000011 /* TunerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +38,10 @@
 		B1000000000000000000000B /* DetectionLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionLog.swift; sourceTree = "<group>"; };
 		B1000000000000000000000C /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
 		B1000000000000000000000D /* TunerDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunerDebugView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000E /* TunerTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunerTheme.swift; sourceTree = "<group>"; };
+		B1000000000000000000000F /* TunerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunerViewModel.swift; sourceTree = "<group>"; };
+		B10000000000000000000010 /* GaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GaugeView.swift; sourceTree = "<group>"; };
+		B10000000000000000000011 /* TunerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -93,6 +101,10 @@
 		C10000000000000000000006 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				B10000000000000000000011 /* TunerView.swift */,
+				B1000000000000000000000F /* TunerViewModel.swift */,
+				B10000000000000000000010 /* GaugeView.swift */,
+				B1000000000000000000000E /* TunerTheme.swift */,
 				B1000000000000000000000D /* TunerDebugView.swift */,
 			);
 			path = Features;
@@ -185,6 +197,10 @@
 				A10000000000000000000009 /* DetectionLog.swift in Sources */,
 				A1000000000000000000000A /* AudioEngine.swift in Sources */,
 				A1000000000000000000000B /* TunerDebugView.swift in Sources */,
+				A1000000000000000000000C /* TunerTheme.swift in Sources */,
+				A1000000000000000000000D /* TunerViewModel.swift in Sources */,
+				A1000000000000000000000E /* GaugeView.swift in Sources */,
+				A1000000000000000000000F /* TunerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
