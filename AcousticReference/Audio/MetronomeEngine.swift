@@ -490,18 +490,30 @@ final class MetronomeEngine: ObservableObject {
         auditionPlayer = playerNode
         playerNode.play()
         let engineID = ObjectIdentifier(engine)
-        playerNode.scheduleBuffer(buffer, at: nil, options: []) { [weak self] in
+        Self.scheduleAuditionTeardown(on: playerNode, buffer: buffer,
+                                      engineID: engineID,
+                                      ownsSession: ownsSession, engine: self)
+    }
+
+    /// 【裝機返修・同 AudioEngine .ips 教訓】播放完成回調由
+    /// AVFoundation 在背景佇列呼叫，閉包必須 nonisolated
+    /// 形成，否則同觸 swift_task_checkIsolatedSwift 斷言。
+    /// 只拆自己這一次的試聽引擎（快速連切音色時，舊回調
+    /// 不得誤停新一次試聽）：以 ObjectIdentifier 比對身分。
+    nonisolated private static func scheduleAuditionTeardown(
+        on playerNode: AVAudioPlayerNode, buffer: AVAudioPCMBuffer,
+        engineID: ObjectIdentifier, ownsSession: Bool,
+        engine: MetronomeEngine
+    ) {
+        playerNode.scheduleBuffer(buffer, at: nil, options: []) { [weak engine] in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    // 只拆自己這一次的試聽引擎（快速連切音色時，
-                    // 舊回調不得誤停新一次試聽）。以 ObjectIdentifier
-                    // 比對身分，避免把 non-Sendable 的 engine 送進閉包。
-                    guard let self,
-                          self.auditionEngine.map({ ObjectIdentifier($0) }) == engineID
+                    guard let engine,
+                          engine.auditionEngine.map({ ObjectIdentifier($0) }) == engineID
                     else { return }
-                    self.auditionEngine?.stop()
-                    self.auditionEngine = nil
-                    self.auditionPlayer = nil
+                    engine.auditionEngine?.stop()
+                    engine.auditionEngine = nil
+                    engine.auditionPlayer = nil
                     if ownsSession {
                         try? AVAudioSession.sharedInstance().setActive(false)
                     }

@@ -93,6 +93,15 @@ struct ContentView: View {
                     .accessibilityHidden(mode != .dual)
             }
         }
+        // 【裝機返修】根層背景：頂欄區與狀態欄區一律鋪當前
+        // 主題背景（延伸至全部安全區）。此前根 VStack 無背景，
+        // 頂欄區透出的是跟隨 preferredColorScheme 的窗口底色，
+        // 與頁面主題不一致時（如深色頁面＋淺色方案）頂部會
+        // 留一條異色帶（Laurent 實機回報：切演奏態時上面留
+        // 一條白）。頁面各自的背景保留（同色疊加無副作用）。
+        .background {
+            theme.background.ignoresSafeArea()
+        }
         .overlay(alignment: .bottom) {
             if mode == .tuner && metronomeViewModel.capsuleVisible {
                 capsule(theme: theme)

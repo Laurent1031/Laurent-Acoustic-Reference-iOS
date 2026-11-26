@@ -396,16 +396,8 @@ final class AudioEngine: ObservableObject {
         }
         core.setSampleRate(format.sampleRate)
         core.resetRing()
-        core.onReading = { [weak self] reading in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    self?.latestReading = reading
-                }
-            }
-        }
-        input.installTap(onBus: 0, bufferSize: 512, format: format) { [core] buffer, _ in
-            core.handleTapBuffer(buffer)
-        }
+        Self.wireReadingCallback(core: core, engine: self)
+        Self.installInputTap(on: input, format: format, core: core)
         audioEngine.prepare()
         try audioEngine.start()
         engine = audioEngine
@@ -417,6 +409,36 @@ final class AudioEngine: ObservableObject {
             inputLatency: session.inputLatency
         )
         registerSessionObservers()
+    }
+
+    /// 【裝機返修・.ips 實證 2026-11-26】tap 閉包必須在
+    /// nonisolated 語境形成：在 @MainActor 方法內形成的閉包
+    /// 帶 MainActor 隔離註記，AVAudioEngine 在即時音訊線程
+    /// 呼叫時觸發 swift_task_checkIsolatedSwift 斷言
+    /// （EXC_BREAKPOINT／SIGTRAP，三份 crash log 同棧：
+    /// closure #2 in startEngine → TapMessage::Realtime
+    /// Messenger_Perform）。麥克風一點即退出的真因。
+    nonisolated private static func installInputTap(
+        on input: AVAudioInputNode, format: AVAudioFormat, core: EngineCore
+    ) {
+        input.installTap(onBus: 0, bufferSize: 512, format: format) { buffer, _ in
+            core.handleTapBuffer(buffer)
+        }
+    }
+
+    /// onReading 同理：回調由 EngineCore 的分析佇列呼叫，
+    /// 閉包須 nonisolated 形成；主線程跳轉在閉包內以
+    /// main.async + assumeIsolated 完成（原設計，合法）。
+    nonisolated private static func wireReadingCallback(
+        core: EngineCore, engine: AudioEngine
+    ) {
+        core.onReading = { [weak engine] reading in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    engine?.latestReading = reading
+                }
+            }
+        }
     }
 
     private func registerSessionObservers() {
