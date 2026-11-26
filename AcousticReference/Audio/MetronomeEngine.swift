@@ -248,10 +248,20 @@ final class MetronomeCore: @unchecked Sendable {
             player.scheduleBuffer(buffer, at: when, options: [])
         }
 
-        // —— 主拍：統計、震動、視覺（細分拍三者皆無，母本同）——
+        // —— 細分拍震動（階段 6，架構方案採納項）：0.18 微觸感
+        // 與點音同一 host 時刻；母本無此項（母本細分拍僅有聲），
+        // Gap 靜音小節同步靜默（與點音同規則）。統計與視覺仍
+        // 僅主拍（母本同）。——
+        let tickHostSeconds = hostBaseSeconds
+            + (nextTickSamples - hostBaseSamples) / sampleRate
+        if isSub, !currentBarSilent, keyLevel > 0 {
+            HapticsEngine.shared.subdivision(
+                atHostTimeSeconds: tickHostSeconds + Double(s.bluetoothCompMs) / 1000)
+        }
+
+        // —— 主拍：統計、震動、視覺 ——
         if !isSub {
-            let hostSeconds = hostBaseSeconds
-                + (nextTickSamples - hostBaseSamples) / sampleRate
+            let hostSeconds = tickHostSeconds
             if let last = lastMainBeatSamples {
                 let intervalMs = (nextTickSamples - last) / sampleRate * 1000
                 let nominalMs = 60000.0 / Double(s.bpm) * (dotted ? 3.0 : 1.0)
@@ -380,6 +390,10 @@ final class MetronomeEngine: ObservableObject {
     private let core: MetronomeCore
     private var avEngine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
+    /// measurement 組成態的播放增益補償級（階段 6）：player →
+    /// EQ → mainMixer；globalGain 由協調器型態觀察驅動。
+    private var gainEQ: AVAudioUnitEQ?
+    private var compensationDB: Float = 0
     private var sessionAcquired = false
     private var notificationTokens: [NSObjectProtocol] = []
 
@@ -408,6 +422,16 @@ final class MetronomeEngine: ObservableObject {
         core.onBpmChanged = { [weak self] bpm in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.onBpmChanged?(bpm) }
+            }
+        }
+        // 型態觀察（階段 6）：組成態進／出 measurement 時同步
+        // 增益補償（常數見 PlaybackGainCompensation）。
+        AudioSessionCoordinator.shared.addProfileObserver { [weak self] profile in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.compensationDB = PlaybackGainCompensation.gainDB(
+                    profile: profile, pathValue: PlaybackGainCompensation.metronomeDB)
+                self.gainEQ?.globalGain = self.compensationDB
             }
         }
     }
@@ -511,8 +535,12 @@ final class MetronomeEngine: ObservableObject {
 
         let engine = AVAudioEngine()
         let playerNode = AVAudioPlayerNode()
+        let eq = AVAudioUnitEQ(numberOfBands: 1)
+        eq.globalGain = compensationDB
         engine.attach(playerNode)
-        engine.connect(playerNode, to: engine.mainMixerNode, format: nil)
+        engine.attach(eq)
+        engine.connect(playerNode, to: eq, format: nil)
+        engine.connect(eq, to: engine.mainMixerNode, format: nil)
         engine.prepare()
         let outputRate = playerNode.outputFormat(forBus: 0).sampleRate
         let clickBuffers = buffers(for: outputRate)
@@ -527,6 +555,7 @@ final class MetronomeEngine: ObservableObject {
         playerNode.play()
         avEngine = engine
         player = playerNode
+        gainEQ = eq
         HapticsEngine.shared.warmUp()
         core.startScheduling()
         isPlaying = true
@@ -540,6 +569,7 @@ final class MetronomeEngine: ObservableObject {
         avEngine?.stop()
         avEngine = nil
         player = nil
+        gainEQ = nil
         unregisterNotifications()
         releaseSessionIfUnused()
         isPlaying = false
@@ -570,11 +600,41 @@ final class MetronomeEngine: ObservableObject {
             let optionsRaw = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             Task { @MainActor [weak self] in
                 guard let self, self.isPlaying else { return }
-                if type == .ended {
+                switch type {
+                case .began:
+                    // 中斷開始：渲染時鐘先凍結（session 已被
+                    // 系統停用，player 繼續跑只會空轉排程）；
+                    // 拍序不重置，恢復時 resync 重新錨定。
+                    self.player?.pause()
+                case .ended:
                     if AVAudioSession.InterruptionOptions(rawValue: optionsRaw).contains(.shouldResume) {
                         self.resumeAfterInterruption()
+                    } else {
+                        // 系統不建議自動恢復：明確停機並給可見
+                        // 提示（View 層以 toast 呈現 lastError），
+                        // 不留「畫面在跑、聲音已死」的靜默狀態。
+                        self.stop()
+                        self.lastError = "節拍器因中斷停止，點按開始可繼續"
                     }
+                @unknown default:
+                    break
                 }
+            }
+        })
+        notificationTokens.append(center.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil, queue: nil) { [weak self] note in
+            guard let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable
+            else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.isPlaying else { return }
+                // 耳機／外接裝置被拔：自動暫停防外放突響
+                // （藍圖 Pass 標準「拔插藍牙耳機」項）。以完整
+                // stop 落地（調度、Live Activity、session 會計
+                // 一致收尾），提示經 lastError → toast 可見。
+                self.stop()
+                self.lastError = "耳機已拔出，節拍器已自動暫停"
             }
         })
         notificationTokens.append(center.addObserver(
@@ -596,7 +656,13 @@ final class MetronomeEngine: ObservableObject {
     }
 
     private func resumeAfterInterruption() {
-        guard let avEngine, let player else { return }
+        guard let avEngine, let player else {
+            // 引擎引用遺失卻仍標記播放中：不靜默——停機並
+            // 報錯，讓 UI 狀態與聲音現實重新一致。
+            stop()
+            lastError = "中斷後恢復失敗：引擎狀態遺失，已停止"
+            return
+        }
         do {
             try AVAudioSession.sharedInstance().setActive(true)
             try avEngine.start()

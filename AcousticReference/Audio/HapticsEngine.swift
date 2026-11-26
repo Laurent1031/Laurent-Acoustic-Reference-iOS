@@ -73,24 +73,38 @@ final class HapticsEngine: @unchecked Sendable {
         }
     }
 
-    // MARK: - 節拍（母本 hapticBeat：L3 42 ms／L2 26／L1 13；iOS 原生
-    // 以 transient 的 intensity/sharpness 對應其「時長感」強度）
+    // MARK: - 節拍（圖樣數值全數出自 HapticPatternTable，階段 6
+    // 數值化：強拍 1.0／0.25、次強 0.6／0.75、弱 0.35／0.75、
+    // 細分 0.18——《架構演進方案》§05 採納值）
 
     /// 在音訊拍點的同一 host 時刻觸發。level 0（靜音拍）不震
     /// （母本 hapticBeat(0) = vibrate(0)）。
     func beat(level: Int, atHostTimeSeconds target: Double) {
         guard isEnabled, level > 0 else { return }
-        let (intensity, sharpness) = Self.beatParams(level: level)
-        playTransient(intensity: intensity, sharpness: sharpness,
+        let pattern = HapticPatternTable.beat(level: level)
+        playTransient(intensity: pattern.intensity, sharpness: pattern.sharpness,
                       key: "beat\(level)", atHostTimeSeconds: target)
     }
 
-    private static func beatParams(level: Int) -> (Float, Float) {
-        switch level {
-        case 3: return (1.0, 0.75)
-        case 2: return (0.62, 0.6)
-        default: return (0.35, 0.45)
+    /// 細分拍微觸感（架構方案採納項；母本與階段 3 無細分拍
+    /// 震動，此為原生增強）：與拍點音訊同一 host 時刻觸發。
+    func subdivision(atHostTimeSeconds target: Double) {
+        guard isEnabled else { return }
+        let pattern = HapticPatternTable.subdivision
+        playTransient(intensity: pattern.intensity, sharpness: pattern.sharpness,
+                      key: "sub", atHostTimeSeconds: target)
+    }
+
+    /// 準音鎖定棘輪（HapticPatternTable.lockRatchet：雙記
+    /// transient 的機械咬合感，形制沿母本 [8, 35, 16]）。
+    func inTuneLock() {
+        guard isEnabled else { return }
+        let specs = HapticPatternTable.lockRatchet.map { entry in
+            TransientSpec(relativeTime: entry.offset,
+                          intensity: entry.transient.intensity,
+                          sharpness: entry.transient.sharpness)
         }
+        playSpecs(specs, key: "lock", atHostTimeSeconds: nil)
     }
 
     // MARK: - UI 回饋（母本 navigator.vibrate(ms) 的各呼叫點）
@@ -107,10 +121,12 @@ final class HapticsEngine: @unchecked Sendable {
 
     /// 步進定位觸感（Laurent 架構意見採納項：A4／BPM 步進鈕的
     /// detent 回饋）：短促高銳度 transient，與 tap 的映射分開，
-    /// 每次步進一記（長按連調時逐記跟隨）。
+    /// 每次步進一記（長按連調時逐記跟隨）。數值見
+    /// HapticPatternTable.detent。
     func detent() {
         guard isEnabled else { return }
-        playTransient(intensity: 0.35, sharpness: 0.95,
+        let pattern = HapticPatternTable.detent
+        playTransient(intensity: pattern.intensity, sharpness: pattern.sharpness,
                       key: "detent", atHostTimeSeconds: nil)
     }
 

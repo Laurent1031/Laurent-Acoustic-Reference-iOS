@@ -388,10 +388,18 @@ final class DroneEngine: ObservableObject {
     private let core = DroneRenderCore()
     private var avEngine: AVAudioEngine?
     private var sourceNode: AVAudioSourceNode?
+    /// measurement 組成態的播放增益補償級（階段 6）：source →
+    /// EQ → mainMixer；globalGain 由協調器型態觀察驅動、建鏈
+    /// 時以當下型態定初值。
+    private var gainEQ: AVAudioUnitEQ?
+    private var compensationDB: Float = 0
     private var sessionAcquired = false
     private var generation = 0
     private let observerBag = DroneObserverBag()
     private var observersRegistered = false
+    /// 中斷前正在播放（階段 6 自愈）：中斷結束時據此恢復；
+    /// stop() 的用戶路徑不經此旗標（中斷處理直接拆引擎）。
+    private var resumeAfterInterruption = false
 
     /// 母本 droneTargetFreq（行 9994）：midiToFreq（現行 A4）×
     /// 2^(純律偏移/1200)。
@@ -471,8 +479,15 @@ final class DroneEngine: ObservableObject {
             coreRef.render(isSilence: isSilence, frameCount: frameCount,
                            audioBufferList: audioBufferList)
         }
+        let eq = AVAudioUnitEQ(numberOfBands: 1)
+        compensationDB = PlaybackGainCompensation.gainDB(
+            profile: AudioSessionCoordinator.shared.desiredProfile(),
+            pathValue: PlaybackGainCompensation.droneDB)
+        eq.globalGain = compensationDB
         engine.attach(node)
-        engine.connect(node, to: engine.mainMixerNode, format: format)
+        engine.attach(eq)
+        engine.connect(node, to: eq, format: format)
+        engine.connect(eq, to: engine.mainMixerNode, format: format)
         engine.prepare()
         do {
             try engine.start()
@@ -483,14 +498,18 @@ final class DroneEngine: ObservableObject {
         }
         avEngine = engine
         sourceNode = node
+        gainEQ = eq
         isPlaying = true
         registerObservers()
         HapticsEngine.shared.warmUp()
     }
 
     /// 停止（母本 stopDrone）：增益 0.08 s 級淡出後拆引擎。
+    /// 用戶路徑呼叫同時清中斷恢復旗標（見中斷 .began 的順序
+    /// 註解）；中斷處理在呼叫本方法後自行重新立旗標。
     func stop() {
         guard isPlaying else { return }
+        resumeAfterInterruption = false
         generation += 1
         let gen = generation
         core.state.withLock {
@@ -509,6 +528,7 @@ final class DroneEngine: ObservableObject {
         avEngine?.stop()
         avEngine = nil
         sourceNode = nil
+        gainEQ = nil
         releaseSessionIfUnused()
     }
 
@@ -601,22 +621,76 @@ final class DroneEngine: ObservableObject {
         return snap
     }
 
-    // MARK: - 中斷處理（比照 AudioEngine：中斷即停、媒體服務重置即停）
+    // MARK: - 中斷／路由／媒體服務重置（階段 6 自愈）
 
     private func registerObservers() {
         guard !observersRegistered else { return }
         observersRegistered = true
         let center = NotificationCenter.default
         let session = AVAudioSession.sharedInstance()
+
+        // 型態觀察（階段 6）：組成態進／出 measurement 時同步
+        // 增益補償（常數見 PlaybackGainCompensation）。
+        AudioSessionCoordinator.shared.addProfileObserver { [weak self] profile in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.compensationDB = PlaybackGainCompensation.gainDB(
+                    profile: profile, pathValue: PlaybackGainCompensation.droneDB)
+                self.gainEQ?.globalGain = self.compensationDB
+            }
+        }
+
         observerBag.add(center.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: session, queue: nil
         ) { [weak self] note in
             guard let rawType = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  AVAudioSession.InterruptionType(rawValue: rawType) == .began
+                  let type = AVAudioSession.InterruptionType(rawValue: rawType)
+            else { return }
+            let rawOptions = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            Task { @MainActor in
+                guard let self else { return }
+                switch type {
+                case .began:
+                    // 中斷：先停聲、再記「中斷前在播」（目標音
+                    // 與音色保留於 facade 屬性，恢復時原樣重
+                    // 啟）。旗標在 stop 之後才立：用戶路徑的
+                    // stop() 會清旗標，中斷期間用戶手動停止
+                    // 後，中斷結束不得擅自重啟（順序即語義）。
+                    if self.isPlaying {
+                        self.stop()
+                        self.resumeAfterInterruption = true
+                    }
+                case .ended:
+                    guard self.resumeAfterInterruption else { return }
+                    self.resumeAfterInterruption = false
+                    if AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume) {
+                        // 按中斷前狀態自動恢復（藍圖 Pass 標準
+                        // 「中斷自愈」）；start 失敗時 lastError
+                        // 由 start 路徑寫入，調音頁可見。
+                        self.start(targetMidi: self.targetMidi, timbre: self.timbre)
+                    } else {
+                        self.lastError = "基準音因中斷停止，未自動恢復"
+                    }
+                @unknown default:
+                    break
+                }
+            }
+        })
+        observerBag.add(center.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: session, queue: nil
+        ) { [weak self] note in
+            guard let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable
             else { return }
             Task { @MainActor in
-                self?.stop()
+                guard let self, self.isPlaying else { return }
+                // 耳機拔出：自動暫停防外放突響；提示經
+                // lastError 在調音頁可見。
+                self.resumeAfterInterruption = false
+                self.stop()
+                self.lastError = "耳機已拔出，基準音已自動暫停"
             }
         })
         observerBag.add(center.addObserver(
@@ -625,9 +699,16 @@ final class DroneEngine: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.isPlaying else { return }
+                // 媒體服務重置：舊引擎對象全數失效——同步拆卸
+                // 後以同一目標音／音色重啟（自愈而非靜默死亡）；
+                // 重啟失敗時 start 路徑寫 lastError 可見報錯。
+                let midi = self.targetMidi
+                let currentTimbre = self.timbre
+                self.resumeAfterInterruption = false
                 self.generation += 1
                 self.isPlaying = false
                 self.teardownEngine()
+                self.start(targetMidi: midi, timbre: currentTimbre)
             }
         })
     }

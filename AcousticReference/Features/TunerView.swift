@@ -20,6 +20,10 @@ struct TunerView: View {
 
     @State private var showLibrary = false
     @State private var justStripExpanded = false
+    /// 橫屏沉浸全屏（階段 6）：fullScreenCover 呈現狀態；
+    /// 切離調音模式時強制關閉（深連結等路徑），方向鎖的
+    /// 還原由 ImmersiveTunerView.onDisappear 統一負責。
+    @State private var showImmersive = false
 
     // 舞台左右滑（母本 wireStageSwipe）：主顯示區的推入動畫
     // 執行期值（自 ±14pt／0.35 透明回彈至原位，240 ms）。
@@ -100,8 +104,11 @@ struct TunerView: View {
                             .padding(.top, 2)
                     }
                     .overlay(alignment: .topLeading) {
-                        performanceToggle(theme: theme)
-                            .padding(.top, 2)
+                        HStack(spacing: 6) {
+                            performanceToggle(theme: theme)
+                            immersiveButton(theme: theme)
+                        }
+                        .padding(.top, 2)
                     }
                     .overlay {
                         if viewModel.clipWarning {
@@ -159,6 +166,14 @@ struct TunerView: View {
         }
         .sheet(isPresented: $showLibrary) {
             InstrumentLibraryView(store: store)
+        }
+        .fullScreenCover(isPresented: $showImmersive) {
+            ImmersiveTunerView(viewModel: viewModel, engine: engine, store: store)
+        }
+        // 沉浸中被切離調音模式（深連結／外部路徑）：立即關閉
+        // cover，方向鎖隨 onDisappear 還原豎屏（防漏）。
+        .onChange(of: store.appMode) { _, newMode in
+            if newMode != .tuner { showImmersive = false }
         }
         // 自動開啟麥克風（母本調音頁 pointerdown → ensureMicOn）：
         // autoMicOnEnter 開時點按頁面任意處即啟動；simultaneous
@@ -235,6 +250,25 @@ struct TunerView: View {
             }
     }
 
+    /// 全屏鈕（母本 btnEnterImmersiveManual「全屏」，階段 6）：
+    /// 與演奏態開關並列於主顯示左上角空白角（同列小膠囊，
+    /// 不佔列高）；點按進橫屏沉浸（唯一合法橫屏狀態）。
+    private func immersiveButton(theme: TunerTheme) -> some View {
+        Button {
+            showImmersive = true
+            HapticsEngine.shared.tap(milliseconds: 6)
+        } label: {
+            Text(L10n.t("全屏"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(theme.textSecondary)
+                .padding(.horizontal, 9)
+                .frame(height: 26)
+                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.t("进入极简全屏调音"))
+    }
+
     /// 演奏態開關（補強段）：開啟隱藏收藏／A4／目標音／Drone
     /// 列、主顯示放大；與暗紅模式、防誤觸鎖正交可疊加。
     private func performanceToggle(theme: TunerTheme) -> some View {
@@ -259,6 +293,9 @@ struct TunerView: View {
     // MARK: - Row 1：樂器觸發鈕＋記譜/實音分段（母本行 5231）
 
     private func headerRow(theme: TunerTheme) -> some View {
+        // 玻璃成簇分組（階段 6）：樂器鈕＋記譜/實音分段的
+        // 玻璃以 GlassEffectContainer 統一合成。
+        GlassEffectContainer(spacing: 8) {
         HStack(spacing: 8) {
             Button {
                 showLibrary = true
@@ -291,6 +328,7 @@ struct TunerView: View {
             .buttonStyle(.plain)
 
             pitchModeSegment(theme: theme)
+        }
         }
     }
 
@@ -360,6 +398,9 @@ struct TunerView: View {
     // MARK: - Row 2：收藏晶片列＋A4 步進器（母本行 5252）
 
     private func favoritesRow(theme: TunerTheme) -> some View {
+        // 玻璃成簇分組（階段 6）：收藏晶片列＋A4 步進器的
+        // 玻璃以 GlassEffectContainer 統一合成。
+        GlassEffectContainer(spacing: 8) {
         HStack(spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -390,6 +431,7 @@ struct TunerView: View {
             a4Stepper(theme: theme)
         }
         .frame(height: 34)
+        }
     }
 
     /// 收藏晶片：點按選樂器（母本 selectInstrument 連重選也走

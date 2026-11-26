@@ -38,12 +38,26 @@ final class UISoundEngine {
 
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
+    /// measurement 組成態的播放增益補償級（階段 6）：player →
+    /// EQ → mainMixer；與節拍器／Drone 同受協調器型態觀察
+    /// 驅動（常數見 PlaybackGainCompensation）。
+    private var gainEQ: AVAudioUnitEQ?
+    private var compensationDB: Float = 0
     private var bufferCache: [Double: [Kind: AVAudioPCMBuffer]] = [:]
     /// 本引擎是否自行啟用了 session（無人使用路徑）。
     private var ownsSession = false
     private var idleTask: Task<Void, Never>?
 
-    private init() {}
+    private init() {
+        AudioSessionCoordinator.shared.addProfileObserver { [weak self] profile in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.compensationDB = PlaybackGainCompensation.gainDB(
+                    profile: profile, pathValue: PlaybackGainCompensation.uiSoundDB)
+                self.gainEQ?.globalGain = self.compensationDB
+            }
+        }
+    }
 
     // MARK: - 播放
 
@@ -89,8 +103,15 @@ final class UISoundEngine {
         }
         let newEngine = AVAudioEngine()
         let newPlayer = AVAudioPlayerNode()
+        let eq = AVAudioUnitEQ(numberOfBands: 1)
+        compensationDB = PlaybackGainCompensation.gainDB(
+            profile: AudioSessionCoordinator.shared.desiredProfile(),
+            pathValue: PlaybackGainCompensation.uiSoundDB)
+        eq.globalGain = compensationDB
         newEngine.attach(newPlayer)
-        newEngine.connect(newPlayer, to: newEngine.mainMixerNode, format: nil)
+        newEngine.attach(eq)
+        newEngine.connect(newPlayer, to: eq, format: nil)
+        newEngine.connect(eq, to: newEngine.mainMixerNode, format: nil)
         newEngine.prepare()
         do {
             try newEngine.start()
@@ -103,6 +124,7 @@ final class UISoundEngine {
         }
         engine = newEngine
         player = newPlayer
+        gainEQ = eq
         return true
     }
 
@@ -116,6 +138,7 @@ final class UISoundEngine {
             self.engine?.stop()
             self.engine = nil
             self.player = nil
+            self.gainEQ = nil
             if self.ownsSession {
                 self.ownsSession = false
                 let busy = AudioSessionCoordinator.shared.isActive(.tuner)

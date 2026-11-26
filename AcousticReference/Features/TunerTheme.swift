@@ -178,18 +178,84 @@ struct TunerTheme {
     }
 }
 
-// MARK: - 玻璃不透明度（階段 5）
+// MARK: - 玻璃不透明度（階段 5 材質版 → 階段 6 真折射）
 
-/// 玻璃表面：ultraThinMaterial（系統真模糊）＋母本 --glass-surface
-/// 的色版覆蓋。映射 = 母本 applyGlassAlpha 的 iOS 支（行 8024）：
-/// t = (glassOpacity − 8) / 88 鉗 [0, 1]；深色 surface alpha
-/// = 0.05 + 0.90t、淺色 = 0.10 + 0.86t（glassOpacity 50 時
-/// t ≈ 0.477、深 ≈ 0.48／淺 ≈ 0.51）。pit 沿深色曲線、色版改
-/// 暗紅 (26, 9, 9)。母本另有 blur／sat／bri 三維（backdrop-
-/// filter 參數），原生材質的模糊半徑與飽和由系統固定、無公開
-/// 參數，此三維為平台差異（階段 5 報告註明）；覆蓋 alpha 為
-/// 主導可見的一維，全程單調、兩端差異明確。
+/// 玻璃表面（階段 6 升級）：系統 Liquid Glass 真折射
+/// （glassEffect）為渲染主體——部署目標 iOS 27、CI runner
+/// 為 Xcode 26.x（SDK ≥ 26，glassEffect 自 iOS 26 SDK 起
+/// 可用），API 無條件可達，不需 availability 分支。
+///
+/// 玻璃不透明度（8–96）的語義映射：glassEffect 無 opacity
+/// 參數，以兩條同向單調的通道保留可感差異——
+/// 1. Glass tint：以主題表面色（深 (28,28,30)／淺白／pit
+///    (26,9,9)）染色，alpha = 0.08 + 0.30t；
+/// 2. 覆蓋層：階段 5 的母本 iOS 支曲線（t = (值−8)/88；
+///    深 0.05+0.90t／淺 0.10+0.86t，pit 沿深色）× 0.55——
+///    保留原曲線的相對節律，但讓出約一半權重給折射本體，
+///    避免覆蓋層把真折射悶死。
+/// 兩端行為：值 8 → tint 0.08＋覆蓋 ≈0.03–0.06，近全透、
+/// 折射最強；值 96 → tint 0.38＋覆蓋 ≈0.52，呈濃色玻璃板、
+/// 折射仍在邊緣與高光處可見。全程單調、兩端差異明確，
+/// 與母本「不透明度」的心智模型一致（映射關係即此註解，
+/// 屬有意取捨：原生無母本 blur／sat／bri 三維參數，階段 5
+/// 已註明，階段 6 亦不冒充）。
+///
+/// 成簇分組：玻璃元素成排出現處（頂欄、調音頁首列／收藏
+/// 列）由呼叫方以 GlassEffectContainer 包裹，系統得以統一
+/// 合成、相鄰玻璃可流體相鄰渲染；單顆玻璃（膠囊、浮鈕）
+/// 不需容器。interactive 不加於本背景層：按壓形變應作用在
+/// 控件本體而非其背景襯底，加了只會讓襯底與內容脫步
+/// （逐點取捨註明）。
 struct GlassSurface<S: Shape>: View {
+    let shape: S
+    let theme: TunerTheme
+    let glassOpacity: Int
+
+    var body: some View {
+        let t = min(1, max(0, (Double(glassOpacity) - 8) / 88))
+        shape
+            .fill(.clear)
+            .glassEffect(glassVariant(t: t), in: shape)
+            .overlay {
+                shape.fill(opacityTint(t: t))
+            }
+    }
+
+    /// 主題表面色（tint 與覆蓋層共用色版）。
+    private var surfaceColor: Color {
+        switch theme.kind {
+        case .light:
+            return .white
+        case .dark:
+            return Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
+        case .pit:
+            return Color(red: 26 / 255, green: 9 / 255, blue: 9 / 255)
+        }
+    }
+
+    private func glassVariant(t: Double) -> Glass {
+        Glass.regular.tint(surfaceColor.opacity(0.08 + 0.30 * t))
+    }
+
+    private func opacityTint(t: Double) -> Color {
+        let curve: Double
+        switch theme.kind {
+        case .light:
+            curve = 0.10 + 0.86 * t
+        case .dark, .pit:
+            curve = 0.05 + 0.90 * t
+        }
+        return surfaceColor.opacity(curve * 0.55)
+    }
+}
+
+/// 階段 5 的材質版玻璃（回退保留）：ultraThinMaterial＋色版
+/// 覆蓋。階段 6 起 GlassSurface 已切真折射，本結構保留給
+/// 「效果不符」時的逐點回退用途——目前無呼叫點（全 App
+/// 玻璃經 glassBackground 統一走 GlassSurface），保留是
+/// 為裝機驗收若發現某處折射觀感不符，可單點切回而不動
+/// 其餘 36 處（回退點須在該處註明理由）。
+struct MaterialGlassSurface<S: Shape>: View {
     let shape: S
     let theme: TunerTheme
     let glassOpacity: Int

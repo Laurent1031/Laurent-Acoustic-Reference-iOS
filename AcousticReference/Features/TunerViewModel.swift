@@ -386,7 +386,9 @@ final class TunerViewModel: ObservableObject {
                 if let since = inTuneSince {
                     if now - since >= 0.650, !noteLocked {
                         noteLocked = true
-                        HapticsEngine.shared.pattern([8, 35, 16])
+                        // 階段 6：鎖定棘輪專屬圖樣（形制沿母本
+                        // [8, 35, 16]，數值見 HapticPatternTable）。
+                        HapticsEngine.shared.inTuneLock()
                         // 母本 uiSound("lock")（行 9655，同呼叫點）。
                         UISoundEngine.shared.play(.lock)
                     }

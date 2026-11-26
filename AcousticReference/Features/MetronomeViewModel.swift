@@ -46,6 +46,15 @@ final class MetronomeViewModel: ObservableObject {
         didSet {
             engine.updateSettings(settings)
             schedulePersist()
+            // Live Activity（階段 6）：播放中改 BPM／拍號即
+            // 同步活動內容（拍位沿用目前顯示值）。
+            if isPlaying {
+                MetronomeLiveActivityController.shared.update(
+                    state: activityState(bpm: settings.bpm,
+                                         beat: displayBeat + 1,
+                                         beatsInBar: displayBeatsInBar,
+                                         isCountIn: displayIsCountIn))
+            }
         }
     }
     @Published private(set) var userPresets: [MetronomePreset] = []
@@ -178,7 +187,18 @@ final class MetronomeViewModel: ObservableObject {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.isPlaying = playing
-                    if !playing {
+                    // Live Activity 與引擎生命週期嚴格同步
+                    // （階段 6）：啟動建活動、停止即結束；
+                    // 中斷／路由的引擎側停機同經此訂閱收尾。
+                    if playing {
+                        MetronomeLiveActivityController.shared.start(
+                            state: self.activityState(
+                                bpm: self.settings.bpm, beat: 1,
+                                beatsInBar: self.settings.beatsInBar,
+                                isCountIn: self.settings.countIn),
+                            timbreName: L10n.t(self.settings.timbre.sourceName))
+                    } else {
+                        MetronomeLiveActivityController.shared.stop()
                         self.currentPillar = nil
                         self.pulse.active = false
                         self.pulseValue = 0
@@ -587,6 +607,17 @@ final class MetronomeViewModel: ObservableObject {
 
     // MARK: - 拍點事件 → 脈衝（母本 strikePulse，行 11552）
 
+    /// Live Activity 內容狀態組裝（拍號字串與 App 內顯示同源）。
+    private func activityState(bpm: Int, beat: Int, beatsInBar: Int,
+                               isCountIn: Bool) -> MetronomeActivityAttributes.ContentState {
+        MetronomeActivityAttributes.ContentState(
+            bpm: bpm,
+            timeSignature: settings.currentSignatureKey,
+            beat: beat,
+            beatsInBar: beatsInBar,
+            isCountIn: isCountIn)
+    }
+
     private func handleBeat(_ event: BeatVisualEvent) {
         currentPillar = event.pillarIndex
         displayBar = event.barCount
@@ -594,6 +625,13 @@ final class MetronomeViewModel: ObservableObject {
         displayBeatsInBar = event.beatsInBar
         displayIsCountIn = event.isCountIn
         displayIsSilentBar = event.isSilentBar
+        // Live Activity 逐拍更新（控制器內以內容相等去重，
+        // 並以 staleDate 防殭屍）。
+        MetronomeLiveActivityController.shared.update(
+            state: activityState(bpm: event.bpm,
+                                 beat: event.beatIndex + 1,
+                                 beatsInBar: event.beatsInBar,
+                                 isCountIn: event.isCountIn))
         let beatMs = 60000.0 / Double(event.bpm) * (settings.isDottedBeat ? 3.0 : 1.0)
         pulse = PulseState(start: ProcessInfo.processInfo.systemUptime,
                            durationMs: min(950, max(180, beatMs * 0.92)),

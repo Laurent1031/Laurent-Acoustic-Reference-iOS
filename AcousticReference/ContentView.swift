@@ -128,6 +128,16 @@ struct ContentView: View {
             UISoundEngine.shared.isEnabled = engine.settings.soundsOn
             updateIdleTimer()
             startMicIfAutoEnabled()
+            // Live Activity 防殭屍（階段 6）：啟動時節拍器未
+            // 播放卻有殘留活動（上一進程被殺等）→ 全數結束。
+            if !metronomeViewModel.isPlaying {
+                MetronomeLiveActivityController.shared.endAllActivities()
+            }
+        }
+        // 小組件深連結（階段 6）：laurent-acoustic://tuner／
+        // metronome／metronome/start（切頁並直接開始）。
+        .onOpenURL { url in
+            handleDeepLink(url)
         }
         // 語言唯一真源在 store；變更單向同步進 L10n（所有
         // @ObservedObject store 的視圖隨 @Published 變更重繪，
@@ -185,6 +195,9 @@ struct ContentView: View {
 
     private func topBarRow(theme: TunerTheme, showsBadge: Bool,
                            segmentLabels: Bool) -> some View {
+        // 玻璃成簇分組（階段 6）：頂欄的分段／鎖／診斷玻璃
+        // 以 GlassEffectContainer 統一合成（真折射相鄰渲染）。
+        GlassEffectContainer(spacing: 8) {
         HStack(spacing: 8) {
             if showsBadge {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -245,6 +258,7 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .foregroundStyle(theme.textSecondary)
             .accessibilityLabel(L10n.t("诊断"))
+        }
         }
     }
 
@@ -386,6 +400,26 @@ struct ContentView: View {
     private func updateIdleTimer() {
         UIApplication.shared.isIdleTimerDisabled =
             engine.isRunning || metronomeEngine.isPlaying
+    }
+
+    // MARK: - 深連結（階段 6，小組件入口）
+
+    /// laurent-acoustic:// 的三條路徑；未知路徑不動作。
+    /// start 路徑在節拍器已播放時不重啟（ViewModel.start 的
+    /// 引擎側亦有冪等守衛，此處先擋避免多餘的啟動觸感）。
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "laurent-acoustic" else { return }
+        switch url.host {
+        case "tuner":
+            store.appMode = .tuner
+        case "metronome":
+            store.appMode = .metronome
+            if url.path == "/start", !metronomeViewModel.isPlaying {
+                metronomeViewModel.start()
+            }
+        default:
+            break
+        }
     }
 
     // MARK: - 自動開啟麥克風（母本 ensureMicOn，階段 5 接線）

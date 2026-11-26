@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import WidgetKit
 
 /// App 模式（母本 state.mode 的 tuner/metro 子集）。階段 3 時以
 /// ContentView 的 UserDefaults 佔位鍵保存，階段 4 起歸 AppStore
@@ -377,6 +378,45 @@ final class AppStore: ObservableObject {
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url, options: [.atomic])
+        publishWidgetSnapshot()
+    }
+
+    // MARK: - 小組件快照（階段 6）
+
+    /// 上次發布的快照（內容未變不重寫、不刷 timeline——
+    /// persist 觸發頻率高，快照相關欄位只是其中一小子集）。
+    private var lastPublishedSnapshot: WidgetSnapshot?
+
+    /// 自現行狀態組裝快照：顯示字串一律在此依目前語言
+    /// 本地化（擴展側不持有字典）；節拍器值取 store 現行
+    /// metronomeSettings（ViewModel 變更經防抖回存，與 App
+    /// 內顯示收斂一致）。
+    private func makeWidgetSnapshot() -> WidgetSnapshot {
+        let inst = selectedInstrument
+        let a4 = tunerSettings.a4
+        let a4Text = a4 == a4.rounded()
+            ? "A4 \(Int(a4))"
+            : String(format: "A4 %.1f", a4)
+        return WidgetSnapshot(
+            instrumentName: L10n.localizedName(inst.name),
+            instrumentKey: keyLabel(of: inst),
+            a4Text: a4Text,
+            favoriteNames: favoriteInstrumentIds.prefix(4).compactMap { id in
+                instrument(id: id).map { L10n.localizedName($0.name) }
+            },
+            bpm: metronomeSettings.bpm,
+            timeSignature: metronomeSettings.currentSignatureKey,
+            timbreName: L10n.t(metronomeSettings.timbre.sourceName),
+            tunerLabel: L10n.t("调音"),
+            metronomeLabel: L10n.t("节拍"))
+    }
+
+    private func publishWidgetSnapshot() {
+        let snapshot = makeWidgetSnapshot()
+        guard snapshot != lastPublishedSnapshot else { return }
+        lastPublishedSnapshot = snapshot
+        SharedStore.write(snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - 目錄解析

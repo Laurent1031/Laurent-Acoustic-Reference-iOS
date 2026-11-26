@@ -41,6 +41,16 @@
 		A10000000000000000000020 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000022 /* L10n.swift */; };
 		A10000000000000000000021 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000023 /* SettingsView.swift */; };
 		A10000000000000000000022 /* localization.json in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000024 /* localization.json */; };
+		A10000000000000000000040 /* OrientationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000040 /* OrientationManager.swift */; };
+		A10000000000000000000041 /* ImmersiveTunerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000041 /* ImmersiveTunerView.swift */; };
+		A10000000000000000000042 /* SharedSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000042 /* SharedSnapshot.swift */; };
+		A10000000000000000000043 /* SharedSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000042 /* SharedSnapshot.swift */; };
+		A10000000000000000000044 /* MetronomeActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000043 /* MetronomeActivityAttributes.swift */; };
+		A10000000000000000000045 /* MetronomeActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000043 /* MetronomeActivityAttributes.swift */; };
+		A10000000000000000000046 /* MetronomeLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000044 /* MetronomeLiveActivityController.swift */; };
+		A10000000000000000000047 /* HapticPatternTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000045 /* HapticPatternTable.swift */; };
+		A10000000000000000000048 /* AcousticWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000047 /* AcousticWidgets.swift */; };
+		A10000000000000000000049 /* AcousticWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B10000000000000000000050 /* AcousticWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -80,10 +90,46 @@
 		B10000000000000000000022 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
 		B10000000000000000000023 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B10000000000000000000024 /* localization.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = localization.json; sourceTree = "<group>"; };
+		B10000000000000000000040 /* OrientationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationManager.swift; sourceTree = "<group>"; };
+		B10000000000000000000041 /* ImmersiveTunerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmersiveTunerView.swift; sourceTree = "<group>"; };
+		B10000000000000000000042 /* SharedSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedSnapshot.swift; sourceTree = "<group>"; };
+		B10000000000000000000043 /* MetronomeActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetronomeActivityAttributes.swift; sourceTree = "<group>"; };
+		B10000000000000000000044 /* MetronomeLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetronomeLiveActivityController.swift; sourceTree = "<group>"; };
+		B10000000000000000000045 /* HapticPatternTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticPatternTable.swift; sourceTree = "<group>"; };
+		B10000000000000000000046 /* AcousticReference.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AcousticReference.entitlements; sourceTree = "<group>"; };
+		B10000000000000000000047 /* AcousticWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcousticWidgets.swift; sourceTree = "<group>"; };
+		B10000000000000000000048 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B10000000000000000000049 /* AcousticWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AcousticWidgets.entitlements; sourceTree = "<group>"; };
+		B10000000000000000000050 /* AcousticWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AcousticWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXContainerItemProxy section */
+		G10000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D10000000000000000000002 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D10000000000000000000003;
+			remoteInfo = AcousticWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		G10000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D10000000000000000000003 /* AcousticWidgets */;
+			targetProxy = G10000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		E10000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E10000000000000000000005 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -97,6 +143,7 @@
 			isa = PBXGroup;
 			children = (
 				C10000000000000000000002 /* AcousticReference */,
+				C10000000000000000000008 /* AcousticWidgets */,
 				C10000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -106,6 +153,8 @@
 			children = (
 				B10000000000000000000001 /* AcousticReferenceApp.swift */,
 				B10000000000000000000002 /* ContentView.swift */,
+				B10000000000000000000040 /* OrientationManager.swift */,
+				B10000000000000000000046 /* AcousticReference.entitlements */,
 				C10000000000000000000004 /* Audio */,
 				C10000000000000000000005 /* Models */,
 				C10000000000000000000006 /* Features */,
@@ -130,6 +179,8 @@
 				B1000000000000000000001B /* DroneEngine.swift */,
 				B1000000000000000000001F /* StrobePhaseTracker.swift */,
 				B10000000000000000000021 /* UISoundEngine.swift */,
+				B10000000000000000000044 /* MetronomeLiveActivityController.swift */,
+				B10000000000000000000045 /* HapticPatternTable.swift */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -144,6 +195,8 @@
 				B10000000000000000000019 /* Instrument.swift */,
 				B1000000000000000000001A /* AppStore.swift */,
 				B10000000000000000000022 /* L10n.swift */,
+				B10000000000000000000042 /* SharedSnapshot.swift */,
+				B10000000000000000000043 /* MetronomeActivityAttributes.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -162,6 +215,7 @@
 				B1000000000000000000001C /* InstrumentLibraryView.swift */,
 				B1000000000000000000001D /* HoldRepeater.swift */,
 				B10000000000000000000023 /* SettingsView.swift */,
+				B10000000000000000000041 /* ImmersiveTunerView.swift */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -179,11 +233,36 @@
 			isa = PBXGroup;
 			children = (
 				B10000000000000000000005 /* AcousticReference.app */,
+				B10000000000000000000050 /* AcousticWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
+		C10000000000000000000008 /* AcousticWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				B10000000000000000000047 /* AcousticWidgets.swift */,
+				B10000000000000000000048 /* Info.plist */,
+				B10000000000000000000049 /* AcousticWidgets.entitlements */,
+			);
+			path = AcousticWidgets;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E10000000000000000000007 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A10000000000000000000049 /* AcousticWidgets.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXNativeTarget section */
 		D10000000000000000000001 /* AcousticReference */ = {
@@ -193,15 +272,34 @@
 				E10000000000000000000001 /* Sources */,
 				E10000000000000000000002 /* Frameworks */,
 				E10000000000000000000003 /* Resources */,
+				E10000000000000000000007 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				G10000000000000000000002 /* PBXTargetDependency */,
 			);
 			name = AcousticReference;
 			productName = AcousticReference;
 			productReference = B10000000000000000000005 /* AcousticReference.app */;
 			productType = "com.apple.product-type.application";
+		};
+		D10000000000000000000003 /* AcousticWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F10000000000000000000003 /* Build configuration list for PBXNativeTarget "AcousticWidgets" */;
+			buildPhases = (
+				E10000000000000000000004 /* Sources */,
+				E10000000000000000000005 /* Frameworks */,
+				E10000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AcousticWidgets;
+			productName = AcousticWidgets;
+			productReference = B10000000000000000000050 /* AcousticWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -214,6 +312,9 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					D10000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					D10000000000000000000003 = {
 						CreatedOnToolsVersion = 16.0;
 					};
 				};
@@ -232,6 +333,7 @@
 			projectRoot = "";
 			targets = (
 				D10000000000000000000001 /* AcousticReference */,
+				D10000000000000000000003 /* AcousticWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -244,6 +346,13 @@
 				A10000000000000000000003 /* Assets.xcassets in Resources */,
 				A1000000000000000000001C /* instruments.json in Resources */,
 				A10000000000000000000022 /* localization.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E10000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -285,6 +394,22 @@
 				A1000000000000000000001F /* UISoundEngine.swift in Sources */,
 				A10000000000000000000020 /* L10n.swift in Sources */,
 				A10000000000000000000021 /* SettingsView.swift in Sources */,
+				A10000000000000000000040 /* OrientationManager.swift in Sources */,
+				A10000000000000000000041 /* ImmersiveTunerView.swift in Sources */,
+				A10000000000000000000042 /* SharedSnapshot.swift in Sources */,
+				A10000000000000000000044 /* MetronomeActivityAttributes.swift in Sources */,
+				A10000000000000000000046 /* MetronomeLiveActivityController.swift in Sources */,
+				A10000000000000000000047 /* HapticPatternTable.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E10000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000048 /* AcousticWidgets.swift in Sources */,
+				A10000000000000000000043 /* SharedSnapshot.swift in Sources */,
+				A10000000000000000000045 /* MetronomeActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -313,6 +438,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AcousticReference/AcousticReference.entitlements;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -335,6 +461,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AcousticReference/AcousticReference.entitlements;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -348,6 +475,52 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.laurent.acousticreference;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		F10000000000000000000031 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AcousticWidgets/AcousticWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AcousticWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.laurent.acousticreference.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		F10000000000000000000032 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AcousticWidgets/AcousticWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AcousticWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.laurent.acousticreference.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -370,6 +543,15 @@
 			buildConfigurations = (
 				F10000000000000000000021 /* Debug */,
 				F10000000000000000000022 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F10000000000000000000003 /* Build configuration list for PBXNativeTarget "AcousticWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F10000000000000000000031 /* Debug */,
+				F10000000000000000000032 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

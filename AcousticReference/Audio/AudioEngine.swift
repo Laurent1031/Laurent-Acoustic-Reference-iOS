@@ -272,6 +272,8 @@ final class AudioEngine: ObservableObject {
 
     private let core: EngineCore
     private var engine: AVAudioEngine?
+    /// 最近一次 startEngine 的 uptime（配置變更自愈的去抖基準）。
+    private var lastEngineStartUptime: TimeInterval = 0
     /// 是否已向 AudioSessionCoordinator 登記（與節拍器共用 session
     /// 時，setActive(false) 由協調器裁決，避免誤殺對方播放）。
     private var sessionAcquired = false
@@ -372,6 +374,7 @@ final class AudioEngine: ObservableObject {
         audioEngine.prepare()
         try audioEngine.start()
         engine = audioEngine
+        lastEngineStartUptime = ProcessInfo.processInfo.systemUptime
 
         diagnostics = EngineDiagnostics(
             sampleRate: session.sampleRate,
@@ -393,19 +396,52 @@ final class AudioEngine: ObservableObject {
             guard let rawType = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: rawType)
             else { return }
-            let rawOptions = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             Task { @MainActor in
                 guard let self, self.isRunning else { return }
                 switch type {
                 case .began:
                     self.engine?.pause()
                 case .ended:
-                    if AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume) {
-                        try? AVAudioSession.sharedInstance().setActive(true)
-                        try? self.engine?.start()
+                    // 中斷自愈（階段 6，藍圖 Pass 標準）：調音
+                    // 是用戶主動開啟的監測而非媒體播放，中斷
+                    // 結束即嘗試恢復，不以 shouldResume 為門
+                    // （該旗標是給播放類的建議）；恢復失敗不
+                    // 靜默——寫 lastError（調音頁可見）並落回
+                    // 未運行狀態，UI 與現實一致。
+                    do {
+                        try AVAudioSession.sharedInstance().setActive(true)
+                        try self.engine?.start()
+                    } catch {
+                        self.lastError = "中斷後恢復失敗：\(error.localizedDescription)"
+                        self.engine = nil
+                        self.isRunning = false
                     }
                 @unknown default:
                     break
+                }
+            }
+        })
+
+        // 路由／格式變更自愈（階段 6）：耳機／外接麥克風插拔
+        // 觸發 AVAudioEngineConfigurationChange——舊 tap 格式
+        // 可能已失效，整引擎重建（isRunning 與 session 登記
+        // 不動）。重建自身的配置變更以 0.75 s 去抖忽略，防
+        // 重建→變更→重建的回環。
+        observerBag.add(center.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: nil, queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.isRunning, self.engine != nil,
+                      ProcessInfo.processInfo.systemUptime - self.lastEngineStartUptime >= 0.75
+                else { return }
+                self.engine?.stop()
+                self.engine = nil
+                do {
+                    try self.startEngine()
+                } catch {
+                    self.lastError = "音訊路由變更後重建失敗：\(error.localizedDescription)"
+                    self.isRunning = false
                 }
             }
         })
