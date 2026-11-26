@@ -427,12 +427,16 @@ final class MetronomeEngine: ObservableObject {
         auditionEngine = engine
         auditionPlayer = playerNode
         playerNode.play()
-        playerNode.scheduleBuffer(buffer, at: nil, options: []) { [weak self, weak engine] in
+        let engineID = ObjectIdentifier(engine)
+        playerNode.scheduleBuffer(buffer, at: nil, options: []) { [weak self] in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     // 只拆自己這一次的試聽引擎（快速連切音色時，
-                    // 舊回調不得誤停新一次試聽）。
-                    guard let self, self.auditionEngine === engine else { return }
+                    // 舊回調不得誤停新一次試聽）。以 ObjectIdentifier
+                    // 比對身分，避免把 non-Sendable 的 engine 送進閉包。
+                    guard let self,
+                          self.auditionEngine.map({ ObjectIdentifier($0) }) == engineID
+                    else { return }
                     self.auditionEngine?.stop()
                     self.auditionEngine = nil
                     self.auditionPlayer = nil
@@ -521,10 +525,10 @@ final class MetronomeEngine: ObservableObject {
             object: nil, queue: nil) { [weak self] note in
             guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            let optionsRaw = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             Task { @MainActor [weak self] in
                 guard let self, self.isPlaying else { return }
                 if type == .ended {
-                    let optionsRaw = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
                     if AVAudioSession.InterruptionOptions(rawValue: optionsRaw).contains(.shouldResume) {
                         self.resumeAfterInterruption()
                     }
