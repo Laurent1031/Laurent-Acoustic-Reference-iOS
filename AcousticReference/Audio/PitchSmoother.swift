@@ -23,6 +23,9 @@ struct PitchReading: Sendable {
     var clarity: Double
     /// 本幀置中 RMS，診斷用。
     var rms: Double
+    /// 本幀置中訊號峰值（線性 0–1；補強段削波警示用，與音高
+    /// 有效性無關——無有效音高的過載幀同樣攜帶）。預設 0。
+    var peak: Double = 0
     /// 頻閃顯示狀態（頻閃主模式段）：由 EngineCore 在 smoother
     /// 之後以 StrobePhaseTracker 填入；smoother 本身不寫此欄，
     /// 預設為無訊號（相位 0、角速度 0、可信度 0）。
@@ -90,7 +93,8 @@ struct PitchSmoother {
                 trail2Cents: trail2C,
                 isInTune: false,
                 clarity: detection.clarity,
-                rms: detection.rms
+                rms: detection.rms,
+                peak: detection.peak
             )
         }
 
@@ -140,7 +144,8 @@ struct PitchSmoother {
             trail2Cents: trail2C,
             isInTune: abs(smoothedCents) <= settings.toleranceCents,
             clarity: detection.clarity,
-            rms: detection.rms
+            rms: detection.rms,
+            peak: detection.peak
         )
     }
 

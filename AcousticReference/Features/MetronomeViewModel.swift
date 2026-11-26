@@ -70,6 +70,8 @@ final class MetronomeViewModel: ObservableObject {
     @Published private(set) var displayBeat = 0
     @Published private(set) var displayBeatsInBar = 4
     @Published private(set) var displayIsCountIn = false
+    /// 目前拍所在小節是否為 Gap Click 靜音小節（補強段）。
+    @Published private(set) var displayIsSilentBar = false
     @Published private(set) var toast: String?
 
     // MARK: - 里程表／推子渲染值
@@ -85,7 +87,9 @@ final class MetronomeViewModel: ObservableObject {
         isPlaying ? "♩ \(settings.bpm) BPM · 節拍器運行中" : "已暫停 · 點按繼續"
     }
 
-    /// 頂部提示列（母本 updateMetroHint，行 10505）。
+    /// 頂部提示列（母本 updateMetroHint，行 10505；補強段：
+    /// Gap 靜音小節在拍訊後加「· 靜音」標記，拍點視覺本身
+    /// 照常——靜默的是聲音與觸感，不是顯示）。
     var hintText: String {
         if isPlaying {
             if displayIsCountIn {
@@ -93,7 +97,8 @@ final class MetronomeViewModel: ObservableObject {
             }
             let suffix = settings.isDottedBeat
                 ? " (♩. \(settings.bpm) BPM)" : " (\(settings.bpm) BPM)"
-            return "● 第 \(displayBar) 小節 · 第 \(displayBeat + 1)/\(displayBeatsInBar) 拍\(suffix)"
+            let silent = displayIsSilentBar ? " · 靜音" : ""
+            return "● 第 \(displayBar) 小節 · 第 \(displayBeat + 1)/\(displayBeatsInBar) 拍\(suffix)\(silent)"
         }
         return "點擊拍柱切換：強拍 / 次強 / 弱拍 / 靜音"
     }
@@ -145,6 +150,8 @@ final class MetronomeViewModel: ObservableObject {
             guard let self else { return }
             self.rampState = self.engine.rampSnapshot()
             HapticsEngine.shared.tap(milliseconds: 20)
+            // 母本行 10979：漸速到達 haptic(20)＋uiSound("success")。
+            UISoundEngine.shared.play(.success)
             self.showToast("已到達目標速度")
         }
         engine.onRampChanged = { [weak self] state in
@@ -229,11 +236,22 @@ final class MetronomeViewModel: ObservableObject {
         guard beats != settings.beatsPerBar || unit != settings.beatUnit else { return }
         settings.beatsPerBar = beats
         settings.beatUnit = unit
-        settings.beatAccents = MetronomeSettings.defaultAccents(beats: beats, unit: unit)
+        // 母本：切拍號重置為該拍號預設重音。補強段分組：該拍號
+        // 存有選定分組時，以分組推導重音取代預設（分組記憶；
+        // 未存分組的拍號行為與母本逐值一致，零回退）。
+        if let groups = settings.groupingBySignature[
+            MetronomeSettings.signatureKey(beats: beats, unit: unit)],
+           groups.reduce(0, +) == beats {
+            settings.beatAccents = MetronomeSettings.accents(forGroups: groups)
+        } else {
+            settings.beatAccents = MetronomeSettings.defaultAccents(beats: beats, unit: unit)
+        }
         if isPlaying { engine.resetBeatIndex() }
         activePresetId = nil
         publishFill()
         HapticsEngine.shared.tap(milliseconds: 6)
+        // 母本選單選項點按：uiSound("tick")（行 7262／7604）。
+        UISoundEngine.shared.play(.tick)
     }
 
     func setSubdivision(_ value: Int) {
@@ -241,6 +259,7 @@ final class MetronomeViewModel: ObservableObject {
         settings.subdivision = value
         activePresetId = nil
         HapticsEngine.shared.tap(milliseconds: 6)
+        UISoundEngine.shared.play(.tick)
     }
 
     func setTimbre(_ timbre: MetronomeTimbre) {
@@ -248,10 +267,78 @@ final class MetronomeViewModel: ObservableObject {
         settings.timbre = timbre
         activePresetId = nil
         HapticsEngine.shared.tap(milliseconds: 6)
+        UISoundEngine.shared.play(.tick)
         // 母本：未播放時試聽新音色（首柱等級，缺省 3）。
         if !isPlaying {
             engine.audition(timbre: timbre, level: settings.beatAccents.first ?? 3)
         }
+    }
+
+    // MARK: - 不規則拍分組（補強段）
+
+    /// 目前拍號的有效分組：已存分組（合計吻合）優先，否則自
+    /// 目前重音型推導（供分組面板標示「目前」）。
+    var currentGrouping: [Int] {
+        if let stored = settings.groupingBySignature[settings.currentSignatureKey],
+           stored.reduce(0, +) == settings.beatsPerBar {
+            return stored
+        }
+        return MetronomeSettings.groups(fromAccents: settings.beatAccents)
+    }
+
+    /// 目前重音型是否正等於 currentGrouping 的推導（否則面板
+    /// 顯示「手動重音」——分組只是生成器，手動改重音後分組
+    /// 不再是現行重音的完整描述）。
+    var accentsMatchGrouping: Bool {
+        MetronomeSettings.accents(forGroups: currentGrouping) == settings.beatAccents
+    }
+
+    /// 套用分組：存入分組記憶＋以推導重音重寫 beatAccents。
+    /// 合計須等於拍數，否則不動作（面板已擋，此為防線）。
+    func setGrouping(_ groups: [Int]) {
+        guard groups.reduce(0, +) == settings.beatsPerBar,
+              !groups.isEmpty, groups.allSatisfy({ $0 >= 1 }) else { return }
+        settings.groupingBySignature[settings.currentSignatureKey] = groups
+        settings.beatAccents = MetronomeSettings.accents(forGroups: groups)
+        if isPlaying { engine.resetBeatIndex() }
+        activePresetId = nil
+        HapticsEngine.shared.tap(milliseconds: 6)
+        UISoundEngine.shared.play(.tick)
+    }
+
+    /// 清除分組記憶並回母本預設重音（面板的「預設重音」項與
+    /// 預置分組首項等效；此入口供清除自訂分組）。
+    func clearGrouping() {
+        settings.groupingBySignature[settings.currentSignatureKey] = nil
+        settings.beatAccents = MetronomeSettings.defaultAccents(
+            beats: settings.beatsPerBar, unit: settings.beatUnit)
+        if isPlaying { engine.resetBeatIndex() }
+        activePresetId = nil
+        HapticsEngine.shared.tap(milliseconds: 6)
+        UISoundEngine.shared.play(.tick)
+    }
+
+    // MARK: - Gap Click 靜音小節（補強段）
+
+    func setGapEnabled(_ on: Bool) {
+        guard on != settings.gapEnabled else { return }
+        settings.gapEnabled = on
+        HapticsEngine.shared.tap(milliseconds: 6)
+        UISoundEngine.shared.play(.tick)
+    }
+
+    func setGapSoundBars(_ value: Int) {
+        let clamped = min(16, max(1, value))
+        guard clamped != settings.gapSoundBars else { return }
+        settings.gapSoundBars = clamped
+        HapticsEngine.shared.detent()
+    }
+
+    func setGapSilentBars(_ value: Int) {
+        let clamped = min(16, max(1, value))
+        guard clamped != settings.gapSilentBars else { return }
+        settings.gapSilentBars = clamped
+        HapticsEngine.shared.detent()
     }
 
     func setDottedBeat(_ on: Bool) {
@@ -265,28 +352,36 @@ final class MetronomeViewModel: ObservableObject {
         HapticsEngine.shared.tap(milliseconds: 6)
     }
 
-    /// 點按拍柱：等級向下循環 3→2→1→0→3（母本行 11575）。
+    /// 點按拍柱：等級向下循環 3→2→1→0→3（母本行 11575；
+    /// uiSound("tick") 行 10416）。
     func cycleAccent(pillar: Int) {
         guard settings.beatAccents.indices.contains(pillar) else { return }
         settings.beatAccents[pillar] = (settings.beatAccents[pillar] + 3) % 4
         HapticsEngine.shared.tap(milliseconds: 10)
+        UISoundEngine.shared.play(.tick)
     }
 
     func resetAccents() {
         settings.beatAccents = MetronomeSettings.defaultAccents(
             beats: settings.beatsPerBar, unit: settings.beatUnit)
         HapticsEngine.shared.pattern([8, 30, 12])
+        // 母本行 10430：重音重置 uiSound("success")。
+        UISoundEngine.shared.play(.success)
     }
 
     func toggleCountIn() {
         settings.countIn.toggle()
         HapticsEngine.shared.tap(milliseconds: 8)
+        // 母本行 11363：預備拍開關 uiSound("tick")。
+        UISoundEngine.shared.play(.tick)
     }
 
     // MARK: - TAP 測速（母本行 10762，逐項對照）
 
     func tapTempo() {
         HapticsEngine.shared.tap(milliseconds: 10)
+        // 母本行 10892：TAP uiSound("tick")。
+        UISoundEngine.shared.play(.tick)
         let nowMs = ProcessInfo.processInfo.systemUptime * 1000
         tapTimes.append(nowMs)
         if tapTimes.count > 5 { tapTimes.removeFirst(tapTimes.count - 5) }
@@ -335,6 +430,8 @@ final class MetronomeViewModel: ObservableObject {
         engine.stop()
         capsulePaused = false
         HapticsEngine.shared.tap(milliseconds: 10)
+        // 母本行 11442：停止節拍器 uiSound("close")。
+        UISoundEngine.shared.play(.close)
     }
 
     /// 背景膠囊點按（母本行 11640）：播放中 → 暫停（膠囊保留）；
@@ -349,12 +446,14 @@ final class MetronomeViewModel: ObservableObject {
         }
     }
 
-    /// 提示列點按：小節計數歸 1（母本行 10519）。
+    /// 提示列點按：小節計數歸 1（母本行 10519；
+    /// uiSound("tick") 行 11391）。
     func hintTapped() {
         guard isPlaying else { return }
         engine.resetBarCount()
         displayBar = 1
         HapticsEngine.shared.tap(milliseconds: 6)
+        UISoundEngine.shared.play(.tick)
     }
 
     // MARK: - 預置（母本 applyMetroPreset/saveCurrentMetroPreset）
@@ -371,6 +470,7 @@ final class MetronomeViewModel: ObservableObject {
             beats: preset.beats, unit: preset.noteUnit)
         activePresetId = preset.id
         HapticsEngine.shared.tap(milliseconds: 8)
+        UISoundEngine.shared.play(.tick)
         showToast("已套用預設")
     }
 
@@ -403,6 +503,9 @@ final class MetronomeViewModel: ObservableObject {
         }
         persistUserPresets(userPresets)
         HapticsEngine.shared.tap(milliseconds: 10)
+        // 保存完成回饋：母本同類保存點（設為默認 行 7080、自訂
+        // 樂器保存 行 7686）皆 uiSound("success")，此處比照。
+        UISoundEngine.shared.play(.success)
         showToast("已保存預設")
         return true
     }
@@ -432,6 +535,8 @@ final class MetronomeViewModel: ObservableObject {
             let from = settings.bpm
             let to = settings.clampedBpm(from + delta)
             guard to != from else {
+                // 母本行 11410：漸速極限提示 uiSound("warn")。
+                UISoundEngine.shared.play(.warn)
                 showToast("當前已在極限速度，無法往該方向漸速")
                 return false
             }
@@ -450,6 +555,8 @@ final class MetronomeViewModel: ObservableObject {
               (MetronomeSettings.bpmMin...MetronomeSettings.bpmMax).contains(to),
               to != from, (1...32).contains(bars), (1...20).contains(step)
         else {
+            // 母本行 11317：漸速參數無效 uiSound("warn")。
+            UISoundEngine.shared.play(.warn)
             showToast("請檢查漸速參數")
             return false
         }
@@ -462,6 +569,8 @@ final class MetronomeViewModel: ObservableObject {
     func stopRamp() {
         engine.cancelRamp()
         rampState = engine.rampSnapshot()
+        // 母本行 7489：取消漸速 uiSound("close")。
+        UISoundEngine.shared.play(.close)
     }
 
     // MARK: - 拍點事件 → 脈衝（母本 strikePulse，行 11552）
@@ -472,6 +581,7 @@ final class MetronomeViewModel: ObservableObject {
         displayBeat = event.beatIndex
         displayBeatsInBar = event.beatsInBar
         displayIsCountIn = event.isCountIn
+        displayIsSilentBar = event.isSilentBar
         let beatMs = 60000.0 / Double(event.bpm) * (settings.isDottedBeat ? 3.0 : 1.0)
         pulse = PulseState(start: ProcessInfo.processInfo.systemUptime,
                            durationMs: min(950, max(180, beatMs * 0.92)),

@@ -9,6 +9,10 @@ struct TunerDebugView: View {
     /// 節拍器診斷（階段 3 起由 ContentView 殼注入；缺省時不顯示該段）。
     var metronomeEngine: MetronomeEngine?
     var metronomeViewModel: MetronomeViewModel?
+    /// 補強段過渡入口：外觀主題（含樂池暗紅）與 UI 音效開關。
+    /// 正式設定頁屬階段 5；此頁為固定黑底診斷頁，不隨主題
+    /// 變色（有意差異，見補強段報告）。
+    @ObservedObject var store: AppStore
     @State private var logCopied = false
 
     var body: some View {
@@ -160,6 +164,40 @@ struct TunerDebugView: View {
             }
             .pickerStyle(.segmented)
 
+            // 補強段過渡入口（正式設定頁屬階段 5）：外觀主題
+            // 四態（含樂池暗紅，存入持久化）＋ UI 音效回饋開關
+            // （母本 state.soundsOn，存 tunerSettings）。
+            HStack {
+                Text("外觀")
+                    .foregroundStyle(.white.opacity(0.7))
+                Spacer()
+                Picker("外觀", selection: $store.themePreference) {
+                    ForEach(AppTheme.allCases, id: \.self) { theme in
+                        Text(theme.displayName).tag(theme)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .tint(.white)
+            }
+
+            Toggle(isOn: Binding(
+                get: { store.tunerSettings.soundsOn },
+                set: { newValue in
+                    store.tunerSettings.soundsOn = newValue
+                    // 母本行 12275：音效開關開啟當下即播 "success"
+                    // 作回饋（ContentView 的 onChange 同步會隨後
+                    // 跟上，此處先行啟用引擎以免被舊旗標擋下）。
+                    if newValue {
+                        UISoundEngine.shared.isEnabled = true
+                        UISoundEngine.shared.play(.success)
+                    }
+                })) {
+                Text("音效回饋")
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            .tint(Color(red: 0.039, green: 0.518, blue: 1.0))
+
             Text("中音薩克斯 · 檢測範圍 130–1200 Hz · 容差 ±\(String(format: "%.1f", engine.settings.toleranceCents))¢")
                 .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(.white.opacity(0.45))
@@ -250,5 +288,5 @@ private struct MetronomeDebugSection: View {
 }
 
 #Preview {
-    TunerDebugView(engine: AudioEngine())
+    TunerDebugView(engine: AudioEngine(), store: AppStore())
 }

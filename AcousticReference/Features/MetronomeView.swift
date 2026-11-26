@@ -8,6 +8,7 @@ import SwiftUI
 struct MetronomeView: View {
     @ObservedObject var engine: MetronomeEngine
     @ObservedObject var viewModel: MetronomeViewModel
+    @ObservedObject var store: AppStore
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var breathing = false
@@ -18,10 +19,13 @@ struct MetronomeView: View {
     @State private var presetName = ""
     @State private var showDeletePreset = false
     @State private var showCustomRamp = false
+    @State private var showGrouping = false
+    @State private var showGapClick = false
     @State private var faderRubber: Double = 0
 
     var body: some View {
-        let theme = TunerTheme.resolve(colorScheme)
+        let theme = TunerTheme.resolve(preference: store.themePreference,
+                                       system: colorScheme)
         GeometryReader { geo in
             let dialSize = min(182, max(122, geo.size.height * 0.19))
             let railHeight = min(250, max(152, geo.size.height * 0.20))
@@ -74,6 +78,12 @@ struct MetronomeView: View {
         }
         .sheet(isPresented: $showCustomRamp) {
             CustomRampSheet(viewModel: viewModel, isPresented: $showCustomRamp)
+        }
+        .sheet(isPresented: $showGrouping) {
+            GroupingSheet(viewModel: viewModel, isPresented: $showGrouping)
+        }
+        .sheet(isPresented: $showGapClick) {
+            GapClickSheet(viewModel: viewModel, isPresented: $showGapClick)
         }
     }
 
@@ -160,11 +170,11 @@ struct MetronomeView: View {
         let isCurrent = viewModel.currentPillar == pillar
         let p = isCurrent ? viewModel.pulseValue : 0
         let sb: Double = lvl == 3 ? 0.14 : lvl == 2 ? 0.10 : 0.07
+        // 亮起漸層走主題 token（補強段）：預備拍橙、強拍綠、
+        // 其餘藍；樂池暗紅主題下三者全收斂為紅譜（見 TunerTheme）。
         let litColors: [Color] = viewModel.pulseIsCountIn && isCurrent
-            ? [Color(hex: 0xFFB340), Color(hex: 0xFF9F0A)]
-            : (lvl == 3
-               ? [Color(hex: 0x3CE068), Color(hex: 0x28B850)]
-               : [Color(hex: 0x2B95FF), Color(hex: 0x0A84FF)])
+            ? theme.countInGradient
+            : (lvl == 3 ? theme.beatStrongGradient : theme.beatNormalGradient)
         return VStack(spacing: 3) {
             ZStack {
                 // 光暈（母本 ::before：60×102、accent-soft 徑向；
@@ -228,7 +238,12 @@ struct MetronomeView: View {
             Spacer(minLength: 0)
             dialView(theme: theme, size: dialSize)
             Spacer(minLength: 0)
+            // 推子內縮（補強段）：頁面 .horizontal 16 ＋ 此處
+            // trailing 8 = 軌道右緣距螢幕邊 24pt，離開 iOS
+            // 邊緣返回手勢熱區（約 20pt）；視覺上推子僅左移
+            // 8pt，刻度數字列隨之內移，其餘版面不動。
             faderView(theme: theme, height: railHeight)
+                .padding(.trailing, 8)
         }
     }
 
@@ -325,15 +340,13 @@ struct MetronomeView: View {
                     }
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(LinearGradient(
-                        colors: theme.isDark
-                            ? [Color.white, Color(hex: 0xE9EFFC), Color(hex: 0xCCDAF6)]
-                            : [Color.white, Color(hex: 0xF7FAFF)],
+                        colors: theme.faderFillColors,
                         startPoint: .top, endPoint: .bottom))
                     .frame(height: fillH)
                 Image(systemName: "gauge.with.dots.needle.33percent")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(glyphCovered ? Color(hex: 0x0B4FD6)
-                                     : (theme.isDark ? .white : Color(hex: 0x3A3A3C)))
+                    .foregroundStyle(glyphCovered ? theme.faderGlyphCovered
+                                     : theme.faderGlyphUncovered)
                     .padding(.bottom, 12)
             }
             .frame(width: 46, height: height)
@@ -450,6 +463,30 @@ struct MetronomeView: View {
                         }
                     }
                 }
+            }
+            // 補強段第二列：不規則拍分組（僅適用拍號顯示）＋
+            // Gap Click 靜音小節。兩者皆開專屬面板（非 Menu）：
+            // 分組需自訂編輯、Gap 需雙 Stepper，Menu 承載不了。
+            HStack(spacing: 8) {
+                if viewModel.settings.groupingAvailable {
+                    Button {
+                        showGrouping = true
+                    } label: {
+                        tileLabel(theme: theme, title: "重音分組",
+                                  value: viewModel.currentGrouping
+                                    .map(String.init).joined(separator: "+"))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button {
+                    showGapClick = true
+                } label: {
+                    tileLabel(theme: theme, title: "靜音小節",
+                              value: viewModel.settings.gapEnabled
+                                ? "響 \(viewModel.settings.gapSoundBars) · 靜 \(viewModel.settings.gapSilentBars)"
+                                : "關閉")
+                }
+                .buttonStyle(.plain)
             }
             wideMenuRow(theme: theme, title: "預設",
                         value: viewModel.activePreset?.name ?? "選擇") {
@@ -831,12 +868,12 @@ private struct CustomRampSheet: View {
             Form {
                 Section("漸速參數") {
                     LabeledContent("起始 BPM") {
-                        TextField("40–208", text: $fromText)
+                        TextField("20–300", text: $fromText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
                     LabeledContent("目標 BPM") {
-                        TextField("40–208", text: $toText)
+                        TextField("20–300", text: $toText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
@@ -884,6 +921,146 @@ private struct CustomRampSheet: View {
                 if fromText.isEmpty {
                     fromText = String(viewModel.settings.bpm)
                     toText = String(viewModel.settings.clampedBpm(viewModel.settings.bpm + 20))
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+/// 不規則拍分組面板（補強段）：預置單選＋自訂編輯器。
+/// 分組驅動重音型（組首第一組＝強、其餘組首＝次強、組內＝弱），
+/// 拍點圓點與觸感分級皆由重音型決定，故套用分組即全鏈生效。
+/// 首項預置恆為母本預設分組，其推導重音與母本預設逐值相等。
+private struct GroupingSheet: View {
+    @ObservedObject var viewModel: MetronomeViewModel
+    @Binding var isPresented: Bool
+    @State private var draft: [Int] = []
+
+    private var beats: Int { viewModel.settings.beatsPerBar }
+    private var presets: [[Int]] {
+        MetronomeSettings.groupingPresets(beats: viewModel.settings.beatsPerBar,
+                                          unit: viewModel.settings.beatUnit)
+    }
+    private var draftSum: Int { draft.reduce(0, +) }
+    private var draftValid: Bool {
+        !draft.isEmpty && draftSum == beats && draft.allSatisfy { $0 >= 1 }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("預置分組（\(viewModel.settings.currentSignatureKey)）") {
+                    ForEach(Array(presets.enumerated()), id: \.offset) { _, preset in
+                        Button {
+                            viewModel.setGrouping(preset)
+                        } label: {
+                            HStack {
+                                Text(preset.map(String.init).joined(separator: " + "))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                if viewModel.currentGrouping == preset
+                                    && viewModel.accentsMatchGrouping {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
+                        }
+                    }
+                }
+                Section {
+                    LabeledContent("目前分組",
+                                   value: viewModel.currentGrouping
+                                    .map(String.init).joined(separator: " + "))
+                    if !viewModel.accentsMatchGrouping {
+                        Text("目前重音含手動調整（點按拍柱改過），與分組推導不完全一致；套用任一分組將重寫重音。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("清除分組 · 回母本預設重音") {
+                        viewModel.clearGrouping()
+                    }
+                }
+                Section("自訂分組") {
+                    ForEach(Array(draft.enumerated()), id: \.offset) { index, _ in
+                        Stepper(value: draftBinding(index), in: 1...beats) {
+                            Text("第 \(index + 1) 組 · \(draft[index]) 拍")
+                        }
+                    }
+                    .onDelete { draft.remove(atOffsets: $0) }
+                    Button("新增一組") {
+                        draft.append(1)
+                    }
+                    .disabled(draftSum >= beats)
+                    LabeledContent("合計", value: "\(draftSum) / \(beats) 拍")
+                    Button("套用自訂分組") {
+                        viewModel.setGrouping(draft)
+                    }
+                    .disabled(!draftValid)
+                }
+            }
+            .navigationTitle("重音分組")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("關閉") { isPresented = false }
+                }
+            }
+            .onAppear {
+                if draft.isEmpty { draft = viewModel.currentGrouping }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func draftBinding(_ index: Int) -> Binding<Int> {
+        Binding(get: { index < draft.count ? draft[index] : 1 },
+                set: { if index < draft.count { draft[index] = $0 } })
+    }
+}
+
+/// Gap Click 靜音小節面板（補強段）：響 N 小節／靜 M 小節循環。
+/// 靜音小節內點音與觸感同步靜默，拍點視覺照常推進；預備拍
+/// 不計入循環；漸速計步包含靜音小節（節奏訓練的靜默段照常
+/// 計時，速度變化不因靜默而停滯——見 MetronomeCore 註解）。
+private struct GapClickSheet: View {
+    @ObservedObject var viewModel: MetronomeViewModel
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Toggle("啟用靜音小節", isOn: Binding(
+                        get: { viewModel.settings.gapEnabled },
+                        set: { viewModel.setGapEnabled($0) }))
+                } footer: {
+                    Text("循環播放：先響若干小節，再靜音若干小節。靜音期間拍點照常顯示，但不出聲、不震動。")
+                }
+                if viewModel.settings.gapEnabled {
+                    Section("循環") {
+                        Stepper(value: Binding(
+                            get: { viewModel.settings.gapSoundBars },
+                            set: { viewModel.setGapSoundBars($0) }),
+                                in: MetronomeSettings.gapBarsRange) {
+                            Text("發聲小節 · \(viewModel.settings.gapSoundBars)")
+                        }
+                        Stepper(value: Binding(
+                            get: { viewModel.settings.gapSilentBars },
+                            set: { viewModel.setGapSilentBars($0) }),
+                                in: MetronomeSettings.gapBarsRange) {
+                            Text("靜音小節 · \(viewModel.settings.gapSilentBars)")
+                        }
+                    } footer: {
+                        Text("預備拍不計入循環；漸速計步包含靜音小節。播放中修改即時生效（循環位置不重置）。")
+                    }
+                }
+            }
+            .navigationTitle("靜音小節")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("關閉") { isPresented = false }
                 }
             }
         }

@@ -435,9 +435,10 @@ final class DroneEngine: ObservableObject {
             sessionAcquired = true
         }
         do {
-            if session.category != .playAndRecord {
-                try session.setCategory(.playAndRecord, mode: .measurement, options: [])
-            }
+            // 動態 Mode（補強段）：與 MetronomeEngine 同——category
+            // /mode 由協調器依使用者組成統一裁決（調音在場走錄音
+            // 型、僅播放走播放型恢復外放電平），此處不自設。
+            AudioSessionCoordinator.shared.applyProfile()
             try session.setActive(true)
         } catch {
             lastError = "音訊工作階段啟動失敗：\(error.localizedDescription)"
@@ -514,6 +515,9 @@ final class DroneEngine: ObservableObject {
         if AudioSessionCoordinator.shared.release(.drone) {
             try? AVAudioSession.sharedInstance().setActive(
                 false, options: [.notifyOthersOnDeactivation])
+        } else {
+            // 組成改變可能觸發型態切換，交協調器裁決。
+            AudioSessionCoordinator.shared.applyProfile()
         }
     }
 

@@ -9,8 +9,25 @@ import SwiftUI
 /// --text-primary #1D1D1F、--text-secondary #334155、--text-muted #526071；
 /// 音名準音色淺色另用 #248A3D（母本行 4645 的對比度修正）。
 /// 偏差弧的「偏高」色 #FF9F0A 為母本 paintGauge 寫死值，雙主題相同。
+///
+/// 樂池暗紅（補強段新增第三態，母本無）：近黑底＋全套前景收進
+/// 紅色譜、低亮度護夜視——accent 深紅、ok 亮朱紅（在單色紅
+/// 環境中以亮度而非色相區分準音）、文字為暗紅白；節拍光色、
+/// 推子填充、收藏星等原本的高亮色面一律改走 pit token，
+/// 不得有漏網亮色（逐處核對見補強段報告的主題掃描表）。
+/// pit 的 isDark = true：所有以 isDark 分支的透明度／材質選擇
+/// 沿用深色行為，系統層另以 preferredColorScheme(.dark) 強制
+/// 材質與選單走深色渲染（ContentView）。
 struct TunerTheme {
-    let isDark: Bool
+    enum Kind: Sendable {
+        case light
+        case dark
+        case pit
+    }
+
+    let kind: Kind
+    var isDark: Bool { kind != .light }
+    var isPit: Bool { kind == .pit }
     let accent: Color
     let ok: Color
     /// 音名大字在準音／鎖定時的顏色（淺色與 --ok 不同，見上）。
@@ -24,42 +41,116 @@ struct TunerTheme {
     /// 警示色（母本 --warn：深色 #FFD60A／淺色 #FF9500，行 157／196）：
     /// 收藏星標蹦出特效的火花色（母本 .burst-dot）。
     let warn: Color
+    /// 削波警示色（補強段新增）：深 #FF453A／淺 #D70015（系統
+    /// red 的深淺對應值）；pit 用亮橙紅，在單色紅環境中靠
+    /// 色溫與亮度跳出。
+    let clipWarning: Color
+    /// 節拍圓點點亮漸層（母本 dotCell 寫死值）：強拍綠系、
+    /// 一般藍系、預備拍琥珀系；pit 全部收進紅色譜。
+    let beatStrongGradient: [Color]
+    let beatNormalGradient: [Color]
+    let countInGradient: [Color]
+    /// 推子填充漸層（母本 .fader 填充：深色近白三段／淺色近白
+    /// 兩段）；pit 改暗紅三段，避免整條亮白成為最亮色面。
+    let faderFillColors: [Color]
+    /// 推子圖示色：被填充覆蓋時（母本寫死 #0B4FD6）／未覆蓋時
+    /// （深色白／淺色 #3A3A3C）；pit 改暗紅白系。
+    let faderGlyphCovered: Color
+    let faderGlyphUncovered: Color
+    /// 收藏星色（母本寫死 #FFD60A，雙主題同）；pit 改暗琥珀。
+    let favoriteStar: Color
 
-    static func resolve(_ scheme: ColorScheme) -> TunerTheme {
-        if scheme == .dark {
-            return TunerTheme(
-                isDark: true,
-                accent: Color(hex: 0x0A84FF),
-                ok: Color(hex: 0x30D158),
-                okText: Color(hex: 0x30D158),
-                needle: Color(hex: 0xF5F5F7),
-                textPrimary: Color(hex: 0xF5F5F7),
-                textSecondary: Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.6),
-                textMuted: Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.34),
-                sharp: Color(hex: 0xFF9F0A),
-                warn: Color(hex: 0xFFD60A)
-            )
+    /// 依主題偏好與系統外觀解析（補強段）：.system 沿用母本
+    /// 「隨系統」；.light/.dark 強制；.pit 樂池暗紅。
+    static func resolve(preference: AppTheme, system: ColorScheme) -> TunerTheme {
+        switch preference {
+        case .pit: return .pit
+        case .dark: return .dark
+        case .light: return .light
+        case .system: return system == .dark ? .dark : .light
         }
-        return TunerTheme(
-            isDark: false,
-            accent: Color(hex: 0x007AFF),
-            ok: Color(hex: 0x34C759),
-            okText: Color(hex: 0x248A3D),
-            needle: Color(hex: 0x1D1D1F),
-            textPrimary: Color(hex: 0x1D1D1F),
-            textSecondary: Color(hex: 0x334155),
-            textMuted: Color(hex: 0x526071),
-            sharp: Color(hex: 0xFF9F0A),
-            warn: Color(hex: 0xFF9500)
-        )
     }
+
+    /// 相容入口（舊呼叫點語義 = 跟隨系統）。
+    static func resolve(_ scheme: ColorScheme) -> TunerTheme {
+        resolve(preference: .system, system: scheme)
+    }
+
+    static let dark = TunerTheme(
+        kind: .dark,
+        accent: Color(hex: 0x0A84FF),
+        ok: Color(hex: 0x30D158),
+        okText: Color(hex: 0x30D158),
+        needle: Color(hex: 0xF5F5F7),
+        textPrimary: Color(hex: 0xF5F5F7),
+        textSecondary: Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.6),
+        textMuted: Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.34),
+        sharp: Color(hex: 0xFF9F0A),
+        warn: Color(hex: 0xFFD60A),
+        clipWarning: Color(hex: 0xFF453A),
+        beatStrongGradient: [Color(hex: 0x3CE068), Color(hex: 0x28B850)],
+        beatNormalGradient: [Color(hex: 0x2B95FF), Color(hex: 0x0A84FF)],
+        countInGradient: [Color(hex: 0xFFB340), Color(hex: 0xFF9F0A)],
+        faderFillColors: [Color.white, Color(hex: 0xE9EFFC), Color(hex: 0xCCDAF6)],
+        faderGlyphCovered: Color(hex: 0x0B4FD6),
+        faderGlyphUncovered: .white,
+        favoriteStar: Color(hex: 0xFFD60A)
+    )
+
+    static let light = TunerTheme(
+        kind: .light,
+        accent: Color(hex: 0x007AFF),
+        ok: Color(hex: 0x34C759),
+        okText: Color(hex: 0x248A3D),
+        needle: Color(hex: 0x1D1D1F),
+        textPrimary: Color(hex: 0x1D1D1F),
+        textSecondary: Color(hex: 0x334155),
+        textMuted: Color(hex: 0x526071),
+        sharp: Color(hex: 0xFF9F0A),
+        warn: Color(hex: 0xFF9500),
+        clipWarning: Color(hex: 0xD70015),
+        beatStrongGradient: [Color(hex: 0x3CE068), Color(hex: 0x28B850)],
+        beatNormalGradient: [Color(hex: 0x2B95FF), Color(hex: 0x0A84FF)],
+        countInGradient: [Color(hex: 0xFFB340), Color(hex: 0xFF9F0A)],
+        faderFillColors: [Color.white, Color(hex: 0xF7FAFF)],
+        faderGlyphCovered: Color(hex: 0x0B4FD6),
+        faderGlyphUncovered: Color(hex: 0x3A3A3C),
+        favoriteStar: Color(hex: 0xFFD60A)
+    )
+
+    /// 樂池暗紅調色盤：整體亮度壓低、色相收進紅—橙紅段。
+    /// ok 用最亮的朱紅 #FF5A36 與 accent 深紅拉開亮度差，
+    /// 在單色環境中仍可一眼分辨準音；sharp 反用深紅（偏高側
+    /// 弧段在暗背景上呈暗紅，與 ok 的亮形成對照）。
+    static let pit = TunerTheme(
+        kind: .pit,
+        accent: Color(hex: 0xC62F3B),
+        ok: Color(hex: 0xFF5A36),
+        okText: Color(hex: 0xFF5A36),
+        needle: Color(hex: 0xE8CFC8),
+        textPrimary: Color(hex: 0xD8B4AC),
+        textSecondary: Color(red: 216 / 255, green: 150 / 255, blue: 140 / 255, opacity: 0.55),
+        textMuted: Color(red: 216 / 255, green: 150 / 255, blue: 140 / 255, opacity: 0.34),
+        sharp: Color(hex: 0x8E2F26),
+        warn: Color(hex: 0xC98F3D),
+        clipWarning: Color(hex: 0xFF7847),
+        beatStrongGradient: [Color(hex: 0xFF6A4D), Color(hex: 0xD63A22)],
+        beatNormalGradient: [Color(hex: 0xC74B3C), Color(hex: 0x8E2418)],
+        countInGradient: [Color(hex: 0xE08A3C), Color(hex: 0xB85C1E)],
+        faderFillColors: [Color(hex: 0x8E3B32), Color(hex: 0x6E2A24), Color(hex: 0x4A1D18)],
+        faderGlyphCovered: Color(hex: 0xFFD9CF),
+        faderGlyphUncovered: Color(hex: 0xD8B4AC),
+        favoriteStar: Color(hex: 0xC98F3D)
+    )
 
     /// 頁面背景：母本深色為頂部 #17171A → #000 的徑向漸層，
     /// 淺色為 #FFFFFF → #F2F2F7；以 RadialGradient 近似（玻璃真折射
     /// 與動態背景屬後續階段，此處只做靜態等價）。
+    /// pit：頂部 #140404（近黑帶暗紅）→ #000。
     @ViewBuilder
     var background: some View {
-        if isDark {
+        switch kind {
+        case .dark:
             ZStack {
                 Color.black
                 RadialGradient(
@@ -67,7 +158,15 @@ struct TunerTheme {
                     center: .top, startRadius: 0, endRadius: 560
                 )
             }
-        } else {
+        case .pit:
+            ZStack {
+                Color.black
+                RadialGradient(
+                    colors: [Color(hex: 0x140404), Color.clear],
+                    center: .top, startRadius: 0, endRadius: 560
+                )
+            }
+        case .light:
             ZStack {
                 Color(hex: 0xF2F2F7)
                 RadialGradient(

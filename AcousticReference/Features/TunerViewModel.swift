@@ -163,6 +163,20 @@ final class TunerViewModel: ObservableObject {
     @Published private(set) var stabilityBadgeText = "輕點定格"
     @Published private(set) var stabilityFrozen = false
 
+    // MARK: - 發佈狀態（削波警示，補強段）
+
+    /// 削波警示旗標：輸入峰值達 −1 dBFS 即亮，峰值回落至
+    /// −6 dBFS 以下持續 1.5 s 後滅（遲滯＋保持，防邊界閃爍）。
+    /// 門檻為本段自訂（母本無削波警示）：−1 dBFS 是「已非常
+    /// 接近數位滿格、波形頂部大概率已被削平」的實務警戒線，
+    /// 真削波（0 dBFS）才亮會漏掉臨界過載；−6 dBFS 釋放線與
+    /// 1.5 s 保持則確保警示可讀、不隨每幀峰值跳動。
+    @Published private(set) var clipWarning = false
+    private var clipLastAboveRelease: TimeInterval = -.infinity
+    private static let clipEnterPeak = 0.8913   // −1 dBFS
+    private static let clipReleasePeak = 0.5012 // −6 dBFS
+    private static let clipHoldSeconds = 1.5
+
     /// 音分文字（母本 paintCentsTexts 格式：正數帶 +、一位小數、" ¢"）。
     var centsDisplayText: String {
         let body = String(format: "%.1f", displayCents)
@@ -290,6 +304,17 @@ final class TunerViewModel: ObservableObject {
         trail2Cents = reading.trail2Cents
         let now = ProcessInfo.processInfo.systemUptime
 
+        // 削波警示狀態機（與音高有效性無關：過載幀常被檢測
+        // 回絕，峰值仍須計入——detector 在回絕前已算峰值）。
+        if reading.peak >= Self.clipReleasePeak {
+            clipLastAboveRelease = now
+        }
+        if reading.peak >= Self.clipEnterPeak {
+            clipWarning = true
+        } else if clipWarning, now - clipLastAboveRelease > Self.clipHoldSeconds {
+            clipWarning = false
+        }
+
         // 頻閃錨點（兩種模式都更新，切換即時生效）：分析時刻
         // （uptime）換算為牆鐘錨點，供 StrobeView 的 TimelineView
         // 以 context.date 外推。
@@ -348,6 +373,8 @@ final class TunerViewModel: ObservableObject {
                     if now - since >= 0.650, !noteLocked {
                         noteLocked = true
                         HapticsEngine.shared.pattern([8, 35, 16])
+                        // 母本 uiSound("lock")（行 9655，同呼叫點）。
+                        UISoundEngine.shared.play(.lock)
                     }
                 } else {
                     inTuneSince = now
@@ -416,9 +443,11 @@ final class TunerViewModel: ObservableObject {
     }
 
     /// 晶片點按：自動識別晶片（note = nil）清除鎖定；同一音再點
-    /// 取消鎖定（滑奏中除外）；其餘設為鎖定。母本 haptic(5)。
+    /// 取消鎖定（滑奏中除外）；其餘設為鎖定。母本 haptic(5)＋
+    /// uiSound("tick")（行 8562）。
     func tapTargetChip(note: String?) {
         HapticsEngine.shared.tap(milliseconds: 5)
+        UISoundEngine.shared.play(.tick)
         guard let note else {
             clearLock()
             return
@@ -491,19 +520,22 @@ final class TunerViewModel: ObservableObject {
         return drone.isPlaying ? "停止 (\(note))" : "基準音 \(note)"
     }
 
-    /// 開關 Drone（母本 toggleDrone）：開 haptic(12)、關 haptic(8)。
+    /// 開關 Drone（母本 toggleDrone）：開 haptic(12)、關 haptic(8)
+    /// ＋uiSound("close")（行 10182，母本停止 Drone 的呼叫點）。
     func toggleDrone() {
         if drone.isPlaying {
             drone.stop()
             HapticsEngine.shared.tap(milliseconds: 8)
+            UISoundEngine.shared.play(.close)
         } else {
             drone.start(targetMidi: droneTargetMidi, timbre: store.droneTimbre)
             HapticsEngine.shared.tap(milliseconds: 12)
         }
     }
 
-    /// 音高跟隨開關（母本 followBtn）：切換 haptic(7)；關閉時清
-    /// 跟隨候選（母本 droneFollowTimer 隨之失效）。
+    /// 音高跟隨開關（母本 followBtn）：切換 haptic(7)＋
+    /// uiSound("tick")（行 10213）；關閉時清跟隨候選
+    /// （母本 droneFollowTimer 隨之失效）。
     func toggleDroneFollow() {
         store.droneFollow.toggle()
         if !store.droneFollow {
@@ -511,15 +543,17 @@ final class TunerViewModel: ObservableObject {
             followSince = nil
         }
         HapticsEngine.shared.tap(milliseconds: 7)
+        UISoundEngine.shared.play(.tick)
     }
 
     // MARK: - 純律主音（母本 #24 justTonicPill／Strip，行 7031）
 
     /// 純律主音快選：寫入設定（ContentView 同步進引擎與 Drone
-    /// 改頻），母本 haptic(8)。
+    /// 改頻），母本 haptic(8)＋uiSound("tick")（行 7058）。
     func setJustTonic(_ pc: Int) {
         store.tunerSettings.justTonicPc = pc
         HapticsEngine.shared.tap(milliseconds: 8)
+        UISoundEngine.shared.play(.tick)
     }
 
     // MARK: - 顯示時鐘
@@ -584,6 +618,8 @@ final class TunerViewModel: ObservableObject {
         stability.frozen.toggle()
         stabilityFrozen = stability.frozen
         refreshBadgeText()
+        // 母本行 9268：定格 uiSound("switch")、解凍 uiSound("tick")。
+        UISoundEngine.shared.play(stabilityFrozen ? .switch : .tick)
     }
 
     /// 母本 updateTraceBadge（行 9243）四態文字。
@@ -622,6 +658,9 @@ final class TunerViewModel: ObservableObject {
         // StrobeView 在 micActive=false 時恆暫停）。
         strobeRate = 0
         strobeConfidence = 0
+        // 削波警示隨停止熄滅（無輸入即無過載可言）。
+        clipWarning = false
+        clipLastAboveRelease = -.infinity
         inTuneSince = nil
         hadValidPitch = false
         // 母本 reset 不清 ghost（靠 1.5 s 自然到期）；原生版停止時一併

@@ -65,6 +65,8 @@ enum DampingProfile: String, CaseIterable, Codable, Sendable {
 /// 調音器設定快照。預設值 = 母本 createDefaultProfile（行 6211）與
 /// state 初始值（行 6249 起）：A4 442.0、容差 3、阻尼 balanced、
 /// 噪聲門 mid、律制 equal、純律主音 pc 0。
+/// Codable 為逐欄 decodeIfPresent＋預設（自訂實作於下方
+/// extension）：日後新增欄位時舊檔只退該欄預設，不整份丟棄。
 struct TunerSettings: Equatable, Codable, Sendable {
     /// A4 基準頻率，範圍 430–450（母本 setA4 鉗制，行 8631）。
     var a4: Double = 442.0
@@ -78,6 +80,10 @@ struct TunerSettings: Equatable, Codable, Sendable {
     /// 震動回饋總開關（母本 state.hapticsOn，預設 true）：
     /// 門控 HapticsEngine 全部輸出（規格書 §3.6）。
     var hapticsOn: Bool = true
+    /// UI 音效總開關（母本 state.soundsOn，行 6269，預設 true、
+    /// 隨 app 設定落盤 行 8108）：門控 UISoundEngine 全部輸出；
+    /// 與 hapticsOn 為兩個獨立開關（母本設定頁並列兩開關）。
+    var soundsOn: Bool = true
 
     /// A4 步進（母本行 8638／8645）：±0.5 Hz，先 round 到 0.1，再鉗 [430, 450]。
     mutating func stepA4(by delta: Double) {
@@ -87,4 +93,45 @@ struct TunerSettings: Equatable, Codable, Sendable {
 
     /// A4 讀數點擊循環預設（母本行 8653）：[440, 442, 443]。
     static let a4Presets: [Double] = [440, 442, 443]
+}
+
+// MARK: - Codable（逐欄容錯：缺欄退預設，保舊檔升級不丟設定）
+
+extension TunerSettings {
+    private enum CodingKeys: String, CodingKey {
+        case a4, toleranceCents, damping, noiseGate, temperament
+        case justTonicPc, hapticsOn, soundsOn
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = TunerSettings()
+        a4 = try c.decodeIfPresent(Double.self, forKey: .a4) ?? defaults.a4
+        toleranceCents = try c.decodeIfPresent(Double.self, forKey: .toleranceCents)
+            ?? defaults.toleranceCents
+        damping = try c.decodeIfPresent(DampingProfile.self, forKey: .damping)
+            ?? defaults.damping
+        noiseGate = try c.decodeIfPresent(NoiseGateProfile.self, forKey: .noiseGate)
+            ?? defaults.noiseGate
+        temperament = try c.decodeIfPresent(Temperament.self, forKey: .temperament)
+            ?? defaults.temperament
+        justTonicPc = try c.decodeIfPresent(Int.self, forKey: .justTonicPc)
+            ?? defaults.justTonicPc
+        hapticsOn = try c.decodeIfPresent(Bool.self, forKey: .hapticsOn)
+            ?? defaults.hapticsOn
+        soundsOn = try c.decodeIfPresent(Bool.self, forKey: .soundsOn)
+            ?? defaults.soundsOn
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(a4, forKey: .a4)
+        try c.encode(toleranceCents, forKey: .toleranceCents)
+        try c.encode(damping, forKey: .damping)
+        try c.encode(noiseGate, forKey: .noiseGate)
+        try c.encode(temperament, forKey: .temperament)
+        try c.encode(justTonicPc, forKey: .justTonicPc)
+        try c.encode(hapticsOn, forKey: .hapticsOn)
+        try c.encode(soundsOn, forKey: .soundsOn)
+    }
 }

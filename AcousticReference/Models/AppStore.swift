@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// App 模式（母本 state.mode 的 tuner/metro 子集）。階段 3 時以
 /// ContentView 的 UserDefaults 佔位鍵保存，階段 4 起歸 AppStore
@@ -22,6 +23,39 @@ enum PitchMode: String, Codable, Sendable {
 enum TunerDisplayMode: String, Codable, Sendable {
     case strobe
     case needle
+}
+
+/// 外觀主題偏好（補強段：樂池暗紅為第三態）。母本主題為
+/// 深／淺＋隨系統三態（profile.theme），原生版在其上加 .pit
+/// 樂池暗紅（近黑底＋暗紅前景、低亮度護夜視，母本無此態）。
+/// 正式選擇 UI 屬階段 5 設定頁；本段先打通主題值與全 App
+/// 渲染，過渡期經診斷頁的外觀 Picker 可達。缺欄預設 .system
+/// （與母本「主題隨系統」預設一致）。
+enum AppTheme: String, Codable, Sendable, CaseIterable {
+    case system
+    case light
+    case dark
+    /// 樂池暗紅：系統層強制深色（材質／選單／彈窗走深色渲染），
+    /// 品牌 token 改走 TunerTheme 的 pit 調色盤。
+    case pit
+
+    /// 套到根視圖的 preferredColorScheme（system 為 nil＝不干預）。
+    var forcedColorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark, .pit: return .dark
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .system: return "跟隨系統"
+        case .light: return "淺色"
+        case .dark: return "深色"
+        case .pit: return "樂池暗紅"
+        }
+    }
 }
 
 /// 收藏切換結果（母本 toggleFavoriteInstrument，行 6769）：
@@ -48,12 +82,14 @@ private struct AppStateFile: Codable {
     var appMode: String = AppMode.tuner.rawValue
     var guzhengFavMigrationDone: Bool = false
     var tunerDisplayMode: TunerDisplayMode = .strobe
+    var themePreference: AppTheme = .system
 
     private enum CodingKeys: String, CodingKey {
         case version, tunerSettings, pitchMode, selectedInstrumentId
         case favoriteInstrumentIds, customInstruments, droneTimbre
         case droneFollow, metronomeSettings, metronomeUserPresets
         case appMode, guzhengFavMigrationDone, tunerDisplayMode
+        case themePreference
     }
 
     init() {}
@@ -75,6 +111,7 @@ private struct AppStateFile: Codable {
         appMode = try c.decodeIfPresent(String.self, forKey: .appMode) ?? AppMode.tuner.rawValue
         guzhengFavMigrationDone = try c.decodeIfPresent(Bool.self, forKey: .guzhengFavMigrationDone) ?? false
         tunerDisplayMode = try c.decodeIfPresent(TunerDisplayMode.self, forKey: .tunerDisplayMode) ?? .strobe
+        themePreference = try c.decodeIfPresent(AppTheme.self, forKey: .themePreference) ?? .system
     }
 }
 
@@ -108,6 +145,8 @@ final class AppStore: ObservableObject {
     @Published var appMode: AppMode = .tuner { didSet { persist() } }
     /// 調音主顯示模式（頻閃／指針）：純顯示偏好，引擎不感知。
     @Published var tunerDisplayMode: TunerDisplayMode = .strobe { didSet { persist() } }
+    /// 外觀主題偏好（補強段）：system／light／dark／pit 四態。
+    @Published var themePreference: AppTheme = .system { didSet { persist() } }
 
     /// 選樂器脈衝：每次 selectInstrument 呼叫 +1（含同名重選——
     /// 母本 selectInstrument 連重選也清鎖定與軌跡，行 8485）。
@@ -125,6 +164,12 @@ final class AppStore: ObservableObject {
     /// 古箏調號（母本 state.guzhengKey，預設 "D"；母本不入 profile，
     /// 重開即回 D，原生版同）。
     @Published var guzhengKey = "D"
+
+    /// 演奏態附加模式（補強段採納，母本無）：調音頁開關——開啟
+    /// 時隱藏輔助列（收藏／A4／目標音／Drone）、主顯示區放大。
+    /// 純顯示層的執行期開關，不落盤（重開 App 回預設版面，
+    /// 與防誤觸鎖同取捨：避免重啟後停在非預設版面造成困惑）。
+    @Published var performanceMode = false
 
     private var guzhengFavMigrationDone = false
     private var loading = true
@@ -156,6 +201,7 @@ final class AppStore: ObservableObject {
         metronomeUserPresets = snapshot.metronomeUserPresets
         appMode = AppMode(rawValue: snapshot.appMode) ?? .tuner
         tunerDisplayMode = snapshot.tunerDisplayMode
+        themePreference = snapshot.themePreference
         guzhengFavMigrationDone = snapshot.guzhengFavMigrationDone
 
         // 收藏／選中樂器健全化：剔除無法解析的 id；收藏為空時回母本
@@ -230,6 +276,7 @@ final class AppStore: ObservableObject {
         snapshot.appMode = appMode.rawValue
         snapshot.guzhengFavMigrationDone = guzhengFavMigrationDone
         snapshot.tunerDisplayMode = tunerDisplayMode
+        snapshot.themePreference = themePreference
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         let url = Self.stateFileURL
         try? FileManager.default.createDirectory(
@@ -291,6 +338,32 @@ final class AppStore: ObservableObject {
         }
         favoriteInstrumentIds.append(id)
         return .added
+    }
+
+    /// 收藏步進切換（母本 stepFavoriteInstrument，行 6837，階段 4
+    /// 遺留補完）：dir +1 下一個／−1 上一個，環繞；收藏 <2 不動作；
+    /// 目前樂器不在收藏中時，+1 自第一個起、−1 自最後一個起
+    /// （母本 idx 缺省：dir>0 → −1、dir≤0 → 0，再加 dir 取模）。
+    /// 經 selectInstrument 走完整選樂器路徑（清鎖定等副作用）。
+    func stepFavoriteInstrument(dir: Int) {
+        let favs = favoriteInstrumentIds.filter { instrument(id: $0) != nil }
+        guard favs.count >= 2, dir != 0 else { return }
+        let step = dir > 0 ? 1 : -1
+        var idx = favs.firstIndex(of: selectedInstrumentId)
+        if idx == nil { idx = step > 0 ? -1 : 0 }
+        let next = favs[(idx! + step + favs.count) % favs.count]
+        selectInstrument(id: next)
+    }
+
+    /// 收藏拖曳排序提交（母本 wireFavChipDrag 的 drop 提交，
+    /// 行 6704）：新序必須是現有收藏的同一集合（防手勢狀態
+    /// 漂移寫入異物），不同則忽略；相同不觸發落盤。
+    func reorderFavorites(_ newOrder: [String]) {
+        guard newOrder.count == favoriteInstrumentIds.count,
+              Set(newOrder) == Set(favoriteInstrumentIds),
+              newOrder != favoriteInstrumentIds
+        else { return }
+        favoriteInstrumentIds = newOrder
     }
 
     // MARK: - 自訂樂器（母本保存處理，行 7836）

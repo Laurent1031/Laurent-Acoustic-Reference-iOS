@@ -84,6 +84,10 @@ struct RampState: Equatable, Sendable {
 /// bpm 120、4/4、細分 1、音色 woodblock、重音 [3,1,2,1]。
 /// countIn 在母本是僅記憶體的開關（行 11346，預設關、不落盤），
 /// 故自訂 Codable 將它排除於持久化之外（解碼恆為 false）。
+/// 補強段（2026-11-26 Laurent 採納）新增：BPM 範圍擴至 20–300、
+/// Gap Click 靜音小節、不規則拍分組——三者母本皆無，屬原生
+/// 新增設定，Codable 以 decodeIfPresent 向後相容舊檔（缺欄退
+/// 預設：範圍常數屬型別層、gap 關、分組空）。
 struct MetronomeSettings: Equatable, Sendable {
     var bpm: Int = 120
     var beatsPerBar: Int = 4
@@ -98,11 +102,96 @@ struct MetronomeSettings: Equatable, Sendable {
     /// 預備拍開關（母本 countInOn）：僅執行期狀態，不落盤。
     var countIn: Bool = false
 
-    // MARK: - 母本常數（行 10450–10458）
+    // MARK: - Gap Click 靜音小節（補強段新增，母本無）
 
-    static let bpmMin = 40
-    static let bpmMax = 208
-    static let bpmMaxDotted = 213
+    /// 靜音小節總開關（預設關；關閉時行為與母本完全一致）。
+    var gapEnabled: Bool = false
+    /// 循環中發聲小節數（1–16，預設 4）。
+    var gapSoundBars: Int = 4
+    /// 循環中靜音小節數（1–16，預設 4）。
+    var gapSilentBars: Int = 4
+
+    static let gapBarsRange = 1...16
+
+    // MARK: - 不規則拍分組（補強段新增，母本無）
+
+    /// 各拍號選定的重音分組（鍵 = "拍數/單位"，如 "7/8"）；
+    /// 未選定的拍號恆用母本 defaultAccents（零回退）。分組只是
+    /// beatAccents 的生成器：套用分組即以 accents(forGroups:)
+    /// 重寫 beatAccents，其後手動點按拍柱仍可自由改重音。
+    var groupingBySignature: [String: [Int]] = [:]
+
+    static func signatureKey(beats: Int, unit: Int) -> String { "\(beats)/\(unit)" }
+
+    var currentSignatureKey: String {
+        Self.signatureKey(beats: beatsPerBar, unit: beatUnit)
+    }
+
+    /// 分組 → 重音型：組首第一組 3、其餘組首 2、組內其餘 1。
+    /// 驗證可重現母本全部預設：7/8 [2,2,3] → [3,1,2,1,2,1,1]、
+    /// 9/8 [3,3,3] → [3,1,1,2,1,1,2,1,1]、5/4 [3,2] → [3,1,1,2,1]。
+    static func accents(forGroups groups: [Int]) -> [Int] {
+        var result: [Int] = []
+        for (groupIndex, size) in groups.enumerated() {
+            for i in 0..<max(0, size) {
+                result.append(i == 0 ? (groupIndex == 0 ? 3 : 2) : 1)
+            }
+        }
+        return result
+    }
+
+    /// 重音型 → 分組（以等級 ≥2 的位置為組界，首拍恆為組首）；
+    /// 與 accents(forGroups:) 互為逆操作（組內若有手動改出的
+    /// ≥2 等級會被讀成組界，此為顯示用推導，可接受）。
+    static func groups(fromAccents accents: [Int]) -> [Int] {
+        guard !accents.isEmpty else { return [] }
+        var groups: [Int] = []
+        var current = 0
+        for (i, level) in accents.enumerated() {
+            if i > 0 && level >= 2 {
+                groups.append(current)
+                current = 0
+            }
+            current += 1
+        }
+        groups.append(current)
+        return groups
+    }
+
+    /// 有分組選擇的拍號與其預置分組（首項恆為母本預設分組，
+    /// 其推導重音與 defaultAccents 逐值相等）。其餘拍號不提供
+    /// 分組：6/8、12/8 的分組由 3 的結構唯一決定（母本預設即
+    /// 慣例分組），3/8、單拍類無分組意義。
+    static func groupingPresets(beats: Int, unit: Int) -> [[Int]] {
+        switch (beats, unit) {
+        case (5, 4): return [[3, 2], [2, 3]]
+        // 5/8 不在母本 11 拍號內（/8 類僅 3/8、6/8、7/8、9/8、
+        // 12/8），此項為任務書示例的備用預置，無現行入口觸達。
+        case (5, 8): return [[2, 3], [3, 2]]
+        case (7, 8): return [[2, 2, 3], [2, 3, 2], [3, 2, 2]]
+        case (9, 8): return [[3, 3, 3], [2, 2, 2, 3], [2, 2, 3, 2], [2, 3, 2, 2], [3, 2, 2, 2]]
+        default: return []
+        }
+    }
+
+    /// 目前拍號是否提供分組（有預置或已存自訂分組）。
+    var groupingAvailable: Bool {
+        !Self.groupingPresets(beats: beatsPerBar, unit: beatUnit).isEmpty
+            || groupingBySignature[currentSignatureKey] != nil
+    }
+
+    // MARK: - BPM 範圍（母本常數行 10450–10458，補強段擴展）
+
+    /// 母本 BPM_MIN 40／BPM_MAX 208；補強段 Laurent 採納擴至
+    /// 20–300（全域一致：鉗制、推子、轉盤、預置、漸速、TAP
+    /// 皆讀此三常數，無第二處寫死值）。
+    static let bpmMin = 20
+    static let bpmMax = 300
+    /// 附點上限推導：母本 213 的註解（行 10453）給出不變量
+    /// 「附點拍 BPM × 1.5 ≈ 320」且 213/208 ≈ 1.024；新上限按
+    /// 同比例放大：round(300 × 213/208) = 307（307 × 1.5 = 460.5，
+    /// 與 300 的關係同母本 319.5 對 208 的關係）。
+    static let bpmMaxDotted = 307
 
     /// 母本 isDottedBeat：附點計拍只在八分音符拍號下生效。
     var isDottedBeat: Bool { dottedBeat && beatUnit == 8 }
@@ -110,7 +199,7 @@ struct MetronomeSettings: Equatable, Sendable {
     /// 母本 bpmMaxNow。
     var bpmMaxNow: Int { isDottedBeat ? Self.bpmMaxDotted : Self.bpmMax }
 
-    /// 母本 setBpm 的鉗制（行 10650）：round 後鉗 [40, bpmMaxNow]。
+    /// 母本 setBpm 的鉗制（行 10650）：round 後鉗 [bpmMin, bpmMaxNow]。
     func clampedBpm(_ value: Int) -> Int {
         min(bpmMaxNow, max(Self.bpmMin, value))
     }
@@ -188,6 +277,7 @@ extension MetronomeSettings: Codable {
     private enum CodingKeys: String, CodingKey {
         case bpm, beatsPerBar, beatUnit, dottedBeat, subdivision
         case timbre, beatAccents, bluetoothCompMs
+        case gapEnabled, gapSoundBars, gapSilentBars, groupingBySignature
     }
 
     init(from decoder: Decoder) throws {
@@ -201,6 +291,12 @@ extension MetronomeSettings: Codable {
         beatAccents = try c.decode([Int].self, forKey: .beatAccents)
         bluetoothCompMs = try c.decode(Int.self, forKey: .bluetoothCompMs)
         countIn = false
+        // 補強段新增欄：舊檔缺欄退預設，並做範圍健全化。
+        gapEnabled = try c.decodeIfPresent(Bool.self, forKey: .gapEnabled) ?? false
+        gapSoundBars = min(16, max(1, try c.decodeIfPresent(Int.self, forKey: .gapSoundBars) ?? 4))
+        gapSilentBars = min(16, max(1, try c.decodeIfPresent(Int.self, forKey: .gapSilentBars) ?? 4))
+        groupingBySignature = try c.decodeIfPresent(
+            [String: [Int]].self, forKey: .groupingBySignature) ?? [:]
     }
 
     func encode(to encoder: Encoder) throws {
@@ -213,6 +309,10 @@ extension MetronomeSettings: Codable {
         try c.encode(timbre, forKey: .timbre)
         try c.encode(beatAccents, forKey: .beatAccents)
         try c.encode(bluetoothCompMs, forKey: .bluetoothCompMs)
+        try c.encode(gapEnabled, forKey: .gapEnabled)
+        try c.encode(gapSoundBars, forKey: .gapSoundBars)
+        try c.encode(gapSilentBars, forKey: .gapSilentBars)
+        try c.encode(groupingBySignature, forKey: .groupingBySignature)
     }
 }
 

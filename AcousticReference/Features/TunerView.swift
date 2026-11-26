@@ -21,6 +21,33 @@ struct TunerView: View {
     @State private var showLibrary = false
     @State private var justStripExpanded = false
 
+    // 舞台左右滑（母本 wireStageSwipe）：主顯示區的推入動畫
+    // 執行期值（自 ±14pt／0.35 透明回彈至原位，240 ms）。
+    @State private var stageNudgeX: CGFloat = 0
+    @State private var stageNudgeOpacity: Double = 1
+
+    // 收藏拖曳排序（母本 wireFavChipDrag）：拖動中的晶片 id、
+    // 水平位移、同列讓位狀態；frames 為長按拾起瞬間的快照
+    // （拖動期間的 offset 會污染即時量測，判定一律用快照，
+    // 與母本以 offsetLeft 佈局座標判定同義）。
+    @State private var favChipFrames: [String: CGRect] = [:]
+    @State private var favDragStartFrames: [String: CGRect] = [:]
+    @State private var favDragId: String?
+    @State private var favDragTranslation: CGFloat = 0
+    @State private var favShifted: [String: Bool] = [:]
+    @State private var favLastShiftCount = -1
+    @State private var favSuppressTapUntil = Date.distantPast
+
+    // 目標列滑奏（母本 stringChips glide）：晶片 frames（視口
+    // 座標，與拖動 location 同空間）、內容左緣位置（判滑動
+    // 是否其實是捲動）、滑奏狀態。
+    @State private var targetChipFrames: [String: CGRect] = [:]
+    @State private var targetContentMinX: CGFloat = 0
+    @State private var glideActive = false
+    @State private var glideBlocked = false
+    @State private var glideStartMinX: CGFloat = 0
+    @State private var lastGlideChipId: String?
+
     init(engine: AudioEngine, store: AppStore, drone: DroneEngine) {
         self.engine = engine
         self.store = store
@@ -30,16 +57,21 @@ struct TunerView: View {
     }
 
     var body: some View {
-        let theme = TunerTheme.resolve(colorScheme)
+        let theme = TunerTheme.resolve(preference: store.themePreference,
+                                       system: colorScheme)
+        let performance = store.performanceMode
 
         GeometryReader { geo in
             // 母本 .pitch-note：clamp(36px, 6.4vh, 64px)；
             // .pitch-octave：clamp(16px, 2.8vh, 26px)。
-            let noteSize = min(64, max(36, geo.size.height * 0.064))
+            // 演奏態（補強段）：音名 ×1.12、主顯示高度預算
+            // 0.30 → 0.46（輔助列隱藏後釋出的高度歸主顯示）。
+            let noteSize = min(72, max(36, geo.size.height * 0.064)
+                               * (performance ? 1.12 : 1))
             let octaveSize = min(26, max(16, geo.size.height * 0.028))
             let gaugeHeight = min(
-                (geo.size.width - 32) * 190.0 / 320.0,
-                geo.size.height * 0.30
+                (geo.size.width - 32) * 190.0 / 320.0 * (performance ? 1.3 : 1),
+                geo.size.height * (performance ? 0.46 : 0.30)
             )
 
             ZStack {
@@ -48,44 +80,52 @@ struct TunerView: View {
                 VStack(spacing: 8) {
                     headerRow(theme: theme)
 
-                    favoritesRow(theme: theme)
+                    if !performance {
+                        favoritesRow(theme: theme)
 
-                    favoritesDots(theme: theme)
+                        favoritesDots(theme: theme)
+                    }
 
                     // 主顯示區（頻閃主模式段）：頻閃（預設主模式）
                     // 與錶盤（輔助）共用同一高度預算，切換鈕浮在
                     // 顯示區右上角的空白角（兩種顯示在該角皆無
                     // 內容：錶盤弧線與頻閃外環都不及），不佔列高、
-                    // 不擠壓任何既有列。
+                    // 不擠壓任何既有列。左上角為演奏態開關（補強
+                    // 段，同為空白角）；削波警示（補強段）以紅框
+                    // 覆滿顯示區＋左下角小籤呈現，不遮擋讀數。
                     ZStack(alignment: .topTrailing) {
-                        if store.tunerDisplayMode == .strobe {
-                            StrobeView(
-                                phase: viewModel.strobePhase,
-                                rate: viewModel.strobeRate,
-                                anchorDate: viewModel.strobeAnchorDate,
-                                confidence: viewModel.strobeConfidence,
-                                micActive: engine.isRunning,
-                                inTune: viewModel.isInTune,
-                                theme: theme
-                            )
-                            .frame(height: gaugeHeight)
-                        } else {
-                            GaugeView(
-                                cents: viewModel.needleCents,
-                                trail1Cents: viewModel.trail1Cents,
-                                trail2Cents: viewModel.trail2Cents,
-                                ghostCents: viewModel.ghostCents,
-                                ghostOpacity: viewModel.ghostOpacity,
-                                micActive: engine.isRunning,
-                                inTune: viewModel.isInTune,
-                                tolerance: engine.settings.toleranceCents,
-                                theme: theme
-                            )
-                            .frame(height: gaugeHeight)
-                        }
+                        displayContent(theme: theme, gaugeHeight: gaugeHeight)
 
                         displayModeToggle(theme: theme)
                             .padding(.top, 2)
+                    }
+                    .overlay(alignment: .topLeading) {
+                        performanceToggle(theme: theme)
+                            .padding(.top, 2)
+                    }
+                    .overlay {
+                        if viewModel.clipWarning {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .strokeBorder(theme.clipWarning, lineWidth: 2)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .overlay(alignment: .bottomLeading) {
+                        if viewModel.clipWarning {
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("削波")
+                                    .font(.system(size: 10.5, weight: .bold))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(theme.clipWarning, in: Capsule())
+                            .padding(6)
+                            .allowsHitTesting(false)
+                            .accessibilityLabel("輸入削波警示")
+                        }
                     }
 
                     noteRow(theme: theme, noteSize: noteSize, octaveSize: octaveSize)
@@ -96,7 +136,9 @@ struct TunerView: View {
 
                     statusHint(theme: theme)
 
-                    targetStrip(theme: theme)
+                    if !performance {
+                        targetStrip(theme: theme)
+                    }
 
                     metricsCard(theme: theme)
 
@@ -104,7 +146,9 @@ struct TunerView: View {
 
                     Spacer(minLength: 0)
 
-                    droneCapsule(theme: theme)
+                    if !performance {
+                        droneCapsule(theme: theme)
+                    }
 
                     micControls(theme: theme)
                 }
@@ -117,6 +161,89 @@ struct TunerView: View {
             InstrumentLibraryView(store: store)
         }
         .onDisappear { viewModel.viewDidDisappear() }
+    }
+
+    // MARK: - 主顯示內容（頻閃／指針＋舞台滑動）
+
+    /// 主顯示本體：舞台左右滑手勢（母本 wireStageSwipe，行
+    /// 6857）以 simultaneousGesture 掛在本體上——|dx| ≥ 52 且
+    /// |dy| ≤ 36 時步進切換收藏樂器（左滑下一個、右滑上一個），
+    /// 並播母本的推入回彈動畫（自 dir 側 14pt／0.35 透明以
+    /// cubic-bezier(0.22,1,0.36,1) 240 ms 回位）。右上角的模式
+    /// 切換鈕是 ZStack 的另一子層、不在本體命中路徑內，點按
+    /// 不會武裝滑動（母本同：手勢只認 .tuner-stage 本體）。
+    @ViewBuilder
+    private func displayContent(theme: TunerTheme, gaugeHeight: CGFloat) -> some View {
+        Group {
+            if store.tunerDisplayMode == .strobe {
+                StrobeView(
+                    phase: viewModel.strobePhase,
+                    rate: viewModel.strobeRate,
+                    anchorDate: viewModel.strobeAnchorDate,
+                    confidence: viewModel.strobeConfidence,
+                    micActive: engine.isRunning,
+                    inTune: viewModel.isInTune,
+                    theme: theme
+                )
+            } else {
+                GaugeView(
+                    cents: viewModel.needleCents,
+                    trail1Cents: viewModel.trail1Cents,
+                    trail2Cents: viewModel.trail2Cents,
+                    ghostCents: viewModel.ghostCents,
+                    ghostOpacity: viewModel.ghostOpacity,
+                    micActive: engine.isRunning,
+                    inTune: viewModel.isInTune,
+                    tolerance: engine.settings.toleranceCents,
+                    theme: theme
+                )
+            }
+        }
+        .frame(height: gaugeHeight)
+        .offset(x: stageNudgeX)
+        .opacity(stageNudgeOpacity)
+        .simultaneousGesture(stageSwipeGesture)
+    }
+
+    private var stageSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onEnded { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) >= 52, abs(dy) <= 36 else { return }
+                let dir = dx < 0 ? 1 : -1
+                let before = store.selectedInstrumentId
+                store.stepFavoriteInstrument(dir: dir)
+                guard store.selectedInstrumentId != before else { return }
+                // 母本 gaugeWrap.animate：自 ±14pt／0.35 回彈。
+                stageNudgeX = dir > 0 ? 14 : -14
+                stageNudgeOpacity = 0.35
+                withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.24)) {
+                    stageNudgeX = 0
+                    stageNudgeOpacity = 1
+                }
+            }
+    }
+
+    /// 演奏態開關（補強段）：開啟隱藏收藏／A4／目標音／Drone
+    /// 列、主顯示放大；與暗紅模式、防誤觸鎖正交可疊加。
+    private func performanceToggle(theme: TunerTheme) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.25)) {
+                store.performanceMode.toggle()
+            }
+            HapticsEngine.shared.tap(milliseconds: 6)
+        } label: {
+            Image(systemName: store.performanceMode
+                  ? "arrow.down.right.and.arrow.up.left"
+                  : "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(theme.textSecondary)
+                .frame(width: 26, height: 26)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(store.performanceMode ? "退出演奏態" : "演奏態")
     }
 
     // MARK: - Row 1：樂器觸發鈕＋記譜/實音分段（母本行 5231）
@@ -240,29 +367,138 @@ struct TunerView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.vertical, 1)
+                .onPreferenceChange(FavChipFrameKey.self) { frames in
+                    favChipFrames = frames
+                }
             }
+            .coordinateSpace(.named("favBar"))
 
             a4Stepper(theme: theme)
         }
         .frame(height: 34)
     }
 
+    /// 收藏晶片：點按選樂器（母本 selectInstrument 連重選也走
+    /// 完整路徑、清鎖定；無觸感呼叫）；長按 200 ms 拾起拖曳
+    /// 排序（母本 wireFavChipDrag，行 6611：拾起 haptic(10)、
+    /// 讓位變化 haptic(5)、放下後 350 ms 內吞掉點按；拾起前
+    /// 移動 >10pt 視為捲動、長按自動落空——母本為 8px，原生
+    /// 以 LongPressGesture 的 maximumDistance 10 近似）。
+    /// 與母本的差異（註明）：母本拖到邊緣會自動捲動收藏列，
+    /// 原生未實作邊緣自動捲動（SwiftUI 無可靠的拖動中程式化
+    /// 捲動通道）；收藏列在不拖動時照常可捲動，排序範圍以
+    /// 可見晶片為限。
     private func favoriteChip(inst: Instrument, theme: TunerTheme) -> some View {
         let active = inst.id == store.selectedInstrumentId
-        return Button {
-            // 母本收藏晶片點按：selectInstrument(found, true)，
-            // 連同名重選也走完整選樂器路徑（清鎖定）；無觸感呼叫。
-            store.selectInstrument(id: inst.id)
-        } label: {
-            Text(inst.name)
-                .font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(active ? .white : theme.textPrimary)
-                .padding(.horizontal, 11)
-                .frame(height: 32)
-                .background(active ? theme.accent : Color.clear, in: Capsule())
-                .background(.ultraThinMaterial, in: Capsule())
+        let isDragged = favDragId == inst.id
+        return Text(inst.name)
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundStyle(active ? .white : theme.textPrimary)
+            .padding(.horizontal, 11)
+            .frame(height: 32)
+            .background(active ? theme.accent : Color.clear, in: Capsule())
+            .background(.ultraThinMaterial, in: Capsule())
+            .background(GeometryReader { proxy in
+                Color.clear.preference(
+                    key: FavChipFrameKey.self,
+                    value: [inst.id: proxy.frame(in: .named("favBar"))])
+            })
+            .offset(x: isDragged ? favDragTranslation : favShiftOffset(for: inst.id))
+            .scaleEffect(isDragged ? 1.07 : 1)
+            .zIndex(isDragged ? 2 : 0)
+            .onTapGesture {
+                guard Date() >= favSuppressTapUntil else { return }
+                store.selectInstrument(id: inst.id)
+            }
+            .gesture(favDragGesture(for: inst))
+    }
+
+    /// 同列讓位位移（母本 layout()：被跨越的同列晶片以
+    /// −dir ×（被拖晶片寬＋間隔 6）讓位）。
+    private func favShiftOffset(for id: String) -> CGFloat {
+        guard let dragId = favDragId, id != dragId, favShifted[id] == true,
+              let myFrame = favDragStartFrames[dragId],
+              let frame = favDragStartFrames[id] else { return 0 }
+        let dir: CGFloat = myFrame.midX < frame.midX ? 1 : -1
+        return -dir * (myFrame.width + 6)
+    }
+
+    private func favDragGesture(for inst: Instrument) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.2, maximumDistance: 10)
+            .sequenced(before: DragGesture(minimumDistance: 0,
+                                            coordinateSpace: .named("favBar")))
+            .onChanged { value in
+                guard case .second(_, let drag) = value, let drag else { return }
+                if favDragId != inst.id {
+                    favDragId = inst.id
+                    favDragStartFrames = favChipFrames
+                    favShifted = [:]
+                    favLastShiftCount = -1
+                    HapticsEngine.shared.tap(milliseconds: 10)
+                }
+                favDragTranslation = drag.translation.width
+                updateFavShifts(draggedId: inst.id)
+            }
+            .onEnded { _ in
+                if favDragId == inst.id {
+                    commitFavDrag(draggedId: inst.id)
+                }
+                favDragId = nil
+                favDragTranslation = 0
+                favShifted = [:]
+                favDragStartFrames = [:]
+            }
+    }
+
+    /// 讓位判定（母本 layout()）：以被拖晶片中心（快照中心＋
+    /// 位移）與同列中心比較，對稱 ±6 死區遲滯（已讓位者以
+    /// 中心 −6  reclaim、未讓位者以中心 +6 讓位），防邊界抖動。
+    private func updateFavShifts(draggedId: String) {
+        guard let myFrame = favDragStartFrames[draggedId] else { return }
+        let myCx = myFrame.midX + favDragTranslation
+        var shiftCount = 0
+        var newShifted: [String: Bool] = [:]
+        for id in store.favoriteInstrumentIds where id != draggedId {
+            guard let frame = favDragStartFrames[id] else { continue }
+            let dir: CGFloat = myFrame.midX < frame.midX ? 1 : -1
+            let was = favShifted[id] ?? false
+            let crossed = dir == 1
+                ? (was ? myCx > frame.midX - 6 : myCx >= frame.midX + 6)
+                : (was ? myCx < frame.midX + 6 : myCx <= frame.midX - 6)
+            newShifted[id] = crossed
+            if crossed { shiftCount += 1 }
         }
-        .buttonStyle(.plain)
+        favShifted = newShifted
+        if favLastShiftCount >= 0, shiftCount != favLastShiftCount {
+            HapticsEngine.shared.tap(milliseconds: 5)
+        }
+        favLastShiftCount = shiftCount
+    }
+
+    /// 放下提交（母本 onUp）：以有效中心（被拖 = 快照中心＋
+    /// 位移；同列 = 快照中心＋讓位位移）排序為新收藏序。
+    private func commitFavDrag(draggedId: String) {
+        favSuppressTapUntil = Date().addingTimeInterval(0.35)
+        guard let myFrame = favDragStartFrames[draggedId] else { return }
+        let myCx = myFrame.midX + favDragTranslation
+        var centers: [(id: String, cx: CGFloat)] = []
+        for id in store.favoriteInstrumentIds {
+            guard let frame = favDragStartFrames[id] else { continue }
+            if id == draggedId {
+                centers.append((id, myCx))
+            } else {
+                var cx = frame.midX
+                if favShifted[id] == true {
+                    let dir: CGFloat = myFrame.midX < frame.midX ? 1 : -1
+                    cx += -dir * (myFrame.width + 6)
+                }
+                centers.append((id, cx))
+            }
+        }
+        let newOrder = centers.sorted { $0.cx < $1.cx }.map { $0.id }
+        if newOrder.count == store.favoriteInstrumentIds.count {
+            store.reorderFavorites(newOrder)
+        }
     }
 
     /// A4 步進器（母本行 8630）：−／+ 單步 0.5 Hz、鉗 [430, 450]、
@@ -436,6 +672,14 @@ struct TunerView: View {
 
     // MARK: - Row 4：目標音列（母本行 5282）
 
+    /// 目標音列＋滑奏（母本 stringChips glide，行 8575）：手指
+    /// 按住橫滑，經過的晶片逐一接管鎖定（經 ViewModel 的
+    /// glide 路徑，Drone 改頻走滑音常數、聽感為滑奏）；若列
+    /// 本身開始捲動（內容左緣位移 >2pt），判定為捲動而非
+    /// 滑奏，立即站下並封鎖至手指抬起（母本 scroll 站下＋
+    /// glideBlock 語義）。晶片 frames 與拖動 location 同在
+    /// "targetStrip" 視口座標（捲動時兩者同步移動，命中判定
+    /// 恆以手指當下位置為準——母本 elementFromPoint 等價）。
     private func targetStrip(theme: TunerTheme) -> some View {
         HStack(spacing: 6) {
             if store.selectedInstrument.isGuzheng {
@@ -443,16 +687,76 @@ struct TunerView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    targetChip(label: "自動識別", note: nil, isGreen: false, theme: theme)
+                    targetChip(label: "自動識別", note: nil, isGreen: false,
+                               chipId: "__auto__", theme: theme)
                     ForEach(viewModel.targetChipItems) { item in
                         targetChip(label: item.label, note: item.note,
-                                   isGreen: item.isGreen, theme: theme)
+                                   isGreen: item.isGreen, chipId: item.id,
+                                   theme: theme)
                     }
                 }
                 .padding(.vertical, 1)
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: TargetContentFrameKey.self,
+                        value: proxy.frame(in: .named("targetStrip")))
+                })
+                .onPreferenceChange(TargetChipFrameKey.self) { frames in
+                    targetChipFrames = frames
+                }
+                .onPreferenceChange(TargetContentFrameKey.self) { frame in
+                    targetContentMinX = frame.minX
+                }
             }
+            .coordinateSpace(.named("targetStrip"))
+            .simultaneousGesture(targetGlideGesture)
         }
         .frame(height: 34)
+    }
+
+    /// 命中晶片 id（frames 為視口座標；自動識別晶片回 "__auto__"）。
+    private func glideChipId(at point: CGPoint) -> String? {
+        targetChipFrames.first { $0.value.contains(point) }?.key
+    }
+
+    private var targetGlideGesture: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("targetStrip"))
+            .onChanged { value in
+                if !glideActive {
+                    glideActive = true
+                    glideBlocked = false
+                    glideStartMinX = targetContentMinX
+                    lastGlideChipId = glideChipId(at: value.startLocation)
+                    if lastGlideChipId != nil {
+                        viewModel.setGliding(true)
+                    }
+                }
+                if abs(targetContentMinX - glideStartMinX) > 2, !glideBlocked {
+                    glideBlocked = true
+                    viewModel.setGliding(false)
+                }
+                guard !glideBlocked,
+                      let chipId = glideChipId(at: value.location),
+                      chipId != lastGlideChipId else { return }
+                lastGlideChipId = chipId
+                // 母本：滑入新晶片 = 觸發該晶片的 click()（含
+                // haptic(5)＋tick）；click 內的取消切換以
+                // !droneGlide 為條件，滑奏中恆不取消、只接管
+                // 鎖定——原生 tapTargetChip 以 !isGliding 為
+                // 同一條件，語義逐項等價（自動識別晶片 =
+                // picked=nil 清除鎖定）。
+                if chipId == "__auto__" {
+                    viewModel.tapTargetChip(note: nil)
+                } else if let item = viewModel.targetChipItems.first(where: { $0.id == chipId }) {
+                    viewModel.tapTargetChip(note: item.note)
+                }
+            }
+            .onEnded { _ in
+                glideActive = false
+                glideBlocked = false
+                lastGlideChipId = nil
+                viewModel.setGliding(false)
+            }
     }
 
     /// 古箏調號選擇（母本 guzhengKeySelect，行 5284）：D、G、C、
@@ -477,7 +781,7 @@ struct TunerView: View {
     }
 
     private func targetChip(label: String, note: String?, isGreen: Bool,
-                            theme: TunerTheme) -> some View {
+                            chipId: String, theme: TunerTheme) -> some View {
         let active = note == nil
             ? viewModel.lockedTargetNote == nil
             : viewModel.lockedTargetNote == note
@@ -493,6 +797,11 @@ struct TunerView: View {
                 .frame(height: 32)
                 .background(active ? theme.accent : Color.clear, in: Capsule())
                 .background(.ultraThinMaterial, in: Capsule())
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: TargetChipFrameKey.self,
+                        value: [chipId: proxy.frame(in: .named("targetStrip"))])
+                })
         }
         .buttonStyle(.plain)
     }
@@ -595,6 +904,8 @@ struct TunerView: View {
                 ForEach(DroneTimbre.allCases, id: \.self) { timbre in
                     Button {
                         store.droneTimbre = timbre
+                        // 母本 setDroneTimbre：uiSound("tick")（行 10241）。
+                        UISoundEngine.shared.play(.tick)
                     } label: {
                         if timbre == store.droneTimbre {
                             Label(timbre.displayName, systemImage: "checkmark")
@@ -651,18 +962,18 @@ struct TunerView: View {
             if engine.permissionDenied {
                 Text("麥克風權限被拒絕，請到系統設定開啟")
                     .font(.footnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.clipWarning)
             }
             if let error = engine.lastError {
                 Text(error)
                     .font(.footnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.clipWarning)
                     .multilineTextAlignment(.center)
             }
             if let droneError = drone.lastError {
                 Text(droneError)
                     .font(.footnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.clipWarning)
                     .multilineTextAlignment(.center)
             }
 
@@ -693,6 +1004,33 @@ struct TunerView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+/// 收藏晶片 frames 匯集（鍵 = 樂器 id，值 = "favBar" 座標 frame）。
+private struct FavChipFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect],
+                       nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// 目標晶片 frames 匯集（鍵 = 晶片 id，值 = "targetStrip" 視口座標 frame）。
+private struct TargetChipFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect],
+                       nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// 目標列內容整體 frame（"targetStrip" 座標）：minX 變化即
+/// 內容捲動量，供滑奏／捲動判別。
+private struct TargetContentFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
     }
 }
 

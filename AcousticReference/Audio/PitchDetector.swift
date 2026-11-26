@@ -10,6 +10,11 @@ struct PitchDetection: Sendable {
     var clarity: Double
     /// 置中訊號 RMS（母本在 detectPitchMPM 內計算）。
     var rms: Double
+    /// 置中訊號峰值絕對值（0–1，線性；補強段削波警示用，母本
+    /// 檢測路徑無此值——母本無削波警示，此為原生新增診斷量，
+    /// 不參與檢測判定）。在噪聲門回絕前計算，被回絕的過載幀
+    /// 同樣帶峰值（削波恰恰發生在這類幀）。
+    var peak: Double
     /// 是否因 RMS 低於噪聲門回絕（與清晰度不足區分，供診斷）。
     var rejectedByGate: Bool
 }
@@ -56,7 +61,7 @@ final class PitchDetector {
     func detect(samples: [Float], sampleRate: Double, minFreq: Double, maxFreq: Double, rmsGate: Double) -> PitchDetection {
         let n = samples.count
         guard n >= 4 else {
-            return PitchDetection(frequency: nil, clarity: 0, rms: 0, rejectedByGate: true)
+            return PitchDetection(frequency: nil, clarity: 0, rms: 0, peak: 0, rejectedByGate: true)
         }
 
         // 去 DC（母本行 8893–8899）。
@@ -66,17 +71,23 @@ final class PitchDetector {
         var negMean = -mean
         vDSP_vsadd(samples, 1, &negMean, &centered, 1, vDSP_Length(n))
 
+        // 峰值（補強段削波警示）：置中訊號最大絕對值，門檻判定前
+        // 先算，任何回絕路徑都帶得出。
+        var peakValue: Float = 0
+        vDSP_maxmgv(centered, 1, &peakValue, vDSP_Length(n))
+        let peak = Double(peakValue)
+
         // 置中 RMS 與噪聲門（母本行 8901–8907）。
         var rms: Float = 0
         vDSP_rmsqv(centered, 1, &rms, vDSP_Length(n))
         guard Double(rms) >= rmsGate else {
-            return PitchDetection(frequency: nil, clarity: 0, rms: Double(rms), rejectedByGate: true)
+            return PitchDetection(frequency: nil, clarity: 0, rms: Double(rms), peak: peak, rejectedByGate: true)
         }
 
         let minTau = max(2, Int(floor(sampleRate / maxFreq)))
         let maxTau = min(n / 2, Int(ceil(sampleRate / minFreq)))
         guard maxTau > minTau else {
-            return PitchDetection(frequency: nil, clarity: 0, rms: Double(rms), rejectedByGate: false)
+            return PitchDetection(frequency: nil, clarity: 0, rms: Double(rms), peak: peak, rejectedByGate: false)
         }
 
         // NSDF：acf 走 FFT 自相關；divisor 走遞歸（Double 累加）。
@@ -122,7 +133,7 @@ final class PitchDetector {
         }
 
         guard !peaks.isEmpty, globalMax >= PitchDetector.clarityThreshold else {
-            return PitchDetection(frequency: nil, clarity: globalMax, rms: Double(rms), rejectedByGate: false)
+            return PitchDetection(frequency: nil, clarity: globalMax, rms: Double(rms), peak: peak, rejectedByGate: false)
         }
 
         let threshold = PitchDetector.peakThresholdRatio * globalMax
@@ -145,6 +156,7 @@ final class PitchDetector {
             frequency: sampleRate / refinedTau,
             clarity: globalMax,
             rms: Double(rms),
+            peak: peak,
             rejectedByGate: false
         )
     }

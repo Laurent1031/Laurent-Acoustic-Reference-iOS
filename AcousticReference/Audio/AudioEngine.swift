@@ -313,11 +313,16 @@ final class AudioEngine: ObservableObject {
         engine = nil
         // 僅在協調器確認無其他使用者（節拍器運行中）時才停用
         // session；未登記者（未成功 start 過）不碰 session。
+        // 尚有播放型使用者時（補強段動態 Mode）：調音退出使組成
+        // 轉為僅播放，交協調器切至播放型（.playback）恢復其
+        // 外放電平——切換在邊界發生，播放引擎不因此停機。
         if sessionAcquired {
             sessionAcquired = false
             if AudioSessionCoordinator.shared.release(.tuner) {
                 try? AVAudioSession.sharedInstance().setActive(
                     false, options: [.notifyOthersOnDeactivation])
+            } else {
+                AudioSessionCoordinator.shared.applyProfile()
             }
         }
         isRunning = false

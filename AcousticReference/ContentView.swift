@@ -20,6 +20,9 @@ struct ContentView: View {
     @StateObject private var metronomeViewModel: MetronomeViewModel
     @StateObject private var droneEngine: DroneEngine
     @State private var showDebug = false
+    /// 排練防誤觸鎖（補強段）：僅執行期狀態，不落盤——重啟 App
+    /// 恆為未鎖定，避免「開機即鎖死」的困惑（取捨註明於報告）。
+    @State private var rehearsalLocked = false
     @Environment(\.colorScheme) private var colorScheme
 
     init() {
@@ -52,7 +55,8 @@ struct ContentView: View {
     private var mode: AppMode { store.appMode }
 
     var body: some View {
-        let theme = TunerTheme.resolve(colorScheme)
+        let theme = TunerTheme.resolve(preference: store.themePreference,
+                                       system: colorScheme)
         VStack(spacing: 0) {
             topBar(theme: theme)
 
@@ -62,7 +66,8 @@ struct ContentView: View {
                     .allowsHitTesting(mode == .tuner)
                     .accessibilityHidden(mode != .tuner)
                 MetronomeView(engine: metronomeEngine,
-                              viewModel: metronomeViewModel)
+                              viewModel: metronomeViewModel,
+                              store: store)
                     .opacity(mode == .metronome ? 1 : 0)
                     .allowsHitTesting(mode == .metronome)
                     .accessibilityHidden(mode != .metronome)
@@ -75,21 +80,35 @@ struct ContentView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        // 防誤觸鎖遮罩（最外層，蓋住頂欄與背景膠囊）：鎖定時
+        // 凍結全部控件，僅保留長按解鎖；音訊引擎不受影響
+        // （節拍器／Drone／調音照常運行，只是碰不到）。
+        .overlay {
+            if rehearsalLocked {
+                lockOverlay(theme: theme)
+                    .transition(.opacity)
+            }
+        }
         .animation(.spring(response: 0.32, dampingFraction: 0.9),
                    value: metronomeViewModel.capsuleVisible)
+        .animation(.easeOut(duration: 0.2), value: rehearsalLocked)
+        .preferredColorScheme(store.themePreference.forcedColorScheme)
         .sheet(isPresented: $showDebug) {
             TunerDebugView(engine: engine,
                            metronomeEngine: metronomeEngine,
-                           metronomeViewModel: metronomeViewModel)
+                           metronomeViewModel: metronomeViewModel,
+                           store: store)
         }
         .onAppear {
             HapticsEngine.shared.isEnabled = engine.settings.hapticsOn
+            UISoundEngine.shared.isEnabled = engine.settings.soundsOn
             updateIdleTimer()
         }
         // store → 引擎單向同步（store 為唯一真源）。
         .onChange(of: store.tunerSettings) { _, newSettings in
             engine.settings = newSettings
             HapticsEngine.shared.isEnabled = newSettings.hapticsOn
+            UISoundEngine.shared.isEnabled = newSettings.soundsOn
             droneEngine.updateContext(
                 a4: newSettings.a4,
                 temperament: newSettings.temperament,
@@ -135,6 +154,19 @@ struct ContentView: View {
             Spacer()
 
             modeSegment(theme: theme)
+
+            Button {
+                rehearsalLocked = true
+                HapticsEngine.shared.tap(milliseconds: 12)
+            } label: {
+                Image(systemName: "lock.open")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 32, height: 32)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.textSecondary)
+            .accessibilityLabel("排練鎖定")
 
             Button {
                 showDebug = true
@@ -186,6 +218,48 @@ struct ContentView: View {
             .background(active ? theme.accent : Color.clear, in: Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - 防誤觸鎖遮罩（補強段）
+
+    /// 鎖定遮罩：半透明壓暗＋底部低調指示膠囊。整層攔截全部
+    /// 觸控（下層控件凍結）；解鎖 = 長按指示膠囊 0.8 s（防口袋
+    /// 與譜架誤觸，單擊不解）。鎖定指示刻意低調（muted 色、
+    /// 小字），舞台／樂池環境不搶眼；暗紅模式下同樣走 token。
+    private func lockOverlay(theme: TunerTheme) -> some View {
+        ZStack {
+            Color.black.opacity(theme.isDark ? 0.55 : 0.35)
+                .ignoresSafeArea()
+
+            VStack {
+                Spacer()
+                HStack(spacing: 7) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("排練鎖定 · 長按解鎖")
+                        .font(.system(size: 12.5, weight: .semibold))
+                }
+                .foregroundStyle(theme.textSecondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay {
+                    Capsule().strokeBorder(
+                        theme.isDark ? Color.white.opacity(0.14) : Color.black.opacity(0.08),
+                        lineWidth: 1)
+                }
+                .padding(.bottom, 26)
+                .contentShape(Capsule())
+                .gesture(
+                    LongPressGesture(minimumDuration: 0.8, maximumDistance: 12)
+                        .onEnded { _ in
+                            rehearsalLocked = false
+                            HapticsEngine.shared.tap(milliseconds: 12)
+                        }
+                )
+                .accessibilityLabel("排練鎖定中，長按解鎖")
+            }
+        }
     }
 
     // MARK: - 背景膠囊（母本 #9 metroCapsule）

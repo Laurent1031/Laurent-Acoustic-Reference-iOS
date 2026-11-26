@@ -15,6 +15,9 @@ struct BeatVisualEvent: Sendable {
     let barCount: Int
     let isCountIn: Bool
     let bpm: Int
+    /// 本拍所在小節是否為 Gap Click 靜音小節（補強段）：靜音
+    /// 小節照常派發視覺事件（拍點顯示不中斷），只是無聲無震。
+    let isSilentBar: Bool
 }
 
 /// 節拍器調度診斷（階段 1 DetectionLog 的節拍器對應物）：
@@ -66,6 +69,13 @@ final class MetronomeCore: @unchecked Sendable {
     private var subIndex = 0
     private var barCount = 1
     private var countInActive = false
+    // Gap Click（lock 保護）：gapCyclePosition = 本循環已完成的
+    // 常規小節數（預備拍小節不計）；currentBarSilent 在每小節
+    // 邊界由 barCompleted 依循環位置重算（小節內鎖定，設定變更
+    // 下一小節生效——前瞻僅 0.12 s，邊界誤差至多一拍內的部分
+    // tick 已排程，屬可忽略的排程粒度，報告註明）。
+    private var gapCyclePosition = 0
+    private var currentBarSilent = false
     private var lastMainBeatSamples: Double?
     private var stats = MetronomeDiagnostics()
     private var intervalCount = 0
@@ -143,6 +153,9 @@ final class MetronomeCore: @unchecked Sendable {
         subIndex = 0
         countInActive = settings.countIn
         barCount = countInActive ? 0 : 1
+        // Gap 循環自第一個常規小節重新起算，第一段恆為發聲段。
+        gapCyclePosition = 0
+        currentBarSilent = false
         needsInitTick = true
         lastMainBeatSamples = nil
         stats = MetronomeDiagnostics()
@@ -225,9 +238,10 @@ final class MetronomeCore: @unchecked Sendable {
         let lvl = isSub ? 0
             : (countInActive ? (beatIndex == 0 ? 3 : 2) : s.beatAccents[pillarIdx])
 
-        // —— 點音（母本 triggerMetroSound；accentLevel==0 不發聲）——
+        // —— 點音（母本 triggerMetroSound；accentLevel==0 不發聲；
+        // Gap 靜音小節整節不發聲，含細分拍）——
         let keyLevel = isSub ? s.beatAccents[pillarIdx] : lvl
-        if keyLevel > 0,
+        if keyLevel > 0, !currentBarSilent,
            let buffer = buffers[ClickKey(timbre: s.timbre, level: keyLevel, isSub: isSub)] {
             let when = AVAudioTime(sampleTime: AVAudioFramePosition(nextTickSamples),
                                    atRate: sampleRate)
@@ -253,11 +267,14 @@ final class MetronomeCore: @unchecked Sendable {
             onStats?(stats)
 
             let bt = Double(s.bluetoothCompMs) / 1000
-            HapticsEngine.shared.beat(level: lvl, atHostTimeSeconds: hostSeconds + bt)
+            // Gap 靜音小節：觸感同步靜默；視覺事件照常派發。
+            if !currentBarSilent {
+                HapticsEngine.shared.beat(level: lvl, atHostTimeSeconds: hostSeconds + bt)
+            }
             let event = BeatVisualEvent(pillarIndex: pillarIdx, beatIndex: beatIndex,
                                         beatsInBar: beatsInBar, level: lvl,
                                         barCount: barCount, isCountIn: countInActive,
-                                        bpm: s.bpm)
+                                        bpm: s.bpm, isSilentBar: currentBarSilent)
             let targetSeconds = hostSeconds + bt
             let deadline = DispatchTime(uptimeNanoseconds: UInt64(max(0, targetSeconds) * 1_000_000_000))
             visualQueue.asyncAfter(deadline: deadline) { [weak self] in
@@ -287,6 +304,11 @@ final class MetronomeCore: @unchecked Sendable {
 
     /// 一小節走完（呼叫時持有 lock）。母本行 11404–11414：
     /// 預備拍小節結束只切換旗標、不觸發漸速計步。
+    /// 補強段 Gap Click：常規小節（含靜音小節）推進循環並重算
+    /// 下一小節的靜音旗標；預備拍小節不計入循環（恆發聲）。
+    /// 漸速計步同樣包含靜音小節（速度是時間軸的連續量，練習者
+    /// 在靜音段落仍跟拍前進，漸速應照常推進——此為本段的交互
+    /// 定義，母本無 Gap Click 可對照）。
     private func barCompleted() {
         if countInActive {
             countInActive = false
@@ -294,6 +316,7 @@ final class MetronomeCore: @unchecked Sendable {
             return
         }
         barCount += 1
+        advanceGapCycle()
         guard ramp.active else { return }
         ramp.barsDone += 1
         if ramp.barsDone % ramp.barsPerStep == 0 {
@@ -322,6 +345,21 @@ final class MetronomeCore: @unchecked Sendable {
         let snapshot = ramp
         onRampChanged?(snapshot)
         onRampFinished?()
+    }
+
+    /// Gap 循環推進一格（呼叫時持有 lock，常規小節邊界）：
+    /// 位置在 [0, 響+靜) 內循環，位置 ≥ 響數 → 下一小節靜音。
+    /// gap 關閉時位置歸零、旗標恆 false（行為與母本一致）。
+    private func advanceGapCycle() {
+        let s = settings
+        guard s.gapEnabled else {
+            gapCyclePosition = 0
+            currentBarSilent = false
+            return
+        }
+        let cycle = max(2, s.gapSoundBars + s.gapSilentBars)
+        gapCyclePosition = (gapCyclePosition + 1) % cycle
+        currentBarSilent = gapCyclePosition >= s.gapSoundBars
     }
 }
 
@@ -459,11 +497,11 @@ final class MetronomeEngine: ObservableObject {
             sessionAcquired = true
         }
         do {
-            // 與調音共用 playAndRecord：調音已啟動時類別相同、
-            // 不重設（避免打斷錄音）；僅在類別不同才設定。
-            if session.category != .playAndRecord {
-                try session.setCategory(.playAndRecord, mode: .measurement, options: [])
-            }
+            // 動態 Mode（補強段）：category/mode 由協調器依目前
+            // 使用者組成統一裁決——調音在場走錄音型（playAndRecord
+            // +measurement），僅播放時走播放型（.playback，恢復
+            // 外放電平）；組成未變時 applyProfile 不重設。
+            AudioSessionCoordinator.shared.applyProfile()
             try session.setActive(true)
         } catch {
             lastError = "音訊工作階段啟動失敗：\(error.localizedDescription)"
@@ -513,6 +551,10 @@ final class MetronomeEngine: ObservableObject {
         if AudioSessionCoordinator.shared.release(.metronome) {
             try? AVAudioSession.sharedInstance().setActive(false,
                                                            options: .notifyOthersOnDeactivation)
+        } else {
+            // 尚有其他使用者：組成改變可能觸發型態切換（如
+            // 調音已退、只剩 Drone → 播放型），由協調器裁決。
+            AudioSessionCoordinator.shared.applyProfile()
         }
     }
 

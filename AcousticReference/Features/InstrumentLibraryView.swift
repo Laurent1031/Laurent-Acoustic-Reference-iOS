@@ -44,7 +44,8 @@ struct InstrumentLibraryView: View {
     }
 
     var body: some View {
-        let theme = TunerTheme.resolve(colorScheme)
+        let theme = TunerTheme.resolve(preference: store.themePreference,
+                                       system: colorScheme)
         NavigationStack {
             ZStack {
                 theme.background.ignoresSafeArea()
@@ -169,6 +170,8 @@ struct InstrumentLibraryView: View {
                             onSelect: {
                                 store.selectInstrument(id: inst.id)
                                 HapticsEngine.shared.tap(milliseconds: 8)
+                                // 母本卡片選樂器：uiSound("switch")（行 8468）。
+                                UISoundEngine.shared.play(.switch)
                                 dismiss()
                             },
                             onEdit: {
@@ -242,7 +245,7 @@ private struct InstrumentCard: View {
                         Text(confirmingDelete ? "確認刪除？" : "✕")
                             .font(.system(size: confirmingDelete ? 10.5 : 11,
                                         weight: .semibold))
-                            .foregroundStyle(confirmingDelete ? .red : theme.textSecondary)
+                            .foregroundStyle(confirmingDelete ? theme.clipWarning : theme.textSecondary)
                             .frame(height: 24)
                     }
                     .buttonStyle(.plain)
@@ -284,7 +287,7 @@ private struct InstrumentCard: View {
         Button { toggleFavorite() } label: {
             Image(systemName: isFavorite ? "star.fill" : "star")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isFavorite ? Color(hex: 0xFFD60A) : theme.textMuted)
+                .foregroundStyle(isFavorite ? theme.favoriteStar : theme.textMuted)
                 .scaleEffect(starScale)
                 .frame(width: 26, height: 26)
                 .overlay { burstDots }
@@ -314,13 +317,19 @@ private struct InstrumentCard: View {
     }
 
     private func toggleFavorite() {
+        // 母本行 6799：收藏切換 uiSound——加入 "switch"、移除
+        // "tick"；低於下限被拒時母本提前 return、僅 toast、
+        // 無音效無震動，原生比照其他拒絕點補 "warn"（有意
+        // 差異，見補強段報告）。
         switch store.toggleFavorite(id: instrument.id) {
         case .added:
             HapticsEngine.shared.tap(milliseconds: 8)
+            UISoundEngine.shared.play(.switch)
             playBurst()
         case .removed:
-            break
+            UISoundEngine.shared.play(.tick)
         case .rejectedMinimum:
+            UISoundEngine.shared.play(.warn)
             onMinimumFavorite()
         }
     }
@@ -348,6 +357,8 @@ private struct InstrumentCard: View {
     private func tapDelete() {
         if confirmingDelete {
             confirmingDelete = false
+            // 母本行 7465：確認刪除 uiSound("warn")。
+            UISoundEngine.shared.play(.warn)
             store.deleteCustomInstrument(id: instrument.id)
         } else {
             confirmingDelete = true
@@ -433,7 +444,8 @@ private struct CustomInstrumentFormView: View {
     }
 
     var body: some View {
-        let theme = TunerTheme.resolve(colorScheme)
+        let theme = TunerTheme.resolve(preference: store.themePreference,
+                                       system: colorScheme)
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 field(theme: theme) {
@@ -443,7 +455,7 @@ private struct CustomInstrumentFormView: View {
                 if nameError {
                     Text("請填寫樂器名稱")
                         .font(.system(size: 12))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(theme.clipWarning)
                 }
 
                 HStack(spacing: 8) {
@@ -493,7 +505,7 @@ private struct CustomInstrumentFormView: View {
                 if rangeError {
                     Text("最高音必須高於最低音")
                         .font(.system(size: 12))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(theme.clipWarning)
                 }
 
                 HStack(spacing: 8) {
@@ -570,6 +582,8 @@ private struct CustomInstrumentFormView: View {
             transposition: transposition, category: category,
             lowMidi: lowMidi, highMidi: highMidi)
         HapticsEngine.shared.tap(milliseconds: 12)
+        // 母本行 7686：自訂樂器保存 uiSound("success")。
+        UISoundEngine.shared.play(.success)
         onSaved(saved)
     }
 }
