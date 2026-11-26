@@ -115,7 +115,7 @@ struct MetronomeView: View {
                 .foregroundStyle(viewModel.settings.countIn ? .white : theme.textPrimary)
                 .padding(.horizontal, 12)
                 .frame(height: 34)
-                .background(viewModel.settings.countIn ? theme.accent : .ultraThinMaterial,
+                .background(viewModel.settings.countIn ? AnyShapeStyle(theme.accent) : AnyShapeStyle(.ultraThinMaterial),
                             in: Capsule())
             }
             .buttonStyle(.plain)
@@ -411,7 +411,7 @@ struct MetronomeView: View {
                             .foregroundStyle(active ? .white : theme.textPrimary)
                             .padding(.horizontal, 13)
                             .frame(height: 32)
-                            .background(active ? theme.accent : .ultraThinMaterial,
+                            .background(active ? AnyShapeStyle(theme.accent) : AnyShapeStyle(.ultraThinMaterial),
                                         in: Capsule())
                     }
                     .buttonStyle(.plain)

@@ -215,7 +215,7 @@ final class HapticsEngine: @unchecked Sendable {
 
     /// 系統震動無法預排程：以 uptime 派發到點觸發。
     private func fallbackFire(atHostTimeSeconds target: Double?) {
-        let fire = {
+        let fire: @Sendable () -> Void = {
             AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
         }
         if let target {
