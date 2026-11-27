@@ -2,14 +2,15 @@ import SwiftUI
 import UIKit
 
 /// 頂欄 sheet 種類（ContentView.activeSheet）。
+/// 【返修批10】.debug 已撤（Laurent 指示診斷入口直接
+/// 去掉，診斷頁 TunerDebugView 一併刪除）。
 enum TopSheet: Identifiable {
-    case debug
     case preferences
     case systemSettings
     var id: Self { self }
 }
 
-/// App 殼（階段 4）：頂欄（品牌＋調音/節拍分段切換＋診斷入口，
+/// App 殼（階段 4）：頂欄（品牌＋調音/節拍分段切換，
 /// 對照母本頂欄）＋兩頁保活切換＋節拍器背景膠囊＋螢幕常亮管理。
 /// 兩頁以 ZStack 疊放、僅切透明度與命中測試：任一頁的執行期
 /// 狀態（調音分析、節拍調度、動畫時鐘）在切頁後不中斷——
@@ -56,7 +57,12 @@ struct ContentView: View {
     /// 背景按壓亮斑（返修批3 補回母本 #pageGlow；返修
     /// 批9 多指化）：逐指一個亮斑，狀態由窗口級被動觸
     /// 控追蹤維護（GlowTouchTracker），多指互不干擾。
-    @State private var glowSpots: [GlowSpot] = []
+    /// 【返修批10】亮斑狀態隔離：原以 ContentView 的
+    /// @State 持有，手指每移動一幀（最高 120 Hz）整棵根
+    /// 視圖樹跟著重算——實機「亮斑特別卡頓」的根因。改由
+    /// GlowSpotModel 單獨持有，只有亮斑層觀察它、只有亮
+    /// 斑層重繪，根視圖不再被觸摸牽動。
+    @StateObject private var glowModel = GlowSpotModel()
 
     init() {
         let store = AppStore()
@@ -149,11 +155,11 @@ struct ContentView: View {
         // 整體熄光，多指必卡（Laurent 點名）；且全域拖動
         // 手勢與頁內一切拖動競爭，一併撤除。
         .overlay {
-            PageGlowView(spots: glowSpots, theme: theme)
+            PageGlowView(model: glowModel, theme: theme)
         }
         .background {
             GlowTouchTracker { touches in
-                updateGlowSpots(touches)
+                glowModel.update(touches)
             }
         }
         .overlay(alignment: .bottom) {
@@ -199,12 +205,6 @@ struct ContentView: View {
             // 再套一次，雙保險。
             Group {
                 switch sheet {
-                case .debug:
-                    TunerDebugView(engine: engine,
-                                   readingBox: engine.readingBox,
-                                   metronomeEngine: metronomeEngine,
-                                   metronomeViewModel: metronomeViewModel,
-                                   store: store)
                 case .preferences:
                     PreferencesView(store: store,
                                     currentMetronomeSettings: metronomeViewModel.settings)
@@ -222,6 +222,12 @@ struct ContentView: View {
             if store.appMode == .dual { store.appMode = .tuner }
             HapticsEngine.shared.isEnabled = engine.settings.hapticsOn
             UISoundEngine.shared.isEnabled = engine.settings.soundsOn
+            // 【返修批10】啟動即預熱震動／音效引擎：引擎
+            // 建立＋圖案 player 預建＋音效預渲染的成本在
+            // 啟動時先付清，第一拍震動與首個 UI 音效不
+            // 再被懶建立吞掉（批9 實機「震動一開始沒有」）。
+            HapticsEngine.shared.warmUp()
+            UISoundEngine.shared.warmUp()
             updateIdleTimer()
             startMicIfAutoEnabled()
             refreshMetronomePageVisibility()
@@ -315,6 +321,13 @@ struct ContentView: View {
                 // 落 permissionDenied）。
                 engine.refreshPermissionState()
                 startMicIfAutoEnabled()
+                // 【返修批10】回前台重預熱：後台期間震動
+                // 引擎可能已被系統停機、音效引擎已閒置拆
+                // 建——回到前台先把兩者喚醒並重建 player
+                // 池，恢復後的第一拍／第一個音效即刻就緒，
+                // 前後台手感一致。
+                HapticsEngine.shared.warmUp()
+                UISoundEngine.shared.warmUp()
                 // 【返修批8】節拍器中斷殭屍對帳：中斷凍結
                 // 調度後若恢復路徑未跑完，回前台在此收斂
                 // （仍播但調度已死 → 恢復；恢復失敗走引擎
@@ -416,18 +429,8 @@ struct ContentView: View {
                 topTextButton(title: L10n.t("设置"), theme: theme) {
                     activeSheet = .systemSettings
                 }
-
-                Button {
-                    activeSheet = .debug
-                } label: {
-                    Image(systemName: "waveform.path.ecg")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 32, height: 32)
-                        .glassEffect(theme.glass(store.glassOpacity, interactive: true), in: Circle())
-                }
-                .buttonStyle(GlassPressButtonStyle())
-                .foregroundStyle(theme.textSecondary)
-                .accessibilityLabel(L10n.t("诊断"))
+                // 【返修批10】診斷圓鈕已依 Laurent 指示移除
+                // （頂欄右側只剩偏好／設置裸文字鈕靠右）。
             }
             .frame(height: 36)
 
@@ -480,29 +483,6 @@ struct ContentView: View {
     /// 多指亮斑狀態維護（返修批9）：按著的指逐幀更新位
     /// 置；剛離開的指轉衰減態、0.35 s 後移除，其餘指完
     /// 全不受影響。
-    private func updateGlowSpots(_ touches: [(id: Int, point: CGPoint)]) {
-        var next = glowSpots
-        for touch in touches {
-            if let i = next.firstIndex(where: { $0.id == touch.id }) {
-                next[i].point = touch.point
-                next[i].fading = false
-            } else {
-                next.append(GlowSpot(id: touch.id, point: touch.point,
-                                     fading: false))
-            }
-        }
-        let activeIds = Set(touches.map { $0.id })
-        for i in next.indices
-        where !next[i].fading && !activeIds.contains(next[i].id) {
-            next[i].fading = true
-            let id = next[i].id
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                glowSpots.removeAll { $0.id == id && $0.fading }
-            }
-        }
-        glowSpots = next
-    }
-
     private func capsule(theme: TunerTheme) -> some View {
         MetronomeCapsuleView(
             isPlaying: metronomeViewModel.isPlaying,
@@ -634,6 +614,48 @@ struct GlowSpot: Identifiable {
     var fading: Bool
 }
 
+/// 亮斑狀態模型（返修批10・卡頓修復）：獨立於根視圖的
+/// 狀態持有者——觸摸更新只令 PageGlowView 重繪（幾團徑
+/// 向漸層圓），不再觸發 ContentView 整樹重算。發布帶
+/// 變更守衛：落點與狀態皆未變的事件（多指中靜止指的
+/// 重複回報）不發布。離手移除的 0.35 s 延時在本模型內
+/// 自行收尾，語義與舊 updateGlowSpots 逐項一致。線程
+/// 紀律：全部呼叫點皆在主線程（手勢識別器回調＋main
+/// 佇列延時），故不加 actor 隔離、免 Swift 6 隔離摩擦。
+final class GlowSpotModel: ObservableObject {
+    @Published private(set) var spots: [GlowSpot] = []
+
+    func update(_ touches: [(id: Int, point: CGPoint)]) {
+        var next = spots
+        var changed = false
+        for touch in touches {
+            if let i = next.firstIndex(where: { $0.id == touch.id }) {
+                if next[i].point != touch.point || next[i].fading {
+                    next[i].point = touch.point
+                    next[i].fading = false
+                    changed = true
+                }
+            } else {
+                next.append(GlowSpot(id: touch.id, point: touch.point,
+                                     fading: false))
+                changed = true
+            }
+        }
+        let activeIds = Set(touches.map { $0.id })
+        for i in next.indices
+        where !next[i].fading && !activeIds.contains(next[i].id) {
+            next[i].fading = true
+            changed = true
+            let id = next[i].id
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                [weak self] in
+                self?.spots.removeAll { $0.id == id && $0.fading }
+            }
+        }
+        if changed { spots = next }
+    }
+}
+
 /// 背景按壓亮斑（母本 #pageGlow，行 1960–1980／12352–12398）：
 /// 每指一團 340×340 徑向光、1:1 跟隨。深色 screen 混合
 /// （中心 rgba(130,175,255,0.15) → 白 0.05 @42% → 透
@@ -641,12 +663,14 @@ struct GlowSpot: Identifiable {
 /// 亮起 0.12 s、熄滅 0.3 s（單指視圖 onAppear 淡入、
 /// fading 淡出，位置永不動畫——跟隨必須 1:1）。
 struct PageGlowView: View {
-    let spots: [GlowSpot]
+    /// 【返修批10】改觀察獨立模型（見 GlowSpotModel）：
+    /// 觸摸幀只重繪本層。
+    @ObservedObject var model: GlowSpotModel
     let theme: TunerTheme
 
     var body: some View {
         ZStack {
-            ForEach(spots) { spot in
+            ForEach(model.spots) { spot in
                 GlowSpotView(spot: spot, theme: theme)
             }
         }

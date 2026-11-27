@@ -546,6 +546,55 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// 恢復初始設置（返修批10・Laurent 指示）：全部落盤
+    /// 狀態回到出廠預設（AppStateFile() 默認值）——調音設
+    /// 定、收藏、自訂樂器、Drone、節拍器設定與預置、外
+    /// 觀、語言、玻璃不透明度、自訂背景全數歸零，與全新
+    /// 安裝首啟一致（兩遷移旗標直接立起：出廠收藏不含古
+    /// 箏、預設顯示本就是指針，遷移皆為空操作，立旗標只
+    /// 為狀態等值）。執行期狀態（古箏調號、演奏態）一併
+    /// 回預設；匯入前快照（S-4 存底）同步銷毀——其內容
+    /// 是重置前狀態，留著等於留一條隱形還原路，與「恢
+    /// 復初始」語義不符。選樂器走 selectInstrument 正規
+    /// 入口（發脈衝，調音 VM 清鎖定/軌跡如同手動選回）。
+    /// 節拍器 VM 的運行時設定不在本店真源內，由呼叫端
+    /// （設置頁）在本方法後另以 syncSettingsFromStore
+    /// 同步（先停播，見 SettingsView.resetGroup）。
+    func resetToFactoryDefaults() {
+        var defaults = AppStateFile()
+        defaults.guzhengFavMigrationDone = true
+        defaults.displayModeV9Migrated = true
+        tunerSettings = defaults.tunerSettings
+        pitchMode = defaults.pitchMode
+        customInstruments = defaults.customInstruments
+        droneTimbre = defaults.droneTimbre
+        droneFollow = defaults.droneFollow
+        metronomeSettings = defaults.metronomeSettings
+        metronomeUserPresets = defaults.metronomeUserPresets
+        appMode = AppMode(rawValue: defaults.appMode) ?? .tuner
+        tunerDisplayMode = defaults.tunerDisplayMode
+        themePreference = defaults.themePreference
+        language = defaults.language
+        glassOpacity = defaults.glassOpacity
+        primaryInstrumentId = defaults.primaryInstrumentId
+        autoMicOnEnter = defaults.autoMicOnEnter
+        metronomeDefault = defaults.metronomeDefault
+        bgKind = defaults.bgKind
+        bgColorHex = defaults.bgColor
+        customBgData = nil
+        guzhengFavMigrationDone = true
+        displayModeV9Migrated = true
+        favoriteInstrumentIds = defaults.favoriteInstrumentIds
+        guzhengKey = "D"
+        performanceMode = false
+        pendingImportPlan = nil
+        selectInstrument(id: defaults.selectedInstrumentId)
+        try? FileManager.default.removeItem(at: Self.preImportFileURL)
+        try? FileManager.default.removeItem(at: Self.preImportBgFileURL)
+        L10n.setLanguage(language)
+        persist()
+    }
+
     // MARK: - 載入與遷移
 
     init() {

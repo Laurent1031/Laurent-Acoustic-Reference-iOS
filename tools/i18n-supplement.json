@@ -1353,5 +1353,32 @@
  },
  "第 %d 拍": {
   "en": "Beat %d"
+ },
+ "恢复初始设置": {
+  "de": "Auf Werkseinstellungen zurücksetzen",
+  "en": "Reset to Factory Defaults",
+  "fr": "Réinitialiser les réglages",
+  "ja": "初期設定に戻す",
+  "ko": "초기 설정으로 복원",
+  "ru": "Сбросить настройки",
+  "zh-TW": "恢復初始設定"
+ },
+ "将全部设置、收藏、自订乐器与预设恢复为出厂状态，无法撤销": {
+  "de": "Alle Einstellungen, Favoriten, eigenen Instrumente und Presets werden auf die Werkseinstellungen zurückgesetzt. Das kann nicht rückgängig gemacht werden.",
+  "en": "Restore all settings, favorites, custom instruments and presets to factory defaults. This cannot be undone.",
+  "fr": "Restaure tous les réglages, favoris, instruments personnalisés et préréglages aux valeurs d'usine. Action irréversible.",
+  "ja": "すべての設定、お気に入り、カスタム楽器、プリセットを工場出荷時の状態に戻します。元に戻せません。",
+  "ko": "모든 설정, 즐겨찾기, 사용자 지정 악기 및 프리셋을 공장 기본값으로 복원합니다. 되돌릴 수 없습니다.",
+  "ru": "Все настройки, избранное, пользовательские инструменты и пресеты будут сброшены к заводским значениям. Действие нельзя отменить.",
+  "zh-TW": "將全部設定、收藏、自訂樂器與預設恢復為出廠狀態，無法撤銷"
+ },
+ "确认恢复": {
+  "de": "Zurücksetzen bestätigen",
+  "en": "Confirm Reset",
+  "fr": "Confirmer la réinitialisation",
+  "ja": "リセットを確認",
+  "ko": "복원 확인",
+  "ru": "Подтвердить сброс",
+  "zh-TW": "確認恢復"
  }
 }

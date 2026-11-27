@@ -267,18 +267,27 @@ struct TunerTheme {
                 // 光暈（靜止圖層、零逐幀成本），玻璃的折射
                 // 與邊緣高光由此承載；濃度壓在文字對比無感
                 // 的範圍內。
+                // 【返修批10】環境光整體加強＋補中央一團：
+                // 批9 濃度下玻璃背後近乎純黑、無可折射內
+                // 容，透明玻璃只剩輪廓；中央主顯示區補一
+                // 團極淡 accent 光，令中部卡片也有色彩邊
+                // 界可折射（文字對比經實測範圍仍無感）。
                 RadialGradient(
-                    colors: [Color(hex: 0x0A84FF).opacity(0.10), Color.clear],
+                    colors: [Color(hex: 0x0A84FF).opacity(0.14), Color.clear],
                     center: UnitPoint(x: 0.10, y: 0.04),
                     startRadius: 0, endRadius: 340)
                 RadialGradient(
-                    colors: [Color(hex: 0xBF5AF2).opacity(0.07), Color.clear],
+                    colors: [Color(hex: 0xBF5AF2).opacity(0.10), Color.clear],
                     center: UnitPoint(x: 0.92, y: 0.36),
                     startRadius: 0, endRadius: 380)
                 RadialGradient(
-                    colors: [Color(hex: 0x64D2FF).opacity(0.05), Color.clear],
+                    colors: [Color(hex: 0x64D2FF).opacity(0.08), Color.clear],
                     center: UnitPoint(x: 0.45, y: 1.02),
                     startRadius: 0, endRadius: 420)
+                RadialGradient(
+                    colors: [Color(hex: 0x0A84FF).opacity(0.05), Color.clear],
+                    center: UnitPoint(x: 0.5, y: 0.44),
+                    startRadius: 0, endRadius: 300)
             }
         case .pit:
             ZStack {
@@ -346,13 +355,15 @@ extension TunerTheme {
     /// 內容承載，不再靠染色硬撐。
     func glass(_ opacity: Int, interactive: Bool = false) -> Glass {
         let t = min(1, max(0, (Double(opacity) - 8) / 88))
-        // 【返修批9】tint 曲線 0.02+0.16t → 0.05+0.37t，且
-        // GlassSurface 另加底填充通道（0.34t）雙通道驅動：
-        // 批8 單通道全程僅 0.02–0.18，Laurent 實機點名
-        // 「不透明度调节效果不是很明显」。預設 50 → tint
-        // ≈0.23＋底填充 ≈0.16，清透但有體；96 → 0.42＋
-        // 0.34 趨近實色；8 → 0.05＋0 趨近純水晶。
-        let base = Glass.regular.tint(glassTintBase.opacity(0.05 + 0.37 * t))
+        // 【返修批10】透明優先（Laurent 裝機點名「要的是
+        // 特別的透明」、批9 實機大面仍讀作扁平灰）：本體
+        // 由 .regular 改 .clear 變體（與鏡片同源，幾乎無
+        // 漫射霧面），tint 曲線同步壓低 0.05+0.37t →
+        // 0.02+0.22t——玻璃感改由折射本體＋描邊／高光／
+        // 虹彩三層光學（GlassSurface）與頁底環境光承載，
+        // 不再靠染色。預設 50 → tint ≈0.125；8 → 0.02 趨
+        // 近純水晶；96 → 0.24＋底填充 0.22 仍可讀。
+        let base = Glass.clear.tint(glassTintBase.opacity(0.02 + 0.22 * t))
         return interactive ? base.interactive() : base
     }
 
@@ -395,12 +406,16 @@ extension TunerTheme {
                     warmWhite.opacity(0.05)]
         }
         if isDark {
-            return [Color.white.opacity(pressed ? 0.62 : 0.40),
-                    Color.white.opacity(0.10),
+            // 【返修批10】深色描邊整體提亮（首站 0.40→0.55、
+            // 虹彩 0.18→0.22）：批9 實機邊緣定義不足、玻璃
+            // 輪廓在近黑底上消失，鏡面邊是透明玻璃在深底
+            // 上成立的主因。
+            return [Color.white.opacity(pressed ? 0.78 : 0.55),
+                    Color.white.opacity(0.12),
                     Color(red: 0.62, green: 0.55, blue: 1.0)
-                        .opacity(pressed ? 0.30 : 0.18),
-                    Color(red: 0.40, green: 0.85, blue: 1.0).opacity(0.12),
-                    Color.white.opacity(0.05)]
+                        .opacity(pressed ? 0.36 : 0.22),
+                    Color(red: 0.40, green: 0.85, blue: 1.0).opacity(0.14),
+                    Color.white.opacity(0.06)]
         }
         return [Color.white.opacity(pressed ? 0.95 : 0.80),
                 Color.white.opacity(0.28),
@@ -423,7 +438,9 @@ extension TunerTheme {
     /// →中段紫→右下青，極低 alpha 只給色溫不給形狀，避
     /// 免死板純色毛玻璃。
     var glassIridescentWash: LinearGradient {
-        let a = isDark ? 0.055 : 0.045
+        // 【返修批10】散射 alpha 深 0.055→0.08、淺
+        // 0.045→0.06：批9 實機幾乎不可見，流動感不出。
+        let a = isDark ? 0.08 : 0.06
         // pit 變體（同描邊理由）：紅→朱紅→琥珀。
         if isPit {
             return LinearGradient(
@@ -448,16 +465,17 @@ extension TunerTheme {
         let base: Color = isPit
             ? Color(red: 0.91, green: 0.81, blue: 0.78) : .white
         return RadialGradient(
-            colors: [base.opacity(isDark ? 0.10 : 0.32), .clear],
+            // 【返修批10】深色 0.10→0.15（同描邊理由）。
+            colors: [base.opacity(isDark ? 0.15 : 0.32), .clear],
             center: .topLeading, startRadius: 0, endRadius: 190)
     }
 
-    /// 不透明度底填充 alpha（返修批9・雙通道之二）：與
-    /// glass() 的 tint 共同受「玻璃不透明度」驅動，見該
-    /// 處註解。
+    /// 不透明度底填充 alpha：與 glass() 的 tint 共同受
+    /// 「玻璃不透明度」驅動。【返修批10】0.34t → 0.22t
+    /// （透明優先，見 glass() 註）。
     func glassBaseFillAlpha(_ opacity: Int) -> Double {
         let t = min(1, max(0, (Double(opacity) - 8) / 88))
-        return 0.34 * t
+        return 0.22 * t
     }
 }
 
@@ -493,11 +511,12 @@ enum AppMotion {
 /// 上補回克制的自繪光學層（見下段）——與批1 的分野是總
 /// 量：覆蓋不再是主體，只是鏡面定義的補筆。
 ///
-/// 不透明度（8–96）語義（返修批9 改雙通道）：tint
-/// alpha = 0.05 + 0.37t（見 TunerTheme.glass）＋底填
-/// 充 0.34t 雙通道共同驅動——批8 的單通道 0.02–0.18
-/// 實機拖動幾乎看不出變化（Laurent 點名）。低端趨近
-/// 純水晶、高端趨近實色，預設仍是清透濃度。
+/// 不透明度（8–96）語義（返修批10 改透明優先）：本體
+/// .clear＋tint alpha = 0.02 + 0.22t（見 TunerTheme
+/// .glass）＋底填充 0.22t 雙通道共同驅動。低端趨近
+/// 純水晶、高端仍可讀，預設是清透濃度；玻璃的立體與
+/// 流動感由光學層（散射／徑向高光／穹光／內影／描邊）
+/// 與頁底環境光承載，不靠染色。
 /// interactive 不加於本背景層：按壓形變作用在控件本體
 /// （GlassPressButtonStyle／鏡片），不加在襯底。
 ///
@@ -532,6 +551,34 @@ struct GlassSurface<S: InsettableShape>: View {
             .overlay {
                 if !reduceTransparency {
                     shape.fill(theme.glassRadialHighlight)
+                }
+            }
+            // 【返修批10・立體與流動感】凝膠穹光與底部內
+            // 影：頂部一道自上而下衰減的穹面光（玻璃厚度
+            // 的受光面）＋底部極淡內影（厚度陰影面）——
+            // 批9 只有左上徑向一斑，大面仍讀作平面；穹光
+            // 給出「微凸凝膠」的體積，Laurent 規範二點名
+            // 要的立體感由此承載。皆靜態漸層、零逐幀成本。
+            .overlay {
+                if !reduceTransparency {
+                    shape.fill(LinearGradient(
+                        stops: [.init(color: (theme.isPit
+                                    ? Color(red: 0.91, green: 0.81, blue: 0.78)
+                                    : Color.white)
+                                    .opacity(theme.isDark ? 0.10 : 0.16),
+                                      location: 0),
+                                .init(color: .clear, location: 0.45)],
+                        startPoint: .top, endPoint: .bottom))
+                }
+            }
+            .overlay {
+                if !reduceTransparency {
+                    shape.fill(LinearGradient(
+                        stops: [.init(color: .clear, location: 0.72),
+                                .init(color: Color.black
+                                    .opacity(theme.isDark ? 0.10 : 0.05),
+                                      location: 1)],
+                        startPoint: .top, endPoint: .bottom))
                 }
             }
             .overlay {
@@ -595,45 +642,55 @@ struct GlassSegmentedControl<Option: Hashable>: View {
     }
 
     var body: some View {
-        GlassEffectContainer(spacing: 0) {
-            GeometryReader { geo in
-                let count = max(1, options.count)
-                let segW = (geo.size.width - 6) / CGFloat(count)
-                let selCenter = 3 + segW * (CGFloat(selectedIndex) + 0.5)
-                let lensCenter = dragX.map {
-                    min(max($0, 3 + segW / 2), geo.size.width - 3 - segW / 2)
-                } ?? selCenter
-                ZStack(alignment: .leading) {
-                    // 鏡片：無 tint 真玻璃（.clear，見
-                    // theme.lensGlass）＋glassEffectID morph；
-                    // 幾何內縮（寬 segW−4、高 height−2），
-                    // ZStack 本已垂直置中——【返修批8】刪除
-                    // 舊版多加的 y+4 偏移與投影：偏移令鏡片
-                    // 貼軌道下緣（實機「玻璃位置不對」），投
-                    // 影在鏡片周圍積一圈灰暈、加重塑膠感；系
-                    // 統鏡片本無投影、無偏移。拖動形變：系統
-                    // .interactive() 本體形變＋速度拉伸疊加。
-                    Capsule()
-                        .fill(.clear)
-                        .frame(width: segW - 4, height: height - 2)
-                        .glassEffect(theme.lensGlass, in: Capsule())
-                        .glassEffectID("lens", in: glassNS)
-                        // 【返修批9】鏡片補漸變高光描邊（規範
-                        // 一/三）：.clear 鏡片本體在深色軌道上
-                        // 邊緣定義不足；1px 非對稱描邊給鏡面
-                        // 邊，拖動中（pressing）提亮＝激活態
-                        // 內部冷光。
-                        .overlay {
-                            Capsule().strokeBorder(
-                                theme.glassPressedStrokeGradient(pressing),
-                                lineWidth: 1)
-                        }
-                        .scaleEffect(x: 1 + stretch, y: 1 - stretch * 0.35)
-                        .offset(x: lensCenter - (segW - 4) / 2, y: 0)
-                        .animation(pressing ? nil
-                                   : AppMotion.lens,
-                                   value: lensCenter)
-                    HStack(spacing: 0) {
+        GeometryReader { geo in
+            let count = max(1, options.count)
+            let segW = (geo.size.width - 6) / CGFloat(count)
+            let selCenter = 3 + segW * (CGFloat(selectedIndex) + 0.5)
+            let lensCenter = dragX.map {
+                min(max($0, 3 + segW / 2), geo.size.width - 3 - segW / 2)
+            } ?? selCenter
+            ZStack(alignment: .leading) {
+                // 【返修批10・選中文字重影修復】GlassEffect
+                // Container 只包鏡片本體，標籤列移到容器之
+                // 外（鏡片之上）：批9 標籤與鏡片同處容器
+                // 內，鏡片折射取樣把身後的選中標籤一併採
+                // 入，實機選中文字呈「本體＋折射鬼影」上
+                // 下錯位雙影（Laurent 截圖三處分段皆然）。
+                // 標籤離開玻璃背景層後不再被取樣，雙影消
+                // 除；morph 只作用於容器內的鏡片，不受影響。
+                GlassEffectContainer(spacing: 0) {
+                    ZStack(alignment: .leading) {
+                        // 鏡片：無 tint 真玻璃（.clear，見
+                        // theme.lensGlass）＋glassEffectID
+                        // morph；幾何內縮（寬 segW−4、高
+                        // height−2、垂直置中）。拖動形變：
+                        // 系統 .interactive() 本體形變＋速度
+                        // 拉伸疊加（批10 改水滴形變，見
+                        // segDrag）。
+                        Capsule()
+                            .fill(.clear)
+                            .frame(width: segW - 4, height: height - 2)
+                            .glassEffect(theme.lensGlass, in: Capsule())
+                            .glassEffectID("lens", in: glassNS)
+                            // 【返修批9】鏡片補漸變高光描邊
+                            // （規範一/三）：.clear 鏡片本體
+                            // 在深色軌道上邊緣定義不足；1px
+                            // 非對稱描邊給鏡面邊，拖動中
+                            // （pressing）提亮＝激活態內部冷光。
+                            .overlay {
+                                Capsule().strokeBorder(
+                                    theme.glassPressedStrokeGradient(pressing),
+                                    lineWidth: 1)
+                            }
+                            .scaleEffect(x: 1 + stretch, y: 1 - stretch * 0.35)
+                            .offset(x: lensCenter - (segW - 4) / 2, y: 0)
+                            .animation(pressing ? nil
+                                       : AppMotion.lens,
+                                       value: lensCenter)
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                }
+                HStack(spacing: 0) {
                         ForEach(options, id: \.option) { item in
                             let active = selection == item.option
                             HStack(spacing: 5) {
@@ -662,10 +719,9 @@ struct GlassSegmentedControl<Option: Hashable>: View {
                     }
                     .padding(.horizontal, 3)
                     .padding(.vertical, 3)
-                }
-                .contentShape(Capsule())
-                .gesture(segDrag(segW: segW, count: count))
             }
+            .contentShape(Capsule())
+            .gesture(segDrag(segW: segW, count: count))
         }
         .frame(height: height + 6)
         .background {
@@ -702,11 +758,15 @@ struct GlassSegmentedControl<Option: Hashable>: View {
     }
 
     /// 整控件拖動（坐標為控件局部系，location.x 即軌道
-    /// 座標）：鏡片 1:1 跟指、越格心即切換＋輕觸感；速度
-    /// 拉伸給出果凍形變（快拖拉長至 +13%、縱向回縮），
-    /// 放手 spring 歸位且拉伸回彈。玻璃本體的形變/折射
-    /// 由 .interactive()＋glassEffectID morph 在切換與歸
-    /// 位時給出（系統 iOS 27 行為）。
+    /// 座標）：鏡片 1:1 跟指、越格心即切換＋輕觸感。
+    /// 【返修批10・水滴形變】Laurent 點名鏡片拖動要「像
+    /// 拖動水滴一樣、有形變」：速度拉伸上限 +13%→+22%
+    /// （縱向回縮 −0.35 倍率不變），且拉伸值經低阻尼
+    /// spring（0.22/0.55）平滑跟隨——形變滯後於手指、
+    /// 帶過衝晃動，即表面張力的黏滯感；放手以果凍彈簧
+    /// （AppMotion.jelly）歸零，形變流體回彈。玻璃本體
+    /// 的形變/折射由 .interactive()＋glassEffectID
+    /// morph 在切換與歸位時給出（系統 iOS 27 行為）。
     private func segDrag(segW: CGFloat, count: Int) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
@@ -715,7 +775,13 @@ struct GlassSegmentedControl<Option: Hashable>: View {
                 let now = value.time.timeIntervalSince1970
                 if let lx = lastDragX, now > lastDragT {
                     let v = abs(value.location.x - lx) / CGFloat(now - lastDragT)
-                    stretch = min(0.13, v / 5200)
+                    let target = min(0.22, v / 3400)
+                    if abs(target - stretch) > 0.005 {
+                        withAnimation(.spring(response: 0.22,
+                                              dampingFraction: 0.55)) {
+                            stretch = target
+                        }
+                    }
                 }
                 lastDragX = value.location.x
                 lastDragT = now
@@ -729,7 +795,9 @@ struct GlassSegmentedControl<Option: Hashable>: View {
             .onEnded { _ in
                 pressing = false
                 lastDragX = nil
-                withAnimation(AppMotion.lens) {
+                // 【返修批10】歸位動畫改果凍彈簧（低阻尼
+                // 帶過衝）：鏡片與形變如水滴脫手後晃動收回。
+                withAnimation(AppMotion.jelly) {
                     dragX = nil
                     stretch = 0
                 }
@@ -773,13 +841,18 @@ struct GlassChipBackground: View {
 }
 
 /// 液態玻璃滑塊（返修批9・Laurent 組件規範「滑塊組
-/// 件」）：玻璃軌＋accent 填充段＋水滴拇指（.clear 真
-/// 玻璃＋漸變高光描邊＋柔和投影），拖動時拇指果凍放
-/// 大（1.15、低阻尼 spring 回彈）。值經 Binding 逐幀
-/// 寫回——呼叫端以 draft＋節流提交隔離全域狀態（見
-/// SettingsView 的 glassDraft／bluetoothDraft），本組
-/// 件只管呈現與手勢幾何。無障礙 adjustable 逐 step
-/// 增減（以一次完整編輯會話括住離散變更）。
+/// 件」）：玻璃軌＋accent 填充段＋玻璃拇指，拖動時拇
+/// 指果凍形變。值經 Binding 逐幀寫回——呼叫端以
+/// draft＋節流提交隔離全域狀態（見 SettingsView 的
+/// glassDraft／bluetoothDraft），本組件只管呈現與手
+/// 勢幾何。無障礙 adjustable 逐 step 增減（以一次完
+/// 整編輯會話括住離散變更）。
+/// 【返修批10・拇指改蘋果式】Laurent 裝機點名：拇指
+/// 要蘋果系統滑桿的那種、不要圓形——改橫向膠囊
+/// 46×28（iOS 系統玻璃滑桿拇指形制），尺寸同步放大
+/// （舊圓拇指 ∅27 他評「大小不是這麼小」）；拖動形
+/// 變改水滴式：橫向拉伸 1.10＋縱向壓扁 0.90、果凍
+/// 彈簧回彈。
 struct GlassSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
@@ -796,7 +869,9 @@ struct GlassSlider: View {
     @Environment(\.accessibilityReduceTransparency)
     private var reduceTransparency
 
-    private let thumbSize: CGFloat = 27
+    /// 【返修批10】蘋果式膠囊拇指尺寸（見類註解）。
+    private let thumbWidth: CGFloat = 46
+    private let thumbHeight: CGFloat = 28
     private let trackHeight: CGFloat = 34
 
     private var fraction: Double {
@@ -807,9 +882,9 @@ struct GlassSlider: View {
 
     var body: some View {
         GeometryReader { geo in
-            let width = max(geo.size.width, thumbSize + 1)
-            let thumbX = thumbSize / 2
-                + (width - thumbSize) * CGFloat(fraction)
+            let width = max(geo.size.width, thumbWidth + 1)
+            let thumbX = thumbWidth / 2
+                + (width - thumbWidth) * CGFloat(fraction)
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(theme.glassTintBase.opacity(
@@ -828,26 +903,28 @@ struct GlassSlider: View {
                                  theme.accent.opacity(0.55)],
                         startPoint: .leading, endPoint: .trailing))
                     .frame(width: max(thumbX, 10), height: 10)
-                Circle()
+                Capsule()
                     .fill(.clear)
-                    .frame(width: thumbSize, height: thumbSize)
-                    .glassEffect(.clear.interactive(), in: Circle())
+                    .frame(width: thumbWidth, height: thumbHeight)
+                    .glassEffect(.clear.interactive(), in: Capsule())
                     .overlay {
                         if !reduceTransparency {
-                            Circle().strokeBorder(
+                            Capsule().strokeBorder(
                                 theme.glassPressedStrokeGradient(dragging),
                                 lineWidth: 1)
                         }
                     }
                     .overlay {
                         if !reduceTransparency {
-                            Circle().fill(theme.glassRadialHighlight)
+                            Capsule().fill(theme.glassRadialHighlight)
                         }
                     }
                     .shadow(color: Color.black.opacity(
                         theme.isDark ? 0.30 : 0.18),
                             radius: 5, x: 0, y: 2)
-                    .scaleEffect(dragging ? 1.15 : 1)
+                    // 【返修批10】拖動水滴形變（見類註解）。
+                    .scaleEffect(x: dragging ? 1.10 : 1,
+                                 y: dragging ? 0.90 : 1)
                     .animation(AppMotion.jelly, value: dragging)
                     .position(x: thumbX, y: trackHeight / 2)
             }
@@ -905,8 +982,8 @@ struct GlassSlider: View {
     }
 
     private func setValue(fromX x: CGFloat, width: CGFloat) {
-        let travel = max(width - thumbSize, 1)
-        let f = min(1, max(0, Double((x - thumbSize / 2) / travel)))
+        let travel = max(width - thumbWidth, 1)
+        let f = min(1, max(0, Double((x - thumbWidth / 2) / travel)))
         let raw = range.lowerBound + f * (range.upperBound - range.lowerBound)
         let snapped = (raw / step).rounded() * step
         let clamped = min(range.upperBound, max(range.lowerBound, snapped))

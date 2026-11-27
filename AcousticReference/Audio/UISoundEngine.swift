@@ -61,6 +61,19 @@ final class UISoundEngine {
 
     // MARK: - 播放
 
+    /// 預熱（返修批10・Laurent「所有震動和音效反饋都要
+    /// 不能出錯」）：App 啟動／回前台時呼叫——先付引擎建
+    /// 立與六種音效的預渲染成本（緩衝快取跨引擎拆建存
+    /// 續），首個 UI 音效不再被懶建立吞掉或延遲。閒置
+    /// 拆建沿用既有 3 s 機制，預熱不會令引擎常駐。
+    func warmUp() {
+        guard isEnabled else { return }
+        idleTask?.cancel()
+        guard ensureEngine() else { return }
+        if let rate = currentSampleRate { _ = buffers(for: rate) }
+        scheduleIdleTeardown()
+    }
+
     func play(_ kind: Kind) {
         guard isEnabled else { return }
         idleTask?.cancel()

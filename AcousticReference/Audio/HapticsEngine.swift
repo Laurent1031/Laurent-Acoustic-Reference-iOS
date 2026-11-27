@@ -40,35 +40,131 @@ final class HapticsEngine: @unchecked Sendable {
     private var players: [String: [CHHapticPatternPlayer]] = [:]
     private var poolCursor: [String: Int] = [:]
     private var absoluteSchedulingOK = false
+    /// 【返修批10】引擎被系統停機（切後台／中斷）的標記：
+    /// 引擎對象與 player 池保留、只標記待重啟——批8 舊制
+    /// 在 stoppedHandler 直接把引擎與池全丟棄，後台每次
+    /// 喚醒都要從零重建，重建在後台失敗時更跌落系統長震
+    /// 降級，與前台的短促 transient 完全兩種手感
+    /// （Laurent 點名「在 app 內和後台的震動不一樣」）。
+    private var engineStopped = false
 
     private init() {}
 
     // MARK: - 生命週期
 
-    /// 預熱：在節拍器啟動、首次 UI 回饋前呼叫（冪等）。
+    /// 預熱：在 App 啟動、回前台、節拍器啟動、首次 UI
+    /// 回饋前呼叫（冪等）。
     /// 【返修批8】引擎已存在時也嘗試 start 一次：系統中斷
     /// 後 CHHapticEngine 可能停在「對象仍在、已停止」態，
     /// ensureEngine 的 nil 守衛不會重建——start 對運行中
     /// 引擎為冪等成功，對已停止引擎即恢復。
+    /// 【返修批10】加預建 player 池＋時間基重檢：批9 實機
+    /// 「震動一開始沒有」——冷啟動後首次 warmUp 與第一拍
+    /// 同擠串行佇列，引擎建立＋首批 player 逐個現建的成
+    /// 本超過節拍器 0.12 s 前瞻，最初一兩拍的目標時刻在
+    /// player 就緒前已流逝而被吞。改為 App 啟動即預熱
+    /// （ContentView.onAppear），並在此把常用圖案的
+    /// player 先建好，第一拍只剩 start 一步。
     func warmUp() {
         queue.async { [weak self] in
             guard let self else { return }
             self.ensureEngine()
-            if let engine = self.engine { try? engine.start() }
+            if let engine = self.engine {
+                try? engine.start()
+                self.engineStopped = false
+                let drift = abs(engine.currentTime
+                                - ProcessInfo.processInfo.systemUptime)
+                self.absoluteSchedulingOK = drift <= 0.25
+                self.primePlayers(engine: engine)
+            }
+        }
+    }
+
+    /// 預建常用圖案的 player（節拍三級／細分／detent／
+    /// 鎖定棘輪／常用 UI 輕震）：池已存在該鍵則跳過。
+    private func primePlayers(engine: CHHapticEngine) {
+        for level in 1...3 {
+            let p = HapticPatternTable.beat(level: level)
+            prime(key: "beat\(level)", engine: engine, specs: [
+                TransientSpec(relativeTime: 0, intensity: p.intensity,
+                              sharpness: p.sharpness)])
+        }
+        let sub = HapticPatternTable.subdivision
+        prime(key: "sub", engine: engine, specs: [
+            TransientSpec(relativeTime: 0, intensity: sub.intensity,
+                          sharpness: sub.sharpness)])
+        let det = HapticPatternTable.detent
+        prime(key: "detent", engine: engine, specs: [
+            TransientSpec(relativeTime: 0, intensity: det.intensity,
+                          sharpness: det.sharpness)])
+        prime(key: "lock", engine: engine,
+              specs: HapticPatternTable.lockRatchet.map { entry in
+                  TransientSpec(relativeTime: entry.offset,
+                                intensity: entry.transient.intensity,
+                                sharpness: entry.transient.sharpness)
+              })
+        for ms in [4.0, 6, 8, 10, 12, 14, 20] {
+            let intensity = Float(min(1, max(0.25, ms / 45)))
+            prime(key: "tap\(Int((intensity * 10).rounded()))",
+                  engine: engine, specs: [
+                    TransientSpec(relativeTime: 0, intensity: intensity,
+                                  sharpness: 0.55)])
+        }
+    }
+
+    private func prime(key: String, engine: CHHapticEngine,
+                       specs: [TransientSpec]) {
+        guard players[key] == nil else { return }
+        _ = try? nextPlayer(key: key, events: Self.events(for: specs),
+                            engine: engine)
+    }
+
+    /// TransientSpec 陣列 → CHHapticEvent 陣列（prime 與
+    /// playSpecs 共用，圖案參數單一真源）。
+    private static func events(for specs: [TransientSpec]) -> [CHHapticEvent] {
+        specs.map { spec in
+            CHHapticEvent(
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity,
+                                           value: spec.intensity),
+                    CHHapticEventParameter(parameterID: .hapticSharpness,
+                                           value: spec.sharpness),
+                ],
+                relativeTime: spec.relativeTime)
         }
     }
 
     private func ensureEngine() {
-        guard supportsHaptics, engine == nil else { return }
+        guard supportsHaptics else { return }
+        if engine != nil {
+            // 【返修批10】引擎對象在（可能被系統停機）：
+            // 先原地重啟——成功即沿用既有 player 池，不
+            // 成功才整組作廢、落到下方從零重建。
+            if engineStopped {
+                do {
+                    try engine?.start()
+                    engineStopped = false
+                } catch {
+                    engine = nil
+                    players = [:]
+                    engineStopped = false
+                }
+            }
+            if engine != nil { return }
+        }
         do {
             let created = try CHHapticEngine()
             created.stoppedHandler = { [weak self] _ in
-                self?.queue.async { self?.engine = nil; self?.players = [:] }
+                // 【返修批10】只標記不停機（見 engineStopped
+                // 註）：引擎與池保留待重啟，前後台手感一致。
+                self?.queue.async { self?.engineStopped = true }
             }
             created.resetHandler = { [weak self] in
                 self?.queue.async { [weak self] in
                     guard let self, let eng = self.engine else { return }
                     try? eng.start()
+                    self.engineStopped = false
                 }
             }
             try created.start()
@@ -185,7 +281,13 @@ final class HapticsEngine: @unchecked Sendable {
             }
             self.ensureEngine()
             guard let engine = self.engine else {
-                self.fallbackFire(atHostTimeSeconds: target)
+                // 【返修批10】硬件支持 Core Haptics 卻暫時
+                // 無引擎（後台建立失敗等）：寧可這一記不
+                // 出，也不用系統長震冒充——前台短促
+                // transient 與後台長嗡嗡完全兩種手感正是
+                // 「前後台震動不一樣」的來源。不支持
+                // Core Haptics 的硬件才走 fallbackFire
+                // （上方 supportsHaptics 分支）。
                 return
             }
             // 絕對排程：目標時刻仍在未來且時間基可信時預排；
@@ -204,17 +306,7 @@ final class HapticsEngine: @unchecked Sendable {
                     return
                 }
             }
-            let events = specs.map { spec in
-                CHHapticEvent(
-                    eventType: .hapticTransient,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity,
-                                               value: spec.intensity),
-                        CHHapticEventParameter(parameterID: .hapticSharpness,
-                                               value: spec.sharpness),
-                    ],
-                    relativeTime: spec.relativeTime)
-            }
+            let events = Self.events(for: specs)
             do {
                 let player = try self.nextPlayer(key: key, events: events, engine: engine)
                 try player.start(atTime: startTime)

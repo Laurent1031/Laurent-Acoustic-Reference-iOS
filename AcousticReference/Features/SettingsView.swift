@@ -396,6 +396,10 @@ struct SystemSettingsView: View {
     /// （Laurent 點名「导出备份没有效果」）；改根層
     /// .sheet(item:) 單一狀態驅動，生成失敗不再靜默。
     @State private var exportShareItem: ExportShareItem?
+    /// 恢復初始設置（返修批10）：頁內兩段式確認（不用
+    /// alert——本頁根層已有兩個 alert，再疊第三個會重蹈
+    /// F-2 互相遮蔽；頁內展開確認亦與本頁玻璃語言一致）。
+    @State private var confirmReset = false
 
     /// 滑桿 draft（返修批9・拖動卡頓）：拖動期間只寫本地
     /// draft（僅設定頁本地重繪），向全域狀態節流提交
@@ -422,6 +426,7 @@ struct SystemSettingsView: View {
                         bluetoothGroup(theme: theme)
                         screenOnGroup(theme: theme)
                         backupGroup(theme: theme)
+                        resetGroup(theme: theme)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -842,6 +847,63 @@ struct SystemSettingsView: View {
                           title: L10n.t("屏幕常亮"),
                           sub: L10n.t("校音或节拍器运行时自动保持屏幕常亮，无需手动设置"))
         }
+    }
+
+    // MARK: 恢復初始設置（返修批10・Laurent 指示）
+
+    private func resetGroup(theme: TunerTheme) -> some View {
+        SettingsGroup(theme: theme, glassOpacity: store.glassOpacity) {
+            SettingsLabel(theme: theme,
+                          title: L10n.t("恢复初始设置"),
+                          sub: L10n.t("将全部设置、收藏、自订乐器与预设恢复为出厂状态，无法撤销"))
+            if confirmReset {
+                HStack(spacing: 10) {
+                    Button {
+                        confirmReset = false
+                    } label: {
+                        Text(L10n.t("取消"))
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundStyle(theme.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(GlassPressButtonStyle())
+                    Button {
+                        performFactoryReset()
+                    } label: {
+                        Text(L10n.t("确认恢复"))
+                            .font(.system(size: 13.5, weight: .bold))
+                            .foregroundStyle(theme.clipWarning)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(GlassPressButtonStyle())
+                }
+            } else {
+                Button {
+                    confirmReset = true
+                } label: {
+                    Text(L10n.t("恢复初始设置"))
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(theme.clipWarning)
+                }
+                .padding(.vertical, 12)
+                .buttonStyle(GlassPressButtonStyle())
+            }
+        }
+    }
+
+    /// 恢復執行：先停節拍器（播放中換設定會即時改拍，
+    /// 且重置語義本就是回到靜止出廠態），再重置 store，
+    /// 最後把 VM 的運行時設定副本同步回出廠值（預置副
+    /// 本經 ContentView 的 onChange 自動同步）。
+    private func performFactoryReset() {
+        if metronomeViewModel.isPlaying || metronomeViewModel.capsulePaused {
+            metronomeViewModel.stop()
+        }
+        store.resetToFactoryDefaults()
+        metronomeViewModel.syncSettingsFromStore(store.metronomeSettings)
+        confirmReset = false
     }
 }
 

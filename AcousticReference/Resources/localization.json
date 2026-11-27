@@ -2657,7 +2657,10 @@
    "、": ", ",
    "系统设定段：语言／外观／玻璃／回馈开关": "Systembereich: Sprache / Erscheinungsbild / Glas / Feedback-Schalter",
    "移调 %ld（自定义）": "Transposition %ld (benutzerdefiniert)",
-   "记谱音": "Notiert"
+   "记谱音": "Notiert",
+   "恢复初始设置": "Auf Werkseinstellungen zurücksetzen",
+   "将全部设置、收藏、自订乐器与预设恢复为出厂状态，无法撤销": "Alle Einstellungen, Favoriten, eigenen Instrumente und Presets werden auf die Werkseinstellungen zurückgesetzt. Das kann nicht rückgängig gemacht werden.",
+   "确认恢复": "Zurücksetzen bestätigen"
   },
   "en": {
    "Core Haptics 不可用（降级为系统震动）": "Core Haptics unavailable (system vibration fallback)",
@@ -2809,7 +2812,10 @@
    "、": ", ",
    "系统设定段：语言／外观／玻璃／回馈开关": "Settings section: language / appearance / glass / feedback switches",
    "移调 %ld（自定义）": "Transposition %ld (Custom)",
-   "未收到讯号 · 检查麦克风": "No signal · Check the microphone"
+   "未收到讯号 · 检查麦克风": "No signal · Check the microphone",
+   "恢复初始设置": "Reset to Factory Defaults",
+   "将全部设置、收藏、自订乐器与预设恢复为出厂状态，无法撤销": "Restore all settings, favorites, custom instruments and presets to factory defaults. This cannot be undone.",
+   "确认恢复": "Confirm Reset"
   },
   "fr": {
    "Core Haptics 不可用（降级为系统震动）": "Core Haptics indisponible (vibration système)",
@@ -2960,7 +2966,10 @@
    "个人资料段：": "Section profil : ",
    "、": ", ",
    "系统设定段：语言／外观／玻璃／回馈开关": "Section réglages : langue / apparence / verre / interrupteurs de retour",
-   "移调 %ld（自定义）": "Transposition %ld (personnalisée)"
+   "移调 %ld（自定义）": "Transposition %ld (personnalisée)",
+   "恢复初始设置": "Réinitialiser les réglages",
+   "将全部设置、收藏、自订乐器与预设恢复为出厂状态，无法撤销": "Restaure tous les réglages, favoris, instruments personnalisés et préréglages aux valeurs d'usine. Action irréversible.",
+   "确认恢复": "Confirmer la réinitialisation"
   },
   "ja": {
    "Core Haptics 不可用（降级为系统震动）": "Core Haptics 利用不可（システム振動にフォールバック）",
@@ -3111,7 +3120,10 @@
    "个人资料段：": "プロフィール：",
    "、": "、",
    "系统设定段：语言／外观／玻璃／回馈开关": "システム設定：言語／外観／ガラス／フィードバックのスイッチ",
-   "移调 %ld（自定义）": "移調 %ld（カスタム）"
+   "移调 %ld（自定义）": "移調 %ld（カスタム）",
+   "恢复初始设置": "初期設定に戻す",
+   "将全部设置、收藏、自订乐器与预设恢复为出厂状态，无法撤销": "すべての設定、お気に入り、カスタム楽器、プリセットを工場出荷時の状態に戻します。元に戻せません。",
+   "确认恢复": "リセットを確認"
   },
   "ko": {
    "Core Haptics 不可用（降级为系统震动）": "Core Haptics 사용 불가(시스템 진동으로 대체)",
@@ -3262,7 +3274,10 @@
    "个人资料段：": "프로필: ",
    "、": ", ",
    "系统设定段：语言／外观／玻璃／回馈开关": "시스템 설정: 언어/외관/글래스/피드백 스위치",
-   "移调 %ld（自定义）": "조옮김 %ld(사용자 지정)"
+   "移调 %ld（自定义）": "조옮김 %ld(사용자 지정)",
+   "恢复初始设置": "초기 설정으로 복원",
+   "将全部设置、收藏、自订乐器与预设恢复为出厂状态，无法撤销": "모든 설정, 즐겨찾기, 사용자 지정 악기 및 프리셋을 공장 기본값으로 복원합니다. 되돌릴 수 없습니다.",
+   "确认恢复": "복원 확인"
   },
   "ru": {
    "Core Haptics 不可用（降级为系统震动）": "Core Haptics недоступен (системная вибрация)",
@@ -3415,7 +3430,10 @@
    "系统设定段：语言／外观／玻璃／回馈开关": "Раздел настроек: язык / оформление / стекло / переключатели отклика",
    "移调 %ld（自定义）": "Транспозиция %ld (своя)",
    "记谱音": "Нотированная",
-   "平均律": "Равномерная"
+   "平均律": "Равномерная",
+   "恢复初始设置": "Сбросить настройки",
+   "将全部设置、收藏、自订乐器与预设恢复为出厂状态，无法撤销": "Все настройки, избранное, пользовательские инструменты и пресеты будут сброшены к заводским значениям. Действие нельзя отменить.",
+   "确认恢复": "Подтвердить сброс"
   },
   "zh-TW": {
    "Core Haptics 不可用（降级为系统震动）": "Core Haptics 不可用（降級為系統震動）",
@@ -3566,7 +3584,10 @@
    "个人资料段：": "個人資料段：",
    "、": "、",
    "系统设定段：语言／外观／玻璃／回馈开关": "系統設定段：語言／外觀／玻璃／回饋開關",
-   "移调 %ld（自定义）": "移調 %ld（自訂）"
+   "移调 %ld（自定义）": "移調 %ld（自訂）",
+   "恢复初始设置": "恢復初始設定",
+   "将全部设置、收藏、自订乐器与预设恢复为出厂状态，无法撤销": "將全部設定、收藏、自訂樂器與預設恢復為出廠狀態，無法撤銷",
+   "确认恢复": "確認恢復"
   }
  },
  "第 %d 拍": {

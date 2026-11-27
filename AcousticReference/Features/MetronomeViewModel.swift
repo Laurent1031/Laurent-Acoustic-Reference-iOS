@@ -572,11 +572,31 @@ final class MetronomeViewModel: ObservableObject {
     func syncUserPresetsFromStore(_ presets: [MetronomePreset]) {
         // VM 自身落盤回寫 store 時 onChange 亦會觸發，同值直退。
         guard presets != userPresets else { return }
-        userPresets = presets
-        if let id = activePresetId,
+        userPresets = presets        if let id = activePresetId,
            !allPresets.contains(where: { $0.id == id }) {
             activePresetId = nil
         }
+    }
+
+    /// store → VM 設定同步（返修批10・恢復初始設置）：重置
+    /// 後 VM 的運行時設定副本須與 store 出廠值一致——此前
+    /// 同步只有預置一條（syncUserPresetsFromStore），設定
+    /// 本體無回灌路徑，VM 下次防抖落盤會以舊設定覆寫重
+    /// 置結果。呼叫端須先 stop()（播放中換設定會即時改
+    /// 拍）。賦值比照 init 播種：settings 本身（didSet 自
+    /// 動 engine.updateSettings＋防抖回存同值，冪等）、里
+    /// 程表與推子填充即時歸位、漸速與作用中預置清空。
+    func syncSettingsFromStore(_ newSettings: MetronomeSettings) {
+        settings = newSettings
+        activePresetId = nil
+        rampState = RampState()
+        tapTimes = []
+        liveAdjustValue = nil
+        bpmAdjusting = false
+        odoValue = newSettings.bpm
+        fillDisp = Double(newSettings.bpm)
+        setOdometerImmediate(newSettings.bpm)
+        publishFill()
     }
 
     func applyPreset(_ preset: MetronomePreset) {

@@ -24,6 +24,15 @@ struct TunerView: View {
     /// 切離調音模式時強制關閉（深連結等路徑），方向鎖的
     /// 還原由 ImmersiveTunerView.onDisappear 統一負責。
     @State private var showImmersive = false
+    /// 【返修批10】頁內玻璃選單（與節拍器頁同制，見
+    /// tunerPanelCard）：Drone 音色與古箏調號原用系統
+    /// Menu（勾在左側），Laurent 的勾右＋頁內選單規則
+    /// 全 App 一致，一併改掉。
+    @State private var tunerPanel: TunerPanel?
+
+    private enum TunerPanel: Equatable {
+        case droneTimbre, guzhengKey
+    }
 
 
     // 收藏拖曳排序（母本 wireFavChipDrag）：拖動中的晶片 id、
@@ -188,7 +197,25 @@ struct TunerView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
                 .padding(.bottom, compact ? 8 : 10)
+
+                // 【返修批10】頁內玻璃選單（同節拍器頁制）：
+                // 淡暗幕＋底部浮出面板，點幕或選項即收。
+                if let panel = tunerPanel {
+                    Color.black.opacity(theme.isDark ? 0.28 : 0.14)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture { tunerPanel = nil }
+                        .transition(.opacity)
+                    VStack {
+                        Spacer()
+                        tunerPanelCard(panel, theme: theme)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 10)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
             }
+            .animation(AppMotion.capsule, value: tunerPanel)
         }
         .sheet(isPresented: $showLibrary) {
             InstrumentLibraryView(store: store)
@@ -317,14 +344,16 @@ struct TunerView: View {
 
     // MARK: - 主顯示模式切換（頻閃主模式段新增）
 
-    /// 頻閃／指針分段（縮小版）：寫入 store.tunerDisplayMode
+    /// 指針／頻閃分段（縮小版）：寫入 store.tunerDisplayMode
     /// 即存即生效；純顯示偏好，不觸碰引擎、判準與觸感。
     /// 【裝機返修】改液態玻璃鏡片切換。
+    /// 【返修批10】次序對調（Laurent 指示）：批9 起預設
+    /// 為指針，默認項放左——［指針｜頻閃］。
     private func displayModeToggle(theme: TunerTheme) -> some View {
         GlassSegmentedControl(
             options: [
-                (option: TunerDisplayMode.strobe, title: L10n.t("频闪"), symbol: nil),
                 (option: TunerDisplayMode.needle, title: L10n.t("指针"), symbol: nil),
+                (option: TunerDisplayMode.strobe, title: L10n.t("频闪"), symbol: nil),
             ],
             selection: Binding(
                 get: { store.tunerDisplayMode },
@@ -779,10 +808,10 @@ struct TunerView: View {
     /// 古箏調號選擇（母本 guzhengKeySelect，行 5284）：D、G、C、
     /// F、A；切換改寫有效移調與目標弦列（母本行 8613）。
     private func guzhengKeyMenu(theme: TunerTheme) -> some View {
-        Menu {
-            ForEach(InstrumentCatalog.guzhengKeyOrder, id: \.self) { key in
-                Button(L10n.t("古筝 \(key)调")) { store.guzhengKey = key }
-            }
+        // 【返修批10】Menu 改頁內面板開關鈕（同 Drone 音色）。
+        Button {
+            tunerPanel = tunerPanel == .guzhengKey ? nil : .guzhengKey
+            HapticsEngine.shared.tap(milliseconds: 4)
         } label: {
             HStack(spacing: 3) {
                 Text(L10n.t("古筝 \(store.guzhengKey)调"))
@@ -795,6 +824,86 @@ struct TunerView: View {
             .frame(height: 32)
             .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
         }
+        .buttonStyle(GlassPressButtonStyle())
+    }
+
+    // MARK: - 頁內玻璃選單（返修批10・與節拍器頁同制）
+
+    /// 面板卡：標題列＋選項行（文字左、勾右、行高 44）。
+    private func tunerPanelCard(_ panel: TunerPanel, theme: TunerTheme) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(panel == .droneTimbre
+                     ? L10n.t("音色")
+                     : L10n.t("古筝 \(store.guzhengKey)调"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.textMuted)
+                Spacer()
+                Button {
+                    tunerPanel = nil
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(theme.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(GlassPressButtonStyle())
+                .accessibilityLabel(L10n.t("关闭"))
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 8)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
+            VStack(spacing: 0) {
+                switch panel {
+                case .droneTimbre:
+                    ForEach(DroneTimbre.allCases, id: \.self) { timbre in
+                        tunerPanelRow(theme: theme, title: timbre.displayName,
+                                      checked: store.droneTimbre == timbre) {
+                            store.droneTimbre = timbre
+                            // 母本 setDroneTimbre：uiSound("tick")（行 10241）。
+                            UISoundEngine.shared.play(.tick)
+                            tunerPanel = nil
+                        }
+                    }
+                case .guzhengKey:
+                    ForEach(InstrumentCatalog.guzhengKeyOrder, id: \.self) { key in
+                        tunerPanelRow(theme: theme, title: L10n.t("古筝 \(key)调"),
+                                      checked: store.guzhengKey == key) {
+                            store.guzhengKey = key
+                            tunerPanel = nil
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, 6)
+        }
+        .glassBackground(in: RoundedRectangle(cornerRadius: 20, style: .continuous),
+                         theme: theme, glassOpacity: store.glassOpacity)
+    }
+
+    /// 選項行（與節拍器頁 panelRow 同形制）。
+    private func tunerPanelRow(theme: TunerTheme, title: String, checked: Bool,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Text(title)
+                    .font(.system(size: 15, weight: checked ? .semibold : .regular))
+                    .foregroundStyle(theme.textPrimary)
+                    .lineLimit(1)
+                Spacer()
+                if checked {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(theme.accent)
+                }
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(GlassPressButtonStyle())
     }
 
     private func targetChip(label: String, note: String?, isGreen: Bool,
@@ -881,20 +990,11 @@ struct TunerView: View {
                 .fill(theme.textMuted.opacity(0.25))
                 .frame(width: 1, height: 22)
 
-            Menu {
-                ForEach(DroneTimbre.allCases, id: \.self) { timbre in
-                    Button {
-                        store.droneTimbre = timbre
-                        // 母本 setDroneTimbre：uiSound("tick")（行 10241）。
-                        UISoundEngine.shared.play(.tick)
-                    } label: {
-                        if timbre == store.droneTimbre {
-                            Label(timbre.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(timbre.displayName)
-                        }
-                    }
-                }
+            // 【返修批10】Menu 改頁內面板開關鈕（見
+            // tunerPanelCard）：形制與節拍器頁一致。
+            Button {
+                tunerPanel = tunerPanel == .droneTimbre ? nil : .droneTimbre
+                HapticsEngine.shared.tap(milliseconds: 4)
             } label: {
                 HStack(spacing: 4) {
                     Text("\(L10n.t("音色")) \(store.droneTimbre.displayName)")
@@ -910,6 +1010,7 @@ struct TunerView: View {
                 .frame(height: 44)
                 .contentShape(Rectangle())
             }
+            .buttonStyle(GlassPressButtonStyle())
 
             Rectangle()
                 .fill(theme.textMuted.opacity(0.25))
@@ -1373,8 +1474,14 @@ struct PitchTraceView: View {
     private static let span: TimeInterval = 8.0
     private static let range: Double = 50
 
+    /// 【返修批10】待機判定改以「麥克風未運行」為準
+    /// （Laurent 指示：未開始時要有動畫）：舊制以樣本
+    /// 池有無音分判定——停麥後舊樣本殘留令 hasSignal
+    /// 恆真，待機波永不回來，畫面只剩靜止舊軌跡或空
+    /// 卡。改：麥未開即待機動畫（凍結定格且有數據時
+    /// 例外，保留定格軌跡供讀數）。
     private var hasSignal: Bool {
-        micActive || samples.contains { $0.cents != nil }
+        micActive || (frozen && samples.contains { $0.cents != nil })
     }
 
     var body: some View {
@@ -1530,8 +1637,12 @@ struct PitchTraceView: View {
         fill.addLine(to: CGPoint(x: w, y: h))
         fill.addLine(to: CGPoint(x: 0, y: h))
         fill.closeSubpath()
-        ctx.fill(fill, with: .color(theme.accent.opacity(0.07)))
-        ctx.stroke(line, with: .color(theme.accent.opacity(0.28)),
+        // 【返修批10】待機波可見度上調（填充 0.07→0.10、
+        // 線 0.28→0.45）：舊值在實機近乎不可見，Laurent
+        // 誤認無動畫；幅度呼吸（drawIdle 的 amp 調變）
+        // 不變。
+        ctx.fill(fill, with: .color(theme.accent.opacity(0.10)))
+        ctx.stroke(line, with: .color(theme.accent.opacity(0.45)),
                    style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
     }
 }
