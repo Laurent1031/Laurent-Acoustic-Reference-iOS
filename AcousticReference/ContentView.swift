@@ -619,9 +619,13 @@ struct GlowSpot: Identifiable {
 /// 向漸層圓），不再觸發 ContentView 整樹重算。發布帶
 /// 變更守衛：落點與狀態皆未變的事件（多指中靜止指的
 /// 重複回報）不發布。離手移除的 0.35 s 延時在本模型內
-/// 自行收尾，語義與舊 updateGlowSpots 逐項一致。線程
-/// 紀律：全部呼叫點皆在主線程（手勢識別器回調＋main
-/// 佇列延時），故不加 actor 隔離、免 Swift 6 隔離摩擦。
+/// 自行收尾，語義與舊 updateGlowSpots 逐項一致。隔離
+/// 設計同 AppStore：@MainActor（全部呼叫點皆在主線程
+/// ——手勢識別器回調＋main 佇列延時）；批10 首版曾試
+/// 不加隔離，CI run #59 證偽：asyncAfter 閉包捕獲非隔
+/// 離 self 觸 Swift 6「sending 'self' risks causing
+/// data races」，故定版加回 @MainActor。
+@MainActor
 final class GlowSpotModel: ObservableObject {
     @Published private(set) var spots: [GlowSpot] = []
 
