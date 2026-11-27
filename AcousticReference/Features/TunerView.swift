@@ -90,26 +90,24 @@ struct TunerView: View {
                         favoritesDots(theme: theme)
                     }
 
-                    // 主顯示區（頻閃主模式段）：頻閃（預設主模式）
-                    // 與錶盤（輔助）共用同一高度預算，切換鈕浮在
-                    // 顯示區右上角的空白角（兩種顯示在該角皆無
-                    // 內容：錶盤弧線與頻閃外環都不及），不佔列高、
-                    // 不擠壓任何既有列。左上角為演奏態開關（補強
-                    // 段，同為空白角）；削波警示（補強段）以紅框
-                    // 覆滿顯示區＋左下角小籤呈現，不遮擋讀數。
-                    ZStack(alignment: .topTrailing) {
-                        displayContent(theme: theme, gaugeHeight: gaugeHeight)
-
-                        displayModeToggle(theme: theme)
-                            .padding(.top, 2)
-                    }
-                    .overlay(alignment: .topLeading) {
-                        // 【返修批2】演奏態符號圓鈕經 Laurent
-                        // 指示去掉（「全螢幕左邊那個符號去掉」）；
-                        // performanceMode 旗標自此恆 false，
-                        // 相關版面分支保留為惰性（零回退風險）。
+                    // 【返修批3・版面重排】主顯示上方的工具列：
+                    // 全螢幕鈕（左）與頻閃／指針分段（右）自成
+                    // 一列——批2 以「空白角」為由把兩鈕浮在顯示
+                    // 區角上，實機頻閃外環直達角位、兩鈕直接壓
+                    // 在環上（Laurent 截圖點名遮擋＋全歪）。自
+                    // 成一列後遮擋在結構上不可能發生；顯示區本
+                    // 身只保留削波警示覆蓋（瞬時警示、母本同義）。
+                    HStack(alignment: .center) {
                         immersiveButton(theme: theme)
-                            .padding(.top, 2)
+                        Spacer(minLength: 0)
+                        displayModeToggle(theme: theme)
+                    }
+                    .frame(height: 26)
+
+                    // 主顯示區（頻閃主模式段）：頻閃（預設主
+                    // 模式）與錶盤（輔助）共用同一高度預算。
+                    ZStack {
+                        displayContent(theme: theme, gaugeHeight: gaugeHeight)
                     }
                     .overlay {
                         if viewModel.clipWarning {
@@ -148,9 +146,7 @@ struct TunerView: View {
                         targetStrip(theme: theme)
                     }
 
-                    metricsCard(theme: theme)
-
-                    stabilityRow(theme: theme)
+                    dataCard(theme: theme)
 
                     Spacer(minLength: 0)
 
@@ -279,35 +275,42 @@ struct TunerView: View {
         // 【裝機返修】撤 GlassEffectContainer 包裹（合成通道
         // 疑似造成樂器卡重影，見 TunerTheme.GlassSurface 註解）。
         HStack(spacing: 8) {
-            Button {
-                showLibrary = true
-            } label: {
-                HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(L10n.localizedName(store.selectedInstrument.categoryLabel))
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(0.8)
-                            .foregroundStyle(theme.accent)
-                            .lineLimit(1)
-                        Text(L10n.headerInstrumentLabel(name: store.selectedInstrument.name,
-                                        englishName: store.selectedInstrument.englishName))
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.textPrimary)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 4)
-                    Text(store.keyLabel(of: store.selectedInstrument))
-                        .font(.system(size: 11.5, weight: .bold))
+            // 【返修批3】卡身改 HStack＋onTapGesture（原為
+            // Button 包整卡）：卡內嵌收藏星 Button——Button
+            // 內不能再嵌 Button，改手勢後星鈕獨立命中、卡身
+            // 其餘區域點按開樂器庫，互不干擾。星與樂器庫共用
+            // FavoriteStarButton（爆裂參數單一真源）。
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L10n.localizedName(store.selectedInstrument.categoryLabel))
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(0.8)
                         .foregroundStyle(theme.accent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(theme.accent.opacity(0.14), in: Capsule())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text(L10n.headerInstrumentLabel(name: store.selectedInstrument.name,
+                                    englishName: store.selectedInstrument.englishName))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
                 }
-                .padding(.horizontal, 12)
-                .frame(height: 44)
-                .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
+                Spacer(minLength: 4)
+                FavoriteStarButton(store: store,
+                                   instrumentId: store.selectedInstrument.id,
+                                   theme: theme)
+                Text(store.keyLabel(of: store.selectedInstrument))
+                    .font(.system(size: 11.5, weight: .bold))
+                    .foregroundStyle(theme.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(theme.accent.opacity(0.14), in: Capsule())
             }
-            .buttonStyle(GlassPressButtonStyle())
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .onTapGesture { showLibrary = true }
 
             pitchModeSegment(theme: theme)
         }
@@ -326,8 +329,8 @@ struct TunerView: View {
                 get: { store.pitchMode },
                 set: { store.pitchMode = $0 }),
             theme: theme, glassOpacity: store.glassOpacity,
-            fontSize: 13, height: 30)
-            .frame(width: 148)
+            fontSize: 12.5, height: 30)
+            .frame(width: 128)
     }
 
     // MARK: - 主顯示模式切換（頻閃主模式段新增）
@@ -836,16 +839,36 @@ struct TunerView: View {
 
     // MARK: - Row 5：數據卡（母本四格：WRITTEN／CONCERT／CENTS／FREQ）
 
-    private func metricsCard(theme: TunerTheme) -> some View {
-        HStack(spacing: 8) {
-            metricBox(theme: theme, label: "WRITTEN " + L10n.t("记谱"), value: viewModel.writtenText)
-            metricBox(theme: theme, label: "CONCERT " + L10n.t("实音"), value: viewModel.concertText)
-            metricBox(
-                theme: theme, label: "CENTS " + L10n.t("音分"),
-                value: viewModel.centsDisplayText,
-                valueColor: viewModel.isInTune ? theme.ok : theme.textPrimary
-            )
-            metricBox(theme: theme, label: "FREQ " + L10n.t("频率"), value: viewModel.frequencyText)
+    /// 數據卡（返修批3 重組）：四格讀數＋音高軌跡＋穩定度
+    /// 徽章收進同一張卡——母本即單一 .data-card（軌跡在卡
+    /// 內、徽章疊在軌跡右上）。批2 以前原生只有讀數與徽章、
+    /// 軌跡圖整項缺失（Laurent 點名「下面不是还有那个音高
+    /// 轨迹嘛」）。軌跡高度彈性：吃掉頁面全部剩餘高度（母本
+    /// tall-phone 規則原文：the pitch trace takes every
+    /// spare pixel），原獨立的 Spacer 隨之撤除。
+    private func dataCard(theme: TunerTheme) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                metricBox(theme: theme, label: "WRITTEN " + L10n.t("记谱"), value: viewModel.writtenText)
+                metricBox(theme: theme, label: "CONCERT " + L10n.t("实音"), value: viewModel.concertText)
+                metricBox(
+                    theme: theme, label: "CENTS " + L10n.t("音分"),
+                    value: viewModel.centsDisplayText,
+                    valueColor: viewModel.isInTune ? theme.ok : theme.textPrimary
+                )
+                metricBox(theme: theme, label: "FREQ " + L10n.t("频率"), value: viewModel.frequencyText)
+            }
+
+            PitchTraceView(
+                samples: viewModel.traceSamples,
+                tolerance: engine.settings.toleranceCents,
+                frozen: viewModel.stabilityFrozen,
+                micActive: engine.isRunning,
+                badgeText: viewModel.stabilityBadgeText,
+                theme: theme,
+                onTap: { viewModel.toggleFreeze() })
+                .frame(minHeight: 52, maxHeight: 196)
+                .layoutPriority(1)
         }
         .padding(10)
         .glassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
@@ -878,30 +901,6 @@ struct TunerView: View {
         .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous),
                          theme: theme, glassOpacity: store.glassOpacity)
     }
-
-    // MARK: - 穩定度徽章（母本 trace-stats-badge；輕點切換定格）
-
-    private func stabilityRow(theme: TunerTheme) -> some View {
-        HStack {
-            Spacer()
-            Button {
-                viewModel.toggleFreeze()
-            } label: {
-                Text(viewModel.stabilityBadgeText)
-                    .font(.system(size: 11.5, weight: .semibold))
-                    .foregroundStyle(
-                        viewModel.stabilityFrozen ? theme.accent : theme.textSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-            }
-            .buttonStyle(GlassPressButtonStyle())
-            Spacer()
-        }
-        .frame(height: 24)
-    }
-
-    // MARK: - Drone 膠囊（母本 droneCapsule，行 5397）
 
     private func droneCapsule(theme: TunerTheme) -> some View {
         HStack(spacing: 0) {
@@ -1068,6 +1067,182 @@ private struct TargetContentFrameKey: PreferenceKey {
     }
 }
 
+/// 音高軌跡圖（返修批3 補回母本 .trace-wrap，規格見
+/// docs/2026-11-27_母本規格提取-返修批3.md 第 2 節）：
+/// 最近 8 秒音分曲線（右端最新）、縱軸 ±50¢、容差帶
+/// （ok 8%）、中心虛線（muted 50%、[4,4]）、曲線下柔光
+/// （accent 垂直漸變 0.023→0.11→0.023）、末端點（準音
+/// ok／否則 accent）；nil 樣本斷筆；左上標籤、右上統計
+/// 徽章（定格時 accent 底白字）；整槽點按切換定格；定格
+/// 時 accent 邊框。麥克風關閉時改繪待機波形（緩漂正弦、
+/// accent 28%＋±25¢ 參考線）。槽底：深 rgba(7,10,16,
+/// 0.72)／淺 rgba(15,23,42,0.045)，邊框白／slate 8%。
+struct PitchTraceView: View {
+    let samples: [(t: TimeInterval, cents: Double?)]
+    let tolerance: Double
+    let frozen: Bool
+    let micActive: Bool
+    let badgeText: String
+    let theme: TunerTheme
+    let onTap: () -> Void
+
+    private static let span: TimeInterval = 8.0
+    private static let range: Double = 50
+
+    private var hasSignal: Bool {
+        micActive || samples.contains { $0.cents != nil }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if hasSignal {
+                Canvas { ctx, size in drawTrace(in: &ctx, size: size) }
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 25.0)) { context in
+                    Canvas { ctx, size in
+                        drawIdle(in: &ctx, size: size,
+                                 ts: context.date.timeIntervalSince1970)
+                    }
+                }
+            }
+            Text(L10n.t("音高轨迹") + " · PITCH TRACE")
+                .font(.system(size: 8.5, weight: .bold))
+                .tracking(0.7)
+                .foregroundStyle(theme.textMuted)
+                .padding(.top, 5)
+                .padding(.leading, 9)
+            HStack {
+                Spacer()
+                Text(badgeText)
+                    .font(.system(size: 8.5, weight: .bold))
+                    .foregroundStyle(frozen ? .white : theme.textMuted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(frozen ? theme.accent.opacity(0.78)
+                                       : Color.white.opacity(theme.isDark ? 0.06 : 0.05),
+                                in: Capsule())
+                    .padding(.top, 4)
+                    .padding(.trailing, 8)
+            }
+        }
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(theme.isDark
+                      ? Color(red: 7 / 255, green: 10 / 255, blue: 16 / 255).opacity(0.72)
+                      : Color(red: 15 / 255, green: 23 / 255, blue: 42 / 255).opacity(0.045))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(frozen ? theme.accent.opacity(0.5)
+                                     : (theme.isDark ? Color.white.opacity(0.08)
+                                                     : Color(red: 15 / 255, green: 23 / 255, blue: 42 / 255).opacity(0.08)),
+                              lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .onTapGesture { onTap() }
+        .accessibilityLabel(L10n.t("音高轨迹"))
+    }
+
+    private func yFor(_ c: Double, h: CGFloat) -> CGFloat {
+        let clamped = min(Self.range, max(-Self.range, c))
+        return h / 2 - CGFloat(clamped / Self.range) * (h / 2 - 3)
+    }
+
+    private func drawTrace(in ctx: inout GraphicsContext, size: CGSize) {
+        let w = size.width
+        let h = size.height
+        guard w > 4, h > 4, let last = samples.last else { return }
+        // 容差帶
+        let band = CGRect(x: 0, y: yFor(tolerance, h: h), width: w,
+                          height: yFor(-tolerance, h: h) - yFor(tolerance, h: h))
+        ctx.fill(Path(band), with: .color(theme.ok.opacity(0.08)))
+        // 中心虛線
+        var center = Path()
+        center.move(to: CGPoint(x: 0, y: h / 2))
+        center.addLine(to: CGPoint(x: w, y: h / 2))
+        ctx.stroke(center, with: .color(theme.textMuted.opacity(0.5)),
+                   style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+        // 連續段：柔光填充＋軌跡線
+        let tEnd = last.t
+        var segment: [CGPoint] = []
+        func flush() {
+            guard segment.count > 1 else { segment = []; return }
+            var line = Path()
+            line.move(to: segment[0])
+            for p in segment.dropFirst() { line.addLine(to: p) }
+            var fill = line
+            fill.addLine(to: CGPoint(x: segment.last!.x, y: h))
+            fill.addLine(to: CGPoint(x: segment.first!.x, y: h))
+            fill.closeSubpath()
+            ctx.fill(fill, with: .linearGradient(
+                Gradient(colors: [theme.accent.opacity(0.023),
+                                  theme.accent.opacity(0.11),
+                                  theme.accent.opacity(0.023)]),
+                startPoint: CGPoint(x: 0, y: h), endPoint: CGPoint(x: 0, y: 0)))
+            ctx.stroke(line, with: .color(theme.accent.opacity(frozen ? 0.5 : 0.95)),
+                       style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+            segment = []
+        }
+        for s in samples {
+            guard let c = s.cents, c.isFinite else { flush(); continue }
+            let x = w - CGFloat(tEnd - s.t) / CGFloat(Self.span) * w
+            if x < -4 { continue }
+            segment.append(CGPoint(x: max(0, x), y: yFor(c, h: h)))
+        }
+        flush()
+        // 末端點（最新有效樣本）
+        if let newest = samples.last(where: { $0.cents?.isFinite == true }),
+           let c = newest.cents {
+            let x = w - CGFloat(tEnd - newest.t) / CGFloat(Self.span) * w
+            let p = CGPoint(x: max(0, x), y: yFor(c, h: h))
+            ctx.fill(Path(ellipseIn: CGRect(x: p.x - 2.8, y: p.y - 2.8,
+                                            width: 5.6, height: 5.6)),
+                     with: .color(abs(c) <= tolerance ? theme.ok : theme.accent))
+        }
+    }
+
+    /// 待機波形（母本待機正弦）：緩漂正弦＋同色填充、
+    /// ±25¢ 參考線、虛線中心、容差帶。
+    private func drawIdle(in ctx: inout GraphicsContext, size: CGSize, ts: TimeInterval) {
+        let w = size.width
+        let h = size.height
+        guard w > 4, h > 4 else { return }
+        let band = CGRect(x: 0, y: yFor(tolerance, h: h), width: w,
+                          height: yFor(-tolerance, h: h) - yFor(tolerance, h: h))
+        ctx.fill(Path(band), with: .color(theme.ok.opacity(0.07)))
+        for ref in [-25.0, 25.0] {
+            var r = Path()
+            r.move(to: CGPoint(x: 0, y: yFor(ref, h: h)))
+            r.addLine(to: CGPoint(x: w, y: yFor(ref, h: h)))
+            ctx.stroke(r, with: .color(theme.textMuted.opacity(0.22)),
+                       style: StrokeStyle(lineWidth: 1))
+        }
+        var center = Path()
+        center.move(to: CGPoint(x: 0, y: h / 2))
+        center.addLine(to: CGPoint(x: w, y: h / 2))
+        ctx.stroke(center, with: .color(theme.textMuted.opacity(0.42)),
+                   style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+        let amp = h * 0.15 * (0.7 + 0.3 * sin(ts / 2.6))
+        var line = Path()
+        let steps = max(2, Int(w))
+        for i in 0...steps {
+            let x = CGFloat(i)
+            let y = h / 2
+                + CGFloat(sin(Double(x) / 57 + ts / 0.9)) * amp * 0.4
+                + CGFloat(sin(Double(x) / 23 - ts / 1.4)) * amp * 0.18
+            if i == 0 { line.move(to: CGPoint(x: x, y: y)) }
+            else { line.addLine(to: CGPoint(x: x, y: y)) }
+        }
+        var fill = line
+        fill.addLine(to: CGPoint(x: w, y: h))
+        fill.addLine(to: CGPoint(x: 0, y: h))
+        fill.closeSubpath()
+        ctx.fill(fill, with: .color(theme.accent.opacity(0.07)))
+        ctx.stroke(line, with: .color(theme.accent.opacity(0.28)),
+                   style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+    }
+}
 #Preview {
     TunerView(engine: AudioEngine(), store: AppStore(), drone: DroneEngine())
 }

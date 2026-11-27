@@ -168,19 +168,32 @@ struct TunerDebugView: View {
             }
             .foregroundStyle(.white)
 
-            Picker(L10n.t("噪声门"), selection: $store.tunerSettings.noiseGate) {
-                Text(L10n.t("低")).tag(NoiseGateProfile.low)
-                Text(L10n.t("中")).tag(NoiseGateProfile.mid)
-                Text(L10n.t("高")).tag(NoiseGateProfile.high)
-            }
-            .pickerStyle(.segmented)
+            // 【返修批3】原 .segmented 原生 Picker 是 UIKit
+            // 控件，未選中字色跟裝置外觀走：裝置淺色＋本頁
+            // 固定黑底時未選中字成深色壓深軌道，實機看不見
+            // （Laurent 截圖點名）。改全 App 同款玻璃分段，
+            // 字色恆走主題 token，與裝置外觀脫鉤。
+            GlassSegmentedControl(
+                options: [
+                    (option: NoiseGateProfile.low, title: L10n.t("低"), symbol: nil),
+                    (option: NoiseGateProfile.mid, title: L10n.t("中"), symbol: nil),
+                    (option: NoiseGateProfile.high, title: L10n.t("高"), symbol: nil),
+                ],
+                selection: $store.tunerSettings.noiseGate,
+                theme: .dark,
+                glassOpacity: store.glassOpacity)
+                .accessibilityLabel(L10n.t("噪声门"))
 
-            Picker(L10n.t("阻尼"), selection: $store.tunerSettings.damping) {
-                Text(L10n.t("快速")).tag(DampingProfile.fast)
-                Text(L10n.t("标准")).tag(DampingProfile.balanced)
-                Text(L10n.t("平稳")).tag(DampingProfile.smooth)
-            }
-            .pickerStyle(.segmented)
+            GlassSegmentedControl(
+                options: [
+                    (option: DampingProfile.fast, title: L10n.t("快速"), symbol: nil),
+                    (option: DampingProfile.balanced, title: L10n.t("标准"), symbol: nil),
+                    (option: DampingProfile.smooth, title: L10n.t("平稳"), symbol: nil),
+                ],
+                selection: $store.tunerSettings.damping,
+                theme: .dark,
+                glassOpacity: store.glassOpacity)
+                .accessibilityLabel(L10n.t("阻尼"))
 
             // 範圍資訊列（階段 5 改為隨目前樂器動態生成；
             // 原寫死「中音薩克斯 130–1200」在選其他樂器時

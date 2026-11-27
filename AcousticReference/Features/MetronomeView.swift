@@ -20,7 +20,6 @@ struct MetronomeView: View {
     @State private var showDeletePreset = false
     @State private var showCustomRamp = false
     @State private var showGrouping = false
-    @State private var faderRubber: Double = 0
 
     var body: some View {
         let theme = store.resolvedTheme(system: colorScheme)
@@ -269,71 +268,84 @@ struct MetronomeView: View {
                           railHeight: CGFloat) -> some View {
         HStack(alignment: .center, spacing: 6) {
             Spacer(minLength: 0)
-            dialView(theme: theme, size: dialSize)
+            BpmDialView(viewModel: viewModel, dial: viewModel.dial,
+                        theme: theme, size: dialSize,
+                        onTapNumber: openEditor)
             Spacer(minLength: 0)
             // 推子內縮（補強段）：頁面 .horizontal 16 ＋ 此處
             // trailing 8 = 軌道右緣距螢幕邊 24pt，離開 iOS
             // 邊緣返回手勢熱區（約 20pt）；視覺上推子僅左移
             // 8pt，刻度數字列隨之內移，其餘版面不動。
-            faderView(theme: theme, height: railHeight)
+            BpmFaderView(viewModel: viewModel, dial: viewModel.dial,
+                         theme: theme, height: railHeight)
                 .padding(.trailing, 8)
         }
     }
 
-    private func dialView(theme: TunerTheme, size: CGFloat) -> some View {
-        let ratio = Double(viewModel.settings.bpm - MetronomeSettings.bpmMin)
-            / Double(viewModel.settings.bpmMaxNow - MetronomeSettings.bpmMin)
-        return ZStack {
-            Circle()
-                .stroke(theme.isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08),
-                        lineWidth: 6)
-            Circle()
-                .trim(from: 0, to: max(0.001, ratio))
-                .stroke(theme.accent,
-                        style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 2) {
-                odometer(theme: theme, dialSize: size)
-                Text("BPM")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(2)
-                    .foregroundStyle(theme.textMuted)
-                Text(MetronomeSettings.tempoTerm(viewModel.settings.bpm))
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.5)
-                    .foregroundStyle(theme.accent)
+    /// 轉盤＋里程表（返修批3 抽出獨立 View）：觀察 VM 的
+    /// 設定級狀態與 dial 渲染狀態；里程表 spring 幀只重繪
+    /// 本 View、不牽動整頁（拖動卡頓修復的一半）。
+    struct BpmDialView: View {
+        @ObservedObject var viewModel: MetronomeViewModel
+        @ObservedObject var dial: DialRenderState
+        let theme: TunerTheme
+        let size: CGFloat
+        let onTapNumber: () -> Void
+
+        var body: some View {
+            let ratio = Double(viewModel.settings.bpm - MetronomeSettings.bpmMin)
+                / Double(viewModel.settings.bpmMaxNow - MetronomeSettings.bpmMin)
+            return ZStack {
+                Circle()
+                    .stroke(theme.isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08),
+                            lineWidth: 6)
+                Circle()
+                    .trim(from: 0, to: max(0.001, ratio))
+                    .stroke(theme.accent,
+                            style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: 2) {
+                    odometer
+                    Text("BPM")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(2)
+                        .foregroundStyle(theme.textMuted)
+                    Text(MetronomeSettings.tempoTerm(viewModel.settings.bpm))
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(1.5)
+                        .foregroundStyle(theme.accent)
+                }
             }
+            .frame(width: size, height: size)
+            .contentShape(Circle())
+            // 一般手勢（非 highPriority）：子層里程表的
+            // numberDrag 優先——數字區走 numberDrag、其餘
+            // 錶盤走 dialDrag（返修批2 按鍵審計定版）。
+            .gesture(dialDrag)
         }
-        .frame(width: size, height: size)
-        .contentShape(Circle())
-        // 【返修批2・按鍵審計】改一般手勢：highPriority 會
-        // 吞掉子層里程表的 numberDrag（點數字開編輯器／
-        // 數字橫向 scrub 失效）。一般手勢下子層優先——
-        // 數字區走 numberDrag、其餘錶盤走 dialDrag。
-        .gesture(dialDrag)
-    }
 
-    /// BPM 里程表（母本 .bpm-num/.bpm-col：條帶兩圈 0–9、逐柱 spring）。
-    private func odometer(theme: TunerTheme, dialSize: CGFloat) -> some View {
-        let fontSize = min(52, max(34, dialSize * 0.30))
-        let digitH = fontSize
-        let digitW = fontSize * 0.62
-        return HStack(spacing: 1) {
-            odoColumn(index: 0, fontSize: fontSize, digitH: digitH, theme: theme)
-                .frame(width: viewModel.odoHundredsBlank ? 0 : digitW)
-                .opacity(viewModel.odoHundredsBlank ? 0 : 1)
-            odoColumn(index: 1, fontSize: fontSize, digitH: digitH, theme: theme)
-                .frame(width: digitW)
-            odoColumn(index: 2, fontSize: fontSize, digitH: digitH, theme: theme)
-                .frame(width: digitW)
+        /// BPM 里程表（母本 .bpm-num/.bpm-col：條帶兩圈
+        /// 0–9、逐柱 spring；柱位經 dial 發布，目標恆整數）。
+        private var odometer: some View {
+            let fontSize = min(52, max(34, size * 0.30))
+            let digitH = fontSize
+            let digitW = fontSize * 0.62
+            return HStack(spacing: 1) {
+                odoColumn(index: 0, fontSize: fontSize, digitH: digitH)
+                    .frame(width: dial.odoHundredsBlank ? 0 : digitW)
+                    .opacity(dial.odoHundredsBlank ? 0 : 1)
+                odoColumn(index: 1, fontSize: fontSize, digitH: digitH)
+                    .frame(width: digitW)
+                odoColumn(index: 2, fontSize: fontSize, digitH: digitH)
+                    .frame(width: digitW)
+            }
+            .contentShape(Rectangle())
+            .gesture(numberDrag)
         }
-        .contentShape(Rectangle())
-        .gesture(numberDrag)
-    }
 
-    private func odoColumn(index: Int, fontSize: CGFloat, digitH: CGFloat,
-                           theme: TunerTheme) -> some View {
-        let m = index < viewModel.odoPositions.count ? viewModel.odoPositions[index] : 0
+        private func odoColumn(index: Int, fontSize: CGFloat,
+                               digitH: CGFloat) -> some View {
+            let m = index < dial.odoPositions.count ? dial.odoPositions[index] : 0
         // 【裝機返修】舊版 frame(height:) 預設置中對齊，20 位
         // 長條被置中後可見窗對錯位、且 Text 行高大於 digitH
         // 使相鄰數字上下滲入（實機「013 疊 120」糊成一團）。
@@ -347,21 +359,98 @@ struct MetronomeView: View {
                     .clipped()
             }
         }
-        .offset(y: -CGFloat(m) * digitH)
-        .frame(height: digitH, alignment: .top)
-        .clipped()
+            .offset(y: -CGFloat(m) * digitH)
+            .frame(height: digitH, alignment: .top)
+            .clipped()
+        }
+
+        // MARK: - 手勢（轉盤豎拖／數字點按・橫 scrub・豎拖）
+
+        @State private var dialStartBpm: Int?
+        @State private var dialStartY: CGFloat = 0
+
+        private var dialDrag: some Gesture {
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    // 自癒再武裝：上一拖被系統取消、看門狗已
+                    // endAdjust 時 start 可能殘留；VM 不在
+                    // adjusting 即視為新拖、重新取樣。
+                    if dialStartBpm == nil || !viewModel.bpmAdjusting {
+                        dialStartBpm = viewModel.settings.bpm
+                        dialStartY = value.startLocation.y
+                        viewModel.beginAdjust()
+                    }
+                    guard let start = dialStartBpm else { return }
+                    let dy = dialStartY - value.location.y
+                    viewModel.setBpmFromDrag(Double(start) + Double(dy) * 0.55)
+                    viewModel.dragTickBpm(viewModel.settings.bpm)
+                }
+                .onEnded { _ in
+                    dialStartBpm = nil
+                    viewModel.endAdjust()
+                }
+        }
+
+        private enum NumberDragMode { case undecided, scrub, dial }
+        @State private var numStartBpm: Int?
+        @State private var numStartTime: Date?
+        @State private var numMode: NumberDragMode = .undecided
+
+        private var numberDrag: some Gesture {
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if numStartBpm == nil || !viewModel.bpmAdjusting {
+                        numStartBpm = viewModel.settings.bpm
+                        numStartTime = value.time
+                        numMode = .undecided
+                        viewModel.beginAdjust()
+                    }
+                    guard let start = numStartBpm else { return }
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    if numMode == .undecided && max(abs(dx), abs(dy)) > 9 {
+                        numMode = abs(dx) > abs(dy) ? .scrub : .dial
+                    }
+                    switch numMode {
+                    case .scrub:
+                        viewModel.setBpmFromDrag(Double(start) + Double(dx) * 0.25)
+                    case .dial:
+                        viewModel.setBpmFromDrag(Double(start) + Double(-dy) * 0.55)
+                    case .undecided:
+                        break
+                    }
+                    if numMode != .undecided {
+                        viewModel.dragTickBpm(viewModel.settings.bpm)
+                    }
+                }
+                .onEnded { value in
+                    let quick = numStartTime.map { value.time.timeIntervalSince($0) < 0.4 } ?? false
+                    let wasTap = numMode == .undecided && quick
+                    numStartBpm = nil
+                    numMode = .undecided
+                    viewModel.endAdjust()
+                    if wasTap { onTapNumber() }
+                }
+        }
     }
 
     // MARK: - 推子（母本 .fader：相對拖動、吸附、橡皮筋、spring 填充）
 
-    private func faderView(theme: TunerTheme, height: CGFloat) -> some View {
-        // 【對照母本審計・Laurent 點名】母本推子是 iOS 控制
-        // 中心式膠囊（.bpm-fader-rail 注解原文）：全圓膠囊
-        // 軌（寬 57）、上下限籤在軌的上下同軸、亮填充自底
-        // 升起＋深度內影、字形隨填充覆蓋變色。舊原生是寬 46
-        // 圓角 14 的矩形軌＋籤列在左側，形狀與位置皆不符。
+    /// 推子（返修批3 抽出獨立 View）：填充比經 dial 發布，
+    /// 拖動幀只重繪本 View（拖動卡頓修復的另一半）。
+    struct BpmFaderView: View {
+        @ObservedObject var viewModel: MetronomeViewModel
+        @ObservedObject var dial: DialRenderState
+        let theme: TunerTheme
+        let height: CGFloat
+        @State private var faderRubber: Double = 0
+
+        var body: some View {
+        // 母本推子是 iOS 控制中心式膠囊（.bpm-fader-rail）：
+        // 全圓膠囊軌（寬 57）、上下限籤在軌的上下同軸、亮
+        // 填充自底升起＋深度內影、字形隨填充覆蓋變色。
         let railH = max(76, height - 36)
-        let fillH = max(14, railH * CGFloat(viewModel.faderRatio))
+        let fillH = max(14, railH * CGFloat(dial.faderRatio))
         let glyphCovered = fillH > 23
         let adjusting = faderStartBpm != nil
         let rubber = min(faderRubber, 60)
@@ -448,6 +537,57 @@ struct MetronomeView: View {
         }
         .contentShape(Rectangle())
         .highPriorityGesture(faderDrag(railHeight: railH))
+        }
+
+        @State private var faderStartBpm: Double?
+        @State private var faderStartY: CGFloat = 0
+        @State private var faderSnapped: Int?
+
+        private func faderDrag(railHeight: CGFloat) -> some Gesture {
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if faderStartBpm == nil || !viewModel.bpmAdjusting {
+                        faderStartBpm = Double(viewModel.settings.bpm)
+                        faderStartY = value.startLocation.y
+                        faderSnapped = nil
+                        viewModel.beginAdjust()
+                    }
+                    guard let start = faderStartBpm else { return }
+                    let maxNow = Double(viewModel.settings.bpmMaxNow)
+                    let range = maxNow - Double(MetronomeSettings.bpmMin)
+                    var target = start + Double(faderStartY - value.location.y)
+                        / Double(railHeight) * range
+                    // 超界量給橡皮筋（母本：rail 依超界縮放、
+                    // 值本身鉗制）。
+                    if target < Double(MetronomeSettings.bpmMin) {
+                        faderRubber = Double(MetronomeSettings.bpmMin) - target
+                        target = Double(MetronomeSettings.bpmMin)
+                    } else if target > maxNow {
+                        faderRubber = target - maxNow
+                        target = maxNow
+                    } else {
+                        faderRubber = 0
+                    }
+                    var snappedNow: Int?
+                    for point in MetronomeSettings.faderSnapPoints
+                    where abs(target - Double(point)) <= 1.5 {
+                        target = Double(point)
+                        snappedNow = point
+                    }
+                    if let snappedNow, snappedNow != faderSnapped {
+                        HapticsEngine.shared.tap(milliseconds: 8)
+                    }
+                    faderSnapped = snappedNow
+                    viewModel.setBpmFromDrag(target)
+                    viewModel.dragTickBpm(viewModel.settings.bpm)
+                }
+                .onEnded { _ in
+                    faderStartBpm = nil
+                    faderRubber = 0
+                    viewModel.endAdjust()
+                    HapticsEngine.shared.tap(milliseconds: 8)
+                }
+        }
     }
 
     // MARK: - 步進鈕與編輯器
@@ -767,124 +907,6 @@ struct MetronomeView: View {
                 }
             }
         }
-    }
-
-    // MARK: - 手勢（轉盤豎拖／數字點按・橫 scrub・豎拖／推子相對拖）
-
-    @State private var dialStartBpm: Int?
-    @State private var dialStartY: CGFloat = 0
-
-    private var dialDrag: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                // 【返修批2】自癒再武裝：上一拖被系統取消、
-                // 看門狗已 endAdjust 時，start 值可能殘留；
-                // VM 不在 adjusting 即視為新拖、重新取樣。
-                if dialStartBpm == nil || !viewModel.bpmAdjusting {
-                    dialStartBpm = viewModel.settings.bpm
-                    dialStartY = value.startLocation.y
-                    viewModel.beginAdjust()
-                }
-                guard let start = dialStartBpm else { return }
-                let dy = dialStartY - value.location.y
-                viewModel.setBpmFromDrag(Double(start) + Double(dy) * 0.55)
-                viewModel.dragTickBpm(viewModel.settings.bpm)
-            }
-            .onEnded { _ in
-                dialStartBpm = nil
-                viewModel.endAdjust()
-            }
-    }
-
-    private enum NumberDragMode { case undecided, scrub, dial }
-    @State private var numStartBpm: Int?
-    @State private var numStartTime: Date?
-    @State private var numMode: NumberDragMode = .undecided
-
-    private var numberDrag: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                if numStartBpm == nil || !viewModel.bpmAdjusting {
-                    numStartBpm = viewModel.settings.bpm
-                    numStartTime = value.time
-                    numMode = .undecided
-                    viewModel.beginAdjust()
-                }
-                guard let start = numStartBpm else { return }
-                let dx = value.translation.width
-                let dy = value.translation.height
-                if numMode == .undecided && max(abs(dx), abs(dy)) > 9 {
-                    numMode = abs(dx) > abs(dy) ? .scrub : .dial
-                }
-                switch numMode {
-                case .scrub:
-                    viewModel.setBpmFromDrag(Double(start) + Double(dx) * 0.25)
-                case .dial:
-                    viewModel.setBpmFromDrag(Double(start) + Double(-dy) * 0.55)
-                case .undecided:
-                    break
-                }
-                if numMode != .undecided {
-                    viewModel.dragTickBpm(viewModel.settings.bpm)
-                }
-            }
-            .onEnded { value in
-                let quick = numStartTime.map { value.time.timeIntervalSince($0) < 0.4 } ?? false
-                let wasTap = numMode == .undecided && quick
-                numStartBpm = nil
-                numMode = .undecided
-                viewModel.endAdjust()
-                if wasTap { openEditor() }
-            }
-    }
-
-    @State private var faderStartBpm: Double?
-    @State private var faderStartY: CGFloat = 0
-    @State private var faderSnapped: Int?
-
-    private func faderDrag(railHeight: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                if faderStartBpm == nil || !viewModel.bpmAdjusting {
-                    faderStartBpm = Double(viewModel.settings.bpm)
-                    faderStartY = value.startLocation.y
-                    faderSnapped = nil
-                    viewModel.beginAdjust()
-                }
-                guard let start = faderStartBpm else { return }
-                let maxNow = Double(viewModel.settings.bpmMaxNow)
-                let range = maxNow - Double(MetronomeSettings.bpmMin)
-                var target = start + Double(faderStartY - value.location.y)
-                    / Double(railHeight) * range
-                // 超界量給橡皮筋（母本：rail 依超界縮放、值本身鉗制）。
-                if target < Double(MetronomeSettings.bpmMin) {
-                    faderRubber = Double(MetronomeSettings.bpmMin) - target
-                    target = Double(MetronomeSettings.bpmMin)
-                } else if target > maxNow {
-                    faderRubber = target - maxNow
-                    target = maxNow
-                } else {
-                    faderRubber = 0
-                }
-                var snappedNow: Int?
-                for point in MetronomeSettings.faderSnapPoints
-                where abs(target - Double(point)) <= 1.5 {
-                    target = Double(point)
-                    snappedNow = point
-                }
-                if let snappedNow, snappedNow != faderSnapped {
-                    HapticsEngine.shared.tap(milliseconds: 8)
-                }
-                faderSnapped = snappedNow
-                viewModel.setBpmFromDrag(target)
-                viewModel.dragTickBpm(viewModel.settings.bpm)
-            }
-            .onEnded { _ in
-                faderStartBpm = nil
-                faderRubber = 0
-                viewModel.endAdjust()
-                HapticsEngine.shared.tap(milliseconds: 8)
-            }
     }
 }
 

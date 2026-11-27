@@ -31,6 +31,18 @@ struct ContentView: View {
     /// item 呈現，避免多個 .sheet 修飾器互相衝突）。
     @State private var activeSheet: TopSheet?
     @Environment(\.colorScheme) private var colorScheme
+    /// 開機動畫（返修批3 補回母本 .splash）：冷啟動覆蓋層，
+    /// 徽章 FLIP 飛入頂欄品牌標記後退場；brandMarkFrame 為
+    /// 頂欄標記的全局矩形（飛行落點），splashRevealed 控制
+    /// 真標記在飛行期間隱藏、落地／淡出時恢復。
+    @State private var showSplash = true
+    @State private var splashRevealed = false
+    @State private var brandMarkFrame: CGRect = .zero
+    /// 背景按壓亮斑（返修批3 補回母本 #pageGlow）：指尖
+    /// 位置（全局座標）與亮起狀態；手勢以 simultaneous
+    /// 掛根層，不攔截任何控件。
+    @State private var glowCenter: CGPoint?
+    @State private var glowOn = false
 
     init() {
         let store = AppStore()
@@ -93,6 +105,21 @@ struct ContentView: View {
         .background {
             theme.background.ignoresSafeArea()
         }
+        // 背景按壓亮斑層（母本 #pageGlow）：置於內容之上以
+        // screen 混合呈現「光」而非遮擋（母本在內容之下，
+        // 原生頁面背景不透明、置下不可見，故改置上＋混合
+        // 模式，視覺等價）；不參與命中測試。
+        .overlay {
+            PageGlowView(center: glowCenter, on: glowOn, theme: theme)
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                .onChanged { value in
+                    glowCenter = value.location
+                    glowOn = true
+                }
+                .onEnded { _ in glowOn = false }
+        )
         .overlay(alignment: .bottom) {
             if mode == .tuner && metronomeViewModel.capsuleVisible {
                 capsule(theme: theme)
@@ -102,6 +129,18 @@ struct ContentView: View {
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.9),
                    value: metronomeViewModel.capsuleVisible)
+        // 開機動畫覆蓋層（返修批3）：最上層，退場後移除。
+        .overlay {
+            if showSplash {
+                SplashView(theme: theme,
+                           targetFrame: brandMarkFrame,
+                           revealed: $splashRevealed) {
+                    showSplash = false
+                }
+                .ignoresSafeArea()
+                .zIndex(10)
+            }
+        }
         .preferredColorScheme(store.effectiveForcedColorScheme)
         .sheet(item: $activeSheet) { sheet in
             // 【返修批2】sheet 內強制套 App 主題外觀＋以主題
@@ -219,6 +258,15 @@ struct ContentView: View {
                             .font(.system(size: 19, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                     }
+                    // 開機動畫的飛行落點：量取全局矩形；動畫
+                    // 期間真標記隱藏，落地／淡出時恢復（母本
+                    // .brand-mark 飛行期 opacity 0 同義）。
+                    .onGeometryChange(for: CGRect.self) { proxy in
+                        proxy.frame(in: .global)
+                    } action: { newFrame in
+                        brandMarkFrame = newFrame
+                    }
+                    .opacity(showSplash && !splashRevealed ? 0 : 1)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text("LAURENT")
@@ -362,6 +410,229 @@ struct ContentView: View {
         guard store.autoMicOnEnter, store.appMode != .metronome,
               !engine.isRunning else { return }
         Task { await engine.start() }
+    }
+}
+
+/// 背景按壓亮斑（母本 #pageGlow，行 1960–1980／12352–12398）：
+/// 340×340 徑向光，指尖為心、1:1 跟隨（手勢在 ContentView
+/// 根層），亮起 0.12s、熄滅 0.3s。深色 screen 混合（中心
+/// rgba(130,175,255,0.15) → 白 0.05 @42% → 透明 @70%）；
+/// 淺色 normal（白 0.55 → 0.12 → 透明）。
+struct PageGlowView: View {
+    let center: CGPoint?
+    let on: Bool
+    let theme: TunerTheme
+
+    var body: some View {
+        ZStack {
+            if let center {
+                Circle()
+                    .fill(RadialGradient(
+                        stops: theme.isDark
+                            ? [.init(color: Color(red: 130 / 255, green: 175 / 255, blue: 255 / 255).opacity(0.15), location: 0),
+                               .init(color: Color.white.opacity(0.05), location: 0.42),
+                               .init(color: .clear, location: 0.70)]
+                            : [.init(color: Color.white.opacity(0.55), location: 0),
+                               .init(color: Color.white.opacity(0.12), location: 0.42),
+                               .init(color: .clear, location: 0.70)],
+                        center: .center, startRadius: 0, endRadius: 170))
+                    .frame(width: 340, height: 340)
+                    .blendMode(theme.isDark ? .screen : .normal)
+                    .position(center)
+                    .opacity(on ? 1 : 0)
+                    .animation(.easeOut(duration: on ? 0.12 : 0.3), value: on)
+            }
+        }
+        .allowsHitTesting(false)
+        .ignoresSafeArea()
+    }
+}
+
+/// 開機動畫（返修批3 補回母本 .splash，規格見
+/// docs/2026-11-27_母本規格提取-返修批3.md 第 1 節）：
+/// 三團柔光底＋徽章淡入（scale 0.94→1、0.55s ease-out）
+/// ＋字標上浮（0.68s、延遲 0.08）＋副標上浮（0.62s、延遲
+/// 0.24）；總上屏 ≈1.25s 後徽章以 640ms FLIP 飛入頂欄
+/// 品牌標記（圓角 20→9、最後 150ms 交叉淡化為標記本色），
+/// 背景同帧淡出；點按任意處跳過。減動效或無落點矩形時
+/// 走淡出路徑（0.34s＋core 縮 0.97、停留 0.45s）。
+struct SplashView: View {
+    let theme: TunerTheme
+    let targetFrame: CGRect
+    @Binding var revealed: Bool
+    let onFinished: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var played = false
+    @State private var flying = false
+    @State private var crossfaded = false
+    @State private var faded = false
+    @State private var finished = false
+
+    private var dark: Bool { theme.isDark }
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            // core 居中、底部 padding 8.5vh → 整體上移 4.25%h；
+            // core 高 ≈ 74＋12＋14＋30＋14＋12 = 156。
+            let coreCY = h / 2 - h * 0.0425
+            let badgeStart = CGRect(x: w / 2 - 37, y: coreCY - 78, width: 74, height: 74)
+            let badgeFrame = flying && targetFrame != .zero ? targetFrame : badgeStart
+            ZStack {
+                backdrop(w: w, h: h)
+                    .opacity(flying || faded ? 0 : 1)
+                    .animation(.ease(duration: 0.5).delay(0.08), value: flying)
+                    .animation(.ease(duration: 0.34), value: faded)
+
+                Group {
+                    // 字標與副標（入場上浮；飛行時淡出上移）
+                    Text("LAURENT")
+                        .font(.system(size: 25, weight: .heavy))
+                        .tracking(8.5)
+                        .foregroundStyle(dark ? Color(red: 238 / 255, green: 243 / 255, blue: 255 / 255)
+                                             : Color(red: 18 / 255, green: 32 / 255, blue: 58 / 255))
+                        .position(x: w / 2 + 4.25, y: coreCY + 28)
+                        .opacity(flying || faded ? 0 : (played ? 1 : 0))
+                        .offset(y: flying ? -5 : (played ? 0 : 7))
+                        .animation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.68).delay(0.08),
+                                   value: played)
+                        .animation(.ease(duration: 0.22), value: flying)
+                    Text("STUDIO EDITION")
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(4.2)
+                        .foregroundStyle(dark ? Color(red: 160 / 255, green: 178 / 255, blue: 214 / 255).opacity(0.85)
+                                             : Color(red: 70 / 255, green: 90 / 255, blue: 130 / 255).opacity(0.8))
+                        .position(x: w / 2 + 2.1, y: coreCY + 56)
+                        .opacity(flying || faded ? 0 : (played ? 1 : 0))
+                        .offset(y: flying ? -5 : (played ? 0 : 5))
+                        .animation(.ease(duration: 0.62).delay(0.24),
+                                   value: played)
+                        .animation(.ease(duration: 0.22), value: flying)
+
+                    // 徽章本體（入場淡入；飛行時整框飛向落點）
+                    badgeFace
+                        .frame(width: badgeFrame.width, height: badgeFrame.height)
+                        .position(x: badgeFrame.midX, y: badgeFrame.midY)
+                        .opacity(faded ? 0 : (played ? 1 : 0))
+                        .scaleEffect(faded ? 0.97 : (played ? 1 : 0.94))
+                        .animation(.easeOut(duration: 0.55), value: played)
+                        .animation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.64),
+                                   value: flying)
+                }
+                .opacity(faded ? 0 : 1)
+                .animation(.ease(duration: 0.34), value: faded)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { skip() }
+            .onAppear { run() }
+        }
+    }
+
+    /// 徽章面：splash 漸變面與品牌標記面疊放，飛行末段
+    /// （crossfaded）交叉淡化；圓角隨飛行 20→9。
+    private var badgeFace: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: flying ? 9 : 20, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [Color(red: 47 / 255, green: 123 / 255, blue: 255 / 255),
+                             Color(red: 10 / 255, green: 92 / 255, blue: 255 / 255)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                .opacity(crossfaded ? 0 : 1)
+            RoundedRectangle(cornerRadius: flying ? 9 : 20, style: .continuous)
+                .fill(theme.accent)
+                .opacity(crossfaded ? 1 : 0)
+            Text("L")
+                .font(.system(size: crossfaded ? 19 : 34, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+        }
+        .shadow(color: Color(red: 47 / 255, green: 123 / 255, blue: 255 / 255).opacity(0.38),
+                radius: 30, x: 0, y: 0)
+        .shadow(color: Color(red: 10 / 255, green: 92 / 255, blue: 255 / 255).opacity(0.42),
+                radius: 16, x: 0, y: 10)
+        .animation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.64), value: flying)
+        .animation(.easeIn(duration: 0.15), value: crossfaded)
+    }
+
+    /// 三團柔光＋基底（母本 .splash 背景四層 radial）。
+    private func backdrop(w: CGFloat, h: CGFloat) -> some View {
+        ZStack {
+            RadialGradient(
+                colors: dark
+                    ? [Color(red: 20 / 255, green: 31 / 255, blue: 56 / 255),
+                       Color(red: 9 / 255, green: 14 / 255, blue: 26 / 255),
+                       Color(red: 7 / 255, green: 9 / 255, blue: 14 / 255)]
+                    : [Color(red: 232 / 255, green: 238 / 255, blue: 252 / 255),
+                       Color(red: 223 / 255, green: 231 / 255, blue: 248 / 255),
+                       Color(red: 207 / 255, green: 219 / 255, blue: 242 / 255)],
+                center: .top, startRadius: 0, endRadius: h * 0.95)
+            RadialGradient(colors: [Color(red: 64 / 255, green: 120 / 255, blue: 255 / 255)
+                                        .opacity(dark ? 0.20 : 0.16), .clear],
+                           center: UnitPoint(x: 0.16, y: 0.06),
+                           startRadius: 0, endRadius: w * 0.62)
+            RadialGradient(colors: [Color(red: 124 / 255, green: 92 / 255, blue: 255 / 255)
+                                        .opacity(dark ? 0.13 : 0.10), .clear],
+                           center: UnitPoint(x: 0.88, y: 0.30),
+                           startRadius: 0, endRadius: w * 0.56)
+            RadialGradient(colors: [Color(red: 48 / 255, green: 160 / 255, blue: 190 / 255)
+                                        .opacity(dark ? 0.10 : 0.08), .clear],
+                           center: UnitPoint(x: 0.5, y: 1.1),
+                           startRadius: 0, endRadius: w * 0.72)
+        }
+    }
+
+    private func run() {
+        played = true
+        Task { @MainActor in
+            if reduceMotion {
+                try? await Task.sleep(nanoseconds: 450_000_000)
+                guard !finished else { return }
+                revealed = true
+                withAnimation(.ease(duration: 0.34)) { faded = true }
+                try? await Task.sleep(nanoseconds: 380_000_000)
+                finish()
+            } else {
+                try? await Task.sleep(nanoseconds: 1_250_000_000)
+                guard !finished else { return }
+                startExit()
+                try? await Task.sleep(nanoseconds: 760_000_000)
+                finish()
+            }
+        }
+    }
+
+    private func startExit() {
+        if targetFrame == .zero {
+            revealed = true
+            withAnimation(.ease(duration: 0.34)) { faded = true }
+        } else {
+            withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.64)) {
+                flying = true
+            }
+            withAnimation(.easeIn(duration: 0.15).delay(0.49)) {
+                crossfaded = true
+            }
+        }
+    }
+
+    /// 點按跳過：飛行中立即落地；停留中直接進退場。
+    private func skip() {
+        if flying {
+            finish()
+        } else if !faded {
+            startExit()
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                finish()
+            }
+        }
+    }
+
+    private func finish() {
+        guard !finished else { return }
+        finished = true
+        revealed = true
+        onFinished()
     }
 }
 

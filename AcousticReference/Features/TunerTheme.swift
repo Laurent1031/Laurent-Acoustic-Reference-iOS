@@ -275,27 +275,20 @@ extension TunerTheme {
     /// 亦提亮至 #26262A，讓卡面與頁面底色拉開層次。
     func glass(_ opacity: Int, interactive: Bool = false) -> Glass {
         let t = min(1, max(0, (Double(opacity) - 8) / 88))
-        let base = Glass.regular.tint(glassTintBase.opacity(0.05 + 0.36 * t))
+        let base = Glass.regular.tint(glassTintBase.opacity(0.03 + 0.24 * t))
         return interactive ? base.interactive() : base
     }
 
-    /// 選中鏡片的玻璃（返修批2 重做）：中性亮玻璃，不再以
-    /// accent 染色——舊版藍 tint 鏡片在深色卡面上讀作扁平
-    /// 藍按鈕、選中字被藍灰吃掉（Laurent 實機點名「字看
-    /// 不清、液態玻璃哪裡去了」）。深色＝白 tint 0.26（在
-    /// 深軌道上形成明確的亮玻璃層，textPrimary 近白字對比
-    /// 成立）；淺色＝白 tint 0.85（iOS 淺色分段的亮白鏡片
-    /// 本色，深字成立）；pit 沿深色邏輯（夜視下 0.26 白
-    /// 仍偏亮，降至 0.18）。
+    /// 選中鏡片的玻璃（返修批3・嚴格 iOS 27 標準）：無 tint
+    /// 的系統真玻璃——返修批2 的白 tint（深 0.26／淺 0.85）
+    /// 在實機讀作不透明的扁平灰白膠囊，Laurent 點名「不
+    /// 是真液態玻璃，不是透明」。iOS 27 系統分段鏡片本體
+    /// 即無染色 .regular 玻璃：透明度、邊緣折射、鏡面高光
+    /// 全由 glassEffect 本體按背後內容即時算出，任何 tint
+    /// 都只會把它推向塑料。淺色下系統玻璃自帶亮面，深字
+    /// 成立；深色下為清透暗玻璃，近白字成立。
     var lensGlass: Glass {
-        switch kind {
-        case .light:
-            return .regular.tint(Color.white.opacity(0.85)).interactive()
-        case .dark:
-            return .regular.tint(Color.white.opacity(0.26)).interactive()
-        case .pit:
-            return .regular.tint(Color.white.opacity(0.18)).interactive()
-        }
+        .regular.interactive()
     }
 }
 
@@ -344,17 +337,23 @@ extension View {
 
 // MARK: - 液態玻璃切換效果（裝機返修批・Laurent 指定）
 
-/// 液態玻璃分段控件（返修批2 重做）：選中態是一片中性
-/// 亮玻璃鏡片（theme.lensGlass），可直接拖動——鏡片 1:1
-/// 跟指、微拉伸，越過格心即切換選中（帶輕觸感），放手
-/// spring 歸位；點按任一格亦即選中。舊版（glassEffectID
-/// morph＋accent 32% 藍 tint、僅點按）經 Laurent 實機
-/// 否決：「我要的是液態玻璃不是正常按鍵，要可以拖動
-/// 調節且有折射的透明液態玻璃」＋選中字被藍灰吃掉看
-/// 不清。本版：鏡片去藍改中性亮玻璃、選中字 textPrimary
-/// 粗體、未選中 textSecondary，雙主題對比皆成立。版面
-/// 恆等分（GeometryReader 量寬），呼叫端須給定寬度
-/// （全寬或固定 frame）。
+/// 液態玻璃分段控件（返修批3・嚴格 iOS 27 標準重做）：
+/// 整控件置於 GlassEffectContainer 內，選中鏡片為無 tint
+/// 的系統真玻璃（theme.lensGlass、.interactive()）＋
+/// glassEffectID——切換時玻璃本體在格位間液態 morph（邊
+/// 緣折射由系統按 iOS 27 規範算出）。拖動手勢掛整控件
+/// （任一格起手皆可拖，批2 已驗證的命中方式）：鏡片 1:1
+/// 跟指、越格心即切換；速度感知各向異性拉伸疊加形變
+/// （快拖拉長至 +13%、縱向回縮），放手 spring 歸位、拉
+/// 伸回彈——形變不依賴命中鏡片本體，整控件拖動皆有。
+/// 批2 的白 tint 鏡片（深 0.26／淺 0.85）在實機是不透
+/// 明扁平灰膠囊，Laurent 點名「不是真液態玻璃、不是透
+/// 明」——本版去 tint、去重陰影，鏡片幾何嚴格內縮於軌
+/// 道（寬 segW−4、高 height−2、上下置中；批2 鏡片與軌
+/// 道同高＋陰影外擴，設定頁實機凸出軌道）。選中字
+/// textPrimary 粗體、未選中 textSecondary，全主題字色
+/// （不讀裝置外觀，sheet 內亦成立）。版面恆等分，呼叫
+/// 端須給定寬度。
 struct GlassSegmentedControl<Option: Hashable>: View {
     let options: [(option: Option, title: String, symbol: String?)]
     @Binding var selection: Option
@@ -362,81 +361,78 @@ struct GlassSegmentedControl<Option: Hashable>: View {
     let glassOpacity: Int
     var fontSize: CGFloat = 13
     var height: CGFloat = 30
-    /// 舊參數保留相容（返修批2 起版面恆等分，見類註解）。
+    /// 舊參數保留相容（版面恆等分，見類註解）。
     var equalWidth: Bool = false
+    @Namespace private var glassNS
     @State private var dragX: CGFloat?
     @State private var pressing = false
+    @State private var stretch: CGFloat = 0
+    @State private var lastDragX: CGFloat?
+    @State private var lastDragT: TimeInterval = 0
 
     private var selectedIndex: Int {
         options.firstIndex { $0.option == selection } ?? 0
     }
 
     var body: some View {
-        GeometryReader { geo in
-            let count = max(1, options.count)
-            let segW = (geo.size.width - 6) / CGFloat(count)
-            let selCenter = 3 + segW * (CGFloat(selectedIndex) + 0.5)
-            let lensCenter = dragX.map {
-                min(max($0, 3 + segW / 2), geo.size.width - 3 - segW / 2)
-            } ?? selCenter
-            ZStack(alignment: .leading) {
-                // 鏡片：中性亮玻璃（theme.lensGlass），拖動時
-                // 1:1 跟指、微拉伸；放手 spring 歸位選中格。
-                Capsule()
-                    .fill(.clear)
-                    .frame(width: segW - 2, height: height)
-                    .glassEffect(theme.lensGlass, in: Capsule())
-                    .shadow(color: Color.black.opacity(theme.isDark ? 0.28 : 0.15),
-                            radius: 5, x: 0, y: 2)
-                    .scaleEffect(x: pressing ? 1.07 : 1, y: 1)
-                    .offset(x: lensCenter - segW / 2 + 1, y: 3)
-                    .animation(pressing ? nil
-                               : .spring(response: 0.38, dampingFraction: 0.82),
-                               value: lensCenter)
-                HStack(spacing: 0) {
-                    ForEach(options, id: \.option) { item in
-                        let active = selection == item.option
-                        HStack(spacing: 5) {
-                            if let symbol = item.symbol {
-                                Image(systemName: symbol)
-                                    .font(.system(size: fontSize - 1,
-                                                  weight: .semibold))
+        GlassEffectContainer(spacing: 0) {
+            GeometryReader { geo in
+                let count = max(1, options.count)
+                let segW = (geo.size.width - 6) / CGFloat(count)
+                let selCenter = 3 + segW * (CGFloat(selectedIndex) + 0.5)
+                let lensCenter = dragX.map {
+                    min(max($0, 3 + segW / 2), geo.size.width - 3 - segW / 2)
+                } ?? selCenter
+                ZStack(alignment: .leading) {
+                    // 鏡片：無 tint 真玻璃＋glassEffectID morph；
+                    // 幾何內縮（寬 segW−4、高 height−2、上下
+                    // 置中），不凸出軌道。拖動形變：系統
+                    // .interactive() 本體形變＋速度拉伸疊加。
+                    Capsule()
+                        .fill(.clear)
+                        .frame(width: segW - 4, height: height - 2)
+                        .glassEffect(theme.lensGlass, in: Capsule())
+                        .glassEffectID("lens", in: glassNS)
+                        .shadow(color: Color.black.opacity(theme.isDark ? 0.18 : 0.10),
+                                radius: 3, x: 0, y: 1)
+                        .scaleEffect(x: 1 + stretch, y: 1 - stretch * 0.35)
+                        .offset(x: lensCenter - (segW - 4) / 2, y: 4)
+                        .animation(pressing ? nil
+                                   : .spring(response: 0.38, dampingFraction: 0.82),
+                                   value: lensCenter)
+                    HStack(spacing: 0) {
+                        ForEach(options, id: \.option) { item in
+                            let active = selection == item.option
+                            HStack(spacing: 5) {
+                                if let symbol = item.symbol {
+                                    Image(systemName: symbol)
+                                        .font(.system(size: fontSize - 1,
+                                                      weight: .semibold))
+                                }
+                                Text(item.title)
+                                    .font(.system(size: fontSize,
+                                                  weight: active ? .bold : .medium))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
                             }
-                            Text(item.title)
-                                .font(.system(size: fontSize,
-                                              weight: active ? .bold : .medium))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
+                            .foregroundStyle(active ? theme.textPrimary
+                                                    : theme.textSecondary)
+                            .frame(width: segW, height: height)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if selection != item.option {
+                                    selection = item.option
+                                    HapticsEngine.shared.tap(milliseconds: 4)
+                                }
+                            }
                         }
-                        .foregroundStyle(active ? theme.textPrimary
-                                                : theme.textSecondary)
-                        .frame(width: segW, height: height)
                     }
+                    .padding(.horizontal, 3)
+                    .padding(.vertical, 3)
                 }
-                .padding(.horizontal, 3)
-                .padding(.vertical, 3)
+                .contentShape(Capsule())
+                .gesture(segDrag(segW: segW, count: count))
             }
-            .contentShape(Capsule())
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onChanged { value in
-                        pressing = true
-                        dragX = value.location.x
-                        let idx = min(max(Int((value.location.x - 3) / segW), 0),
-                                      count - 1)
-                        if options[idx].option != selection {
-                            selection = options[idx].option
-                            HapticsEngine.shared.tap(milliseconds: 4)
-                        }
-                    }
-                    .onEnded { _ in
-                        pressing = false
-                        withAnimation(.spring(response: 0.38,
-                                              dampingFraction: 0.82)) {
-                            dragX = nil
-                        }
-                    }
-            )
         }
         .frame(height: height + 6)
         .background {
@@ -459,6 +455,42 @@ struct GlassSegmentedControl<Option: Hashable>: View {
                 selection = options[next].option
             }
         }
+    }
+
+    /// 整控件拖動（坐標為控件局部系，location.x 即軌道
+    /// 座標）：鏡片 1:1 跟指、越格心即切換＋輕觸感；速度
+    /// 拉伸給出果凍形變（快拖拉長至 +13%、縱向回縮），
+    /// 放手 spring 歸位且拉伸回彈。玻璃本體的形變/折射
+    /// 由 .interactive()＋glassEffectID morph 在切換與歸
+    /// 位時給出（系統 iOS 27 行為）。
+    private func segDrag(segW: CGFloat, count: Int) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                pressing = true
+                dragX = value.location.x
+                let now = value.time.timeIntervalSince1970
+                if let lx = lastDragX, now > lastDragT {
+                    let v = abs(value.location.x - lx) / CGFloat(now - lastDragT)
+                    stretch = min(0.13, v / 5200)
+                }
+                lastDragX = value.location.x
+                lastDragT = now
+                let idx = min(max(Int((value.location.x - 3) / segW), 0),
+                              count - 1)
+                if options[idx].option != selection {
+                    selection = options[idx].option
+                    HapticsEngine.shared.tap(milliseconds: 4)
+                }
+            }
+            .onEnded { _ in
+                pressing = false
+                lastDragX = nil
+                withAnimation(.spring(response: 0.38,
+                                      dampingFraction: 0.82)) {
+                    dragX = nil
+                    stretch = 0
+                }
+            }
     }
 }
 

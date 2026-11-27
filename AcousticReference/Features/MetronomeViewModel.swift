@@ -39,6 +39,18 @@ private struct PulseState {
 /// CADisplayLink 驅動，公式逐項照母本（spring 360/37.95、
 /// 子步 1/240、脈衝 attack 立方／decay 2.4 次冪）。
 @MainActor
+/// 錶盤渲染狀態（返修批3 隔離）：里程表柱位／推子填充比
+/// 以 display-link 速率發布，若掛在 VM 本體（ObservableObject
+/// 任一 @Published 變更即全體觀察者重繪），拖動與滾動期間
+/// 整頁每幀重繪——實機拖推桿「中間卡頓」的主因之一。獨立
+/// 成小對象、僅 BpmDialView／BpmFaderView 觀察，頁面本體
+/// 不再被渲染幀牽動。
+final class DialRenderState: ObservableObject {
+    @Published var odoPositions: [Double] = [0, 0, 0]
+    @Published var odoHundredsBlank = true
+    @Published var faderRatio: Double = 0
+}
+
 final class MetronomeViewModel: ObservableObject {
     // MARK: - 設定與預置
 
@@ -85,15 +97,14 @@ final class MetronomeViewModel: ObservableObject {
 
     // MARK: - 里程表／推子渲染值
 
-    @Published private(set) var odoPositions: [Double] = [0, 0, 0]
-    @Published private(set) var odoHundredsBlank = true
-    @Published private(set) var faderRatio: Double = 0
+    /// 渲染值改經 dial 發布（見 DialRenderState 註解）。
+    let dial = DialRenderState()
     /// 轉盤／推子／數字拖動中（里程表與填充直跟、繞過 spring）。
     var bpmAdjusting = false
-    /// 拖動中的連續 BPM（未取整）：母本拖動時數字條與填充
-    /// 皆 1:1 直跟連續值（.bpm-live 殺過渡），取整值只供
-    /// settings／引擎；舊原生把連續值先取整再餵里程表，
-    /// 數字逐格跳動、與母本滾動感不同（Laurent 實機點名）。
+    /// 拖動中的連續 BPM（未取整）：返修批3 起只餵推子填充
+    /// （連續量本色）；里程表與 settings 只吃取整值——
+    /// Laurent 定調「定位到準確數字，其他轉換只是中途
+    /// 特效」：數字落位必須是精確整數，滾動是 spring 過渡。
     private var liveAdjustValue: Double?
 
     var capsuleVisible: Bool { isPlaying || capsulePaused }
@@ -294,15 +305,20 @@ final class MetronomeViewModel: ObservableObject {
         syncBpmRender()
     }
 
-    /// 拖動路徑專用：連續值餵里程表／填充（1:1 直跟），
-    /// 取整值走 setBpm 落 settings（吸附已由呼叫端處理）。
+    /// 拖動路徑專用：連續值只餵推子填充（連續量本色）；
+    /// settings／引擎／里程表只在「取整值跨格」時更新一次
+    /// ——舊版每個觸摸事件都 setBpm（取消漸速＋引擎重定時
+    /// ＋落盤）是拖動卡頓的另一主因。里程表目標恆為整數
+    /// （見 syncOdometerTarget 返修批3 註解）。
     func setBpmFromDrag(_ continuous: Double) {
         lastDragAt = ProcessInfo.processInfo.systemUptime
         liveAdjustValue = continuous
-        setBpm(Int(continuous.rounded()))
-        // setBpm 在值未變時不觸發 render；連續值仍須刷新
-        // 里程表／填充的直跟位置。
-        if bpmAdjusting { syncBpmRender() }
+        let target = Int(continuous.rounded())
+        if target != settings.bpm {
+            setBpm(target)
+        }
+        // 取整值未變時 setBpm 不觸發 render；填充仍須跟指。
+        if bpmAdjusting { syncFillTarget() }
     }
 
     // MARK: - 拍號／細分／音色／重音
@@ -722,14 +738,12 @@ final class MetronomeViewModel: ObservableObject {
 
     private func syncOdometerTarget() {
         let v = settings.bpm
-        if bpmAdjusting {
-            if let live = liveAdjustValue {
-                setOdometerContinuous(live)
-            } else {
-                setOdometerImmediate(v)
-            }
-            return
-        }
+        // 【返修批3・Laurent 定調】里程表恆以「整數 BPM」為
+        // 目標行 spring 滾動——拖動中亦然：拖動跨過取整門檻
+        // 即向新整數滾，滾動只是中途特效，落位必須精確是
+        // 整數本身。舊版拖動把連續小數直餵柱位（setOdometer
+        // Continuous），數字恆停在兩格之間（實機截圖數字
+        // 互相疊壓、Laurent 點名「卡在中間」），已廢除。
         let dir = v > odoValue ? 1 : (v < odoValue ? -1 : 0)
         odoValue = v
         let digits = [v / 100, (v / 10) % 10, v % 10]
@@ -754,20 +768,6 @@ final class MetronomeViewModel: ObservableObject {
             odoCols[c].vel = 0
         }
         odoValue = v
-        odoSettled = true
-        publishOdo()
-    }
-
-    /// 拖動直跟：三柱位置 = 連續值的百／十／個位投影
-    /// （publishOdo 取 mod 10），數字隨指尖連續滾動。
-    private func setOdometerContinuous(_ v: Double) {
-        let positions = [v / 100, v / 10, v]
-        for c in 0..<3 {
-            odoCols[c].pos = positions[c]
-            odoCols[c].targetPos = positions[c]
-            odoCols[c].vel = 0
-        }
-        odoValue = settings.bpm
         odoSettled = true
         publishOdo()
     }
@@ -797,11 +797,11 @@ final class MetronomeViewModel: ObservableObject {
     }
 
     private func publishOdo() {
-        odoPositions = odoCols.map {
+        dial.odoPositions = odoCols.map {
             ($0.pos.truncatingRemainder(dividingBy: 10) + 10)
                 .truncatingRemainder(dividingBy: 10)
         }
-        odoHundredsBlank = settings.bpm < 100
+        dial.odoHundredsBlank = settings.bpm < 100
     }
 
     // MARK: - 推子填充 spring（母本 stepFaderFill，同組參數）
@@ -838,7 +838,7 @@ final class MetronomeViewModel: ObservableObject {
 
     private func publishFill() {
         let range = Double(settings.bpmMaxNow - MetronomeSettings.bpmMin)
-        faderRatio = min(1, max(0, (fillDisp - Double(MetronomeSettings.bpmMin)) / range))
+        dial.faderRatio = min(1, max(0, (fillDisp - Double(MetronomeSettings.bpmMin)) / range))
     }
 
     // MARK: - 持久化（佔位）與 toast

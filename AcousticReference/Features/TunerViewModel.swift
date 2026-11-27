@@ -216,6 +216,13 @@ final class TunerViewModel: ObservableObject {
     private var centsRoll = CentsDisplayRoll()
     private var stability = StabilityTracker()
 
+    /// 音高軌跡圖的樣本來源（返修批3 補回母本 .trace-wrap）：
+    /// 與穩定度統計同一緩衝（最近 8.2 s、含空值間隙）；定格
+    /// 時 push 停擺、樣本自然凍結，圖面與徽章同義。
+    var traceSamples: [(t: TimeInterval, cents: Double?)] {
+        stability.samples
+    }
+
     private let linkProxy = DisplayLinkProxy()
     private var displayLink: CADisplayLink?
 

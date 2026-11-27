@@ -218,8 +218,6 @@ private struct InstrumentCard: View {
     let onEdit: () -> Void
     let onMinimumFavorite: () -> Void
 
-    @State private var starScale: CGFloat = 1
-    @State private var burstProgress: CGFloat = 1
     @State private var confirmingDelete = false
 
     private var isFavorite: Bool { store.isFavorite(instrument.id) }
@@ -249,7 +247,10 @@ private struct InstrumentCard: View {
                     }
                     .buttonStyle(GlassPressButtonStyle())
                 }
-                starButton
+                FavoriteStarButton(store: store,
+                                   instrumentId: instrument.id,
+                                   theme: theme,
+                                   onMinimumFavorite: onMinimumFavorite)
             }
             HStack {
                 Text(instrument.englishName)
@@ -286,77 +287,6 @@ private struct InstrumentCard: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .onTapGesture { onSelect() }
-    }
-
-    // MARK: - 收藏星＋蹦出特效（母本 burstStar，行 6808）
-
-    private var starButton: some View {
-        Button { toggleFavorite() } label: {
-            Image(systemName: isFavorite ? "star.fill" : "star")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isFavorite ? theme.favoriteStar : theme.textMuted)
-                .scaleEffect(starScale)
-                .frame(width: 26, height: 26)
-                .overlay { burstDots }
-        }
-        .buttonStyle(GlassPressButtonStyle())
-    }
-
-    /// 六顆火花：角度 2πi/6＋0.4、距離 20＋(i%2)×6 px、480 ms、
-    /// delay 100 ms、cubic-bezier(0.22,1,0.36,1)、scale 1→0.4、
-    /// opacity →0（母本 .burst-dot 與 @keyframes burstFly）。
-    @ViewBuilder
-    private var burstDots: some View {
-        if burstProgress < 1 {
-            ZStack {
-                ForEach(0..<6, id: \.self) { i in
-                    let angle = 2 * Double.pi * Double(i) / 6 + 0.4
-                    let distance = (20 + Double(i % 2) * 6) * burstProgress
-                    Circle()
-                        .fill(theme.warn)
-                        .frame(width: 4, height: 4)
-                        .scaleEffect(1 - 0.6 * burstProgress)
-                        .opacity(1 - burstProgress)
-                        .offset(x: cos(angle) * distance, y: sin(angle) * distance)
-                }
-            }
-        }
-    }
-
-    private func toggleFavorite() {
-        // 母本行 6799：收藏切換 uiSound——加入 "switch"、移除
-        // "tick"；低於下限被拒時母本提前 return、僅 toast、
-        // 無音效無震動，原生比照其他拒絕點補 "warn"（有意
-        // 差異，見補強段報告）。
-        switch store.toggleFavorite(id: instrument.id) {
-        case .added:
-            HapticsEngine.shared.tap(milliseconds: 8)
-            UISoundEngine.shared.play(.switch)
-            playBurst()
-        case .removed:
-            UISoundEngine.shared.play(.tick)
-        case .rejectedMinimum:
-            UISoundEngine.shared.play(.warn)
-            onMinimumFavorite()
-        }
-    }
-
-    /// 星：300 ms 彈至 1.28（峰值在 0.35 處、母本
-    /// cubic-bezier(0.34,1.56,0.64,1) 的過衝曲線）；火花隨後飛出。
-    private func playBurst() {
-        withAnimation(.timingCurve(0.34, 1.56, 0.64, 1, duration: 0.105)) {
-            starScale = 1.28
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 105_000_000)
-            withAnimation(.timingCurve(0.34, 1.56, 0.64, 1, duration: 0.195)) {
-                starScale = 1
-            }
-        }
-        burstProgress = 0
-        withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.48).delay(0.1)) {
-            burstProgress = 1
-        }
     }
 
     // MARK: - 兩步刪除（母本行 8448：確認態 2.6 s）
@@ -590,5 +520,87 @@ private struct CustomInstrumentFormView: View {
         // 母本行 7686：自訂樂器保存 uiSound("success")。
         UISoundEngine.shared.play(.success)
         onSaved(saved)
+    }
+}
+
+/// 收藏星＋爆裂特效（母本 burstStar，行 6805–6835；返修批3
+/// 抽為共用組件：樂器庫卡與調音頁樂器卡共用同一顆星）。
+/// 加入收藏才爆裂：星 300 ms 過衝彈至 1.28（cubic-bezier
+/// (0.34,1.56,0.64,1)，峰值在 0.35）；六顆火花角度 2πi/6
+/// ＋0.4、距離 20＋(i%2)×6、480 ms、delay 100 ms、cubic-
+/// bezier(0.22,1,0.36,1)、scale 1→0.4、opacity →0、色
+/// --warn。切換音效／觸感與母本 toggleFavoriteInstrument
+/// 同：加入 switch＋8ms、移除 tick、被拒 warn＋回調 toast。
+struct FavoriteStarButton: View {
+    @ObservedObject var store: AppStore
+    let instrumentId: String
+    let theme: TunerTheme
+    var onMinimumFavorite: () -> Void = {}
+
+    @State private var starScale: CGFloat = 1
+    @State private var burstProgress: CGFloat = 1
+
+    private var isFavorite: Bool { store.isFavorite(instrumentId) }
+
+    var body: some View {
+        Button { toggleFavorite() } label: {
+            Image(systemName: isFavorite ? "star.fill" : "star")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(isFavorite ? theme.favoriteStar : theme.textMuted)
+                .scaleEffect(starScale)
+                .frame(width: 26, height: 26)
+                .overlay { burstDots }
+        }
+        .buttonStyle(GlassPressButtonStyle())
+        .accessibilityLabel(L10n.t("收藏至常用栏"))
+    }
+
+    @ViewBuilder
+    private var burstDots: some View {
+        if burstProgress < 1 {
+            ZStack {
+                ForEach(0..<6, id: \.self) { i in
+                    let angle = 2 * Double.pi * Double(i) / 6 + 0.4
+                    let distance = (20 + Double(i % 2) * 6) * burstProgress
+                    Circle()
+                        .fill(theme.warn)
+                        .frame(width: 4, height: 4)
+                        .scaleEffect(1 - 0.6 * burstProgress)
+                        .opacity(1 - burstProgress)
+                        .offset(x: cos(angle) * distance, y: sin(angle) * distance)
+                }
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
+    private func toggleFavorite() {
+        switch store.toggleFavorite(id: instrumentId) {
+        case .added:
+            HapticsEngine.shared.tap(milliseconds: 8)
+            UISoundEngine.shared.play(.switch)
+            playBurst()
+        case .removed:
+            UISoundEngine.shared.play(.tick)
+        case .rejectedMinimum:
+            UISoundEngine.shared.play(.warn)
+            onMinimumFavorite()
+        }
+    }
+
+    private func playBurst() {
+        withAnimation(.timingCurve(0.34, 1.56, 0.64, 1, duration: 0.105)) {
+            starScale = 1.28
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 105_000_000)
+            withAnimation(.timingCurve(0.34, 1.56, 0.64, 1, duration: 0.195)) {
+                starScale = 1
+            }
+        }
+        burstProgress = 0
+        withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.48).delay(0.1)) {
+            burstProgress = 1
+        }
     }
 }

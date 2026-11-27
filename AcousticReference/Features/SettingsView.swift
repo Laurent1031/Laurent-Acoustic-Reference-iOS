@@ -527,8 +527,12 @@ struct SystemSettingsView: View {
                       title: L10n.t("自定义背景"),
                       sub: backgroundStatusText)
         // 色票列（母本 .bg-swatch-row）：點選即套用純色背景。
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 34), spacing: 9)],
-                  alignment: .leading, spacing: 9) {
+        // 【返修批3】改固定 5 列 × 2 行：adaptive 依寬度湊列
+        // 實機成 8＋2 參差（Laurent 點名設定頁布局亂），定列
+        // 後兩行整齊對位。
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 9),
+                                 count: 5),
+                  spacing: 9) {
             ForEach(Self.backgroundSwatches, id: \.self) { hex in
                 Button {
                     store.setCustomBackgroundColor(
