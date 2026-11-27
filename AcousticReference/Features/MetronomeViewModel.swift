@@ -572,7 +572,8 @@ final class MetronomeViewModel: ObservableObject {
     func syncUserPresetsFromStore(_ presets: [MetronomePreset]) {
         // VM 自身落盤回寫 store 時 onChange 亦會觸發，同值直退。
         guard presets != userPresets else { return }
-        userPresets = presets        if let id = activePresetId,
+        userPresets = presets
+        if let id = activePresetId,
            !allPresets.contains(where: { $0.id == id }) {
             activePresetId = nil
         }
