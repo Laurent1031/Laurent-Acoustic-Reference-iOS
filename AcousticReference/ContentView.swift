@@ -482,8 +482,8 @@ struct SplashView: View {
             ZStack {
                 backdrop(w: w, h: h)
                     .opacity(flying || faded ? 0 : 1)
-                    .animation(.ease(duration: 0.5).delay(0.08), value: flying)
-                    .animation(.ease(duration: 0.34), value: faded)
+                    .animation(.easeInOut(duration: 0.5).delay(0.08), value: flying)
+                    .animation(.easeInOut(duration: 0.34), value: faded)
 
                 Group {
                     // 字標與副標（入場上浮；飛行時淡出上移）
@@ -497,7 +497,7 @@ struct SplashView: View {
                         .offset(y: flying ? -5 : (played ? 0 : 7))
                         .animation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.68).delay(0.08),
                                    value: played)
-                        .animation(.ease(duration: 0.22), value: flying)
+                        .animation(.easeInOut(duration: 0.22), value: flying)
                     Text("STUDIO EDITION")
                         .font(.system(size: 10, weight: .bold))
                         .tracking(4.2)
@@ -506,9 +506,9 @@ struct SplashView: View {
                         .position(x: w / 2 + 2.1, y: coreCY + 56)
                         .opacity(flying || faded ? 0 : (played ? 1 : 0))
                         .offset(y: flying ? -5 : (played ? 0 : 5))
-                        .animation(.ease(duration: 0.62).delay(0.24),
+                        .animation(.easeInOut(duration: 0.62).delay(0.24),
                                    value: played)
-                        .animation(.ease(duration: 0.22), value: flying)
+                        .animation(.easeInOut(duration: 0.22), value: flying)
 
                     // 徽章本體（入場淡入；飛行時整框飛向落點）
                     badgeFace
@@ -521,7 +521,7 @@ struct SplashView: View {
                                    value: flying)
                 }
                 .opacity(faded ? 0 : 1)
-                .animation(.ease(duration: 0.34), value: faded)
+                .animation(.easeInOut(duration: 0.34), value: faded)
             }
             .contentShape(Rectangle())
             .onTapGesture { skip() }
@@ -588,7 +588,7 @@ struct SplashView: View {
                 try? await Task.sleep(nanoseconds: 450_000_000)
                 guard !finished else { return }
                 revealed = true
-                withAnimation(.ease(duration: 0.34)) { faded = true }
+                withAnimation(.easeInOut(duration: 0.34)) { faded = true }
                 try? await Task.sleep(nanoseconds: 380_000_000)
                 finish()
             } else {
@@ -604,7 +604,7 @@ struct SplashView: View {
     private func startExit() {
         if targetFrame == .zero {
             revealed = true
-            withAnimation(.ease(duration: 0.34)) { faded = true }
+            withAnimation(.easeInOut(duration: 0.34)) { faded = true }
         } else {
             withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.64)) {
                 flying = true
