@@ -342,15 +342,21 @@ struct TunerView: View {
     }
 
     /// 收藏晶片：點按選樂器（母本 selectInstrument 連重選也走
-    /// 完整路徑、清鎖定；無觸感呼叫）；長按 200 ms 拾起拖曳
+    /// 完整路徑、清鎖定；無觸感呼叫）；長按 500 ms 拾起拖曳
     /// 排序（母本 wireFavChipDrag，行 6611：拾起 haptic(10)、
     /// 讓位變化 haptic(5)、放下後 350 ms 內吞掉點按；拾起前
-    /// 移動 >10pt 視為捲動、長按自動落空——母本為 8px，原生
-    /// 以 LongPressGesture 的 maximumDistance 10 近似）。
+    /// 移動 >8pt 視為捲動、長按自動落空——母本為 8px）。
     /// 與母本的差異（註明）：母本拖到邊緣會自動捲動收藏列，
     /// 原生未實作邊緣自動捲動（SwiftUI 無可靠的拖動中程式化
     /// 捲動通道）；收藏列在不拖動時照常可捲動，排序範圍以
     /// 可見晶片為限。
+    /// 【返修批8】長按門檻 200 ms → 500 ms（iOS 系統長按
+    /// 標準）：批5/7 的 200 ms 落在慢速捲動的起手停留窗內
+    /// ——手指在晶片上慢推時，長按先成立、序列拖曳接管、
+    /// scrollDisabled 再硬鎖，實機表現為「收藏列根本滑不
+    /// 動、被遮住的晶片選不到」。500 ms 下任何真捲動都會
+    /// 在門檻前移出 8pt 距離令長按落空，捲動完全自由；拾
+    /// 起必須是原地按住半秒的明確意圖。
     private func favoriteChip(inst: Instrument, theme: TunerTheme) -> some View {
         let active = inst.id == store.selectedInstrumentId
         let isDragged = favDragId == inst.id
@@ -372,17 +378,25 @@ struct TunerView: View {
             .scaleEffect(isDragged ? 1.07 : 1)
             .zIndex(isDragged ? 2 : 0)
             .onTapGesture {
+                // 【返修批8】防殭屍拖曳態：若拖曳狀態異常殘
+                // 留在別顆晶片上（手勢被系統取消等），先清
+                // 態再處理本次點按——scrollDisabled 隨之解
+                // 除，收藏列不被永久鎖死。
+                if let dragId = favDragId, dragId != inst.id {
+                    favDragId = nil
+                    favDragTranslation = 0
+                    favShifted = [:]
+                    favDragStartFrames = [:]
+                }
                 guard Date() >= favSuppressTapUntil else { return }
                 store.selectInstrument(id: inst.id)
             }
             // 返修批 5：改 simultaneousGesture。此前以獨佔
             // .gesture 掛長按＋拖曳序列，SwiftUI 手勢仲裁令
-            // ScrollView 必須等此手勢失敗才捲動——慢速拖動時
-            // 長按先成立、拖曳把捲動整個吃掉，實機表現為
-            // 「收藏列滑不了、後段晶片按不到」。改並行後：
-            // 快速滑動長按自動落空、捲動即時跟手；原地按住
-            // 200 ms 拾起後由 favoritesRow 的 scrollDisabled
-            // 鎖住捲動專心排序。
+            // ScrollView 必須等此手勢失敗才捲動。改並行後
+            // 快速滑動長按自動落空、捲動即時跟手；拾起後由
+            // favoritesRow 的 scrollDisabled 鎖住捲動專心
+            // 排序。拾起門檻的 500 ms 化見晶片頭註（批8）。
             .simultaneousGesture(favDragGesture(for: inst))
     }
 
@@ -397,8 +411,8 @@ struct TunerView: View {
     }
 
     private func favDragGesture(for inst: Instrument) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.2, maximumDistance: 10)
-            .sequenced(before: DragGesture(minimumDistance: 0,
+        LongPressGesture(minimumDuration: 0.5, maximumDistance: 8)
+            .sequenced(before: DragGesture(minimumDistance: 2,
                                             coordinateSpace: .named("favBar")))
             .onChanged { value in
                 guard case .second(_, let drag) = value, let drag else { return }

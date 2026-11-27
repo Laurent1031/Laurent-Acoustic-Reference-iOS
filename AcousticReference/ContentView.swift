@@ -249,6 +249,11 @@ struct ContentView: View {
                 // 落 permissionDenied）。
                 engine.refreshPermissionState()
                 startMicIfAutoEnabled()
+                // 【返修批8】節拍器中斷殭屍對帳：中斷凍結
+                // 調度後若恢復路徑未跑完，回前台在此收斂
+                // （仍播但調度已死 → 恢復；恢復失敗走引擎
+                // 內 stop＋lastError，不留無聲假播放）。
+                metronomeEngine.reconcileAfterForeground()
             }
         }
         // store → 引擎單向同步（store 為唯一真源）。

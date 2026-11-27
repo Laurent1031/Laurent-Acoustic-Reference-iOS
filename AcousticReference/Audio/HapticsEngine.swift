@@ -46,8 +46,16 @@ final class HapticsEngine: @unchecked Sendable {
     // MARK: - 生命週期
 
     /// 預熱：在節拍器啟動、首次 UI 回饋前呼叫（冪等）。
+    /// 【返修批8】引擎已存在時也嘗試 start 一次：系統中斷
+    /// 後 CHHapticEngine 可能停在「對象仍在、已停止」態，
+    /// ensureEngine 的 nil 守衛不會重建——start 對運行中
+    /// 引擎為冪等成功，對已停止引擎即恢復。
     func warmUp() {
-        queue.async { [weak self] in self?.ensureEngine() }
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.ensureEngine()
+            if let engine = self.engine { try? engine.start() }
+        }
     }
 
     private func ensureEngine() {
@@ -211,10 +219,22 @@ final class HapticsEngine: @unchecked Sendable {
                 let player = try self.nextPlayer(key: key, events: events, engine: engine)
                 try player.start(atTime: startTime)
             } catch {
-                // player 失效時重建一次（引擎可能被系統回收）。
+                // 【返修批8】舊版只重建 player 再試一次：若失
+                // 敗原因是引擎本體已停止（中斷後 resetHandler
+                // 的 start 未成功），player 建得出也 start 不
+                // 了，且 ensureEngine 的 nil 守衛永不重建——
+                // 震動就此整場死亡（實機「震動有時候沒反
+                // 應」）。改為：先重啟引擎、重建 player 再試；
+                // 仍失敗則整引擎作廢，下一個呼叫由
+                // ensureEngine 從零重建，不留半死狀態。
+                try? engine.start()
                 self.players[key] = nil
-                if let player = try? self.nextPlayer(key: key, events: events, engine: engine) {
-                    try? player.start(atTime: startTime)
+                do {
+                    let player = try self.nextPlayer(key: key, events: events, engine: engine)
+                    try player.start(atTime: startTime)
+                } catch {
+                    self.engine = nil
+                    self.players = [:]
                 }
             }
         }

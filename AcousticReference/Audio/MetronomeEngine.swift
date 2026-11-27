@@ -96,6 +96,22 @@ final class MetronomeCore: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// 目前配置的取樣率（返修批8：配置變更處置先比對速率，
+    /// 未變不拆圖、真變才重建，見 facade 的 rebuild 閘門）。
+    var configuredSampleRate: Double {
+        lock.lock()
+        defer { lock.unlock() }
+        return sampleRate
+    }
+
+    /// 調度是否活著（返修批8：中斷凍結後的前台對帳用——
+    /// playing 為真但定時器已取消即殭屍形，須走恢復路徑）。
+    var isSchedulingAlive: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return playing && timer != nil
+    }
+
     func updateSettings(_ newSettings: MetronomeSettings) {
         lock.lock()
         settings = newSettings
@@ -231,7 +247,10 @@ final class MetronomeCore: @unchecked Sendable {
     private func schedulerTick() {
         lock.lock()
         defer { lock.unlock() }
-        guard playing, let player,
+        // 【返修批8】sampleRate > 0 守衛與 facade 的啟動守衛
+        // 配套：速率為 0 時時間格數學全滅（nextTick 永不
+        // 推進），寧可整 tick 空轉等待重配置，也不排程。
+        guard playing, sampleRate > 0, let player,
               let nodeTime = player.lastRenderTime,
               let playerTime = player.playerTime(forNodeTime: nodeTime)
         else { return }
@@ -607,6 +626,16 @@ final class MetronomeEngine: ObservableObject {
         engine.connect(eq, to: engine.mainMixerNode, format: nil)
         engine.prepare()
         let outputRate = playerNode.outputFormat(forBus: 0).sampleRate
+        // 【返修批8】速率未就緒（0）守衛：session 切換中途
+        // outputFormat 可能讀到 0——舊版照樣 configure，
+        // 點音緩衝以 0 Hz 渲染成空表、core 速率為 0，調度
+        // 逐 tick 空轉，節拍器成「在播但無聲」的殭屍。改為
+        // 可見失敗：寫 lastError 並釋放 session，不留假播放。
+        guard outputRate > 0 else {
+            lastError = "音频输出格式未就绪，请重试"
+            releaseSessionIfUnused()
+            return
+        }
         let clickBuffers = buffers(for: outputRate)
         core.configure(player: playerNode, sampleRate: outputRate, buffers: clickBuffers)
         do {
@@ -778,17 +807,25 @@ final class MetronomeEngine: ObservableObject {
         }
     }
 
-    /// 配置變更自愈（返修批7・D2）：播放中裝置切換致輸出
-    /// 格式（取樣率）改變時，舊 player 的連接格式與按舊速率
-    /// 渲染的點音緩衝可能失效——按 start() 的建圖配方原地
-    /// 重建引擎圖。調度狀態不動（拍序／漸速保留），resync
-    /// 重新錨定樣本時間格。與 routeChange 的分工：裝置被拔
-    /// （.oldDeviceUnavailable）走 stop 防外放突響；仍有裝置
-    /// 而格式改變走本路徑。重建失敗比照 D1：完整 stop＋
-    /// lastError 可見，不留假播放狀態。
+    /// 配置變更處置（返修批7・D2 建制，返修批8 改閘門制）：
+    /// 配置變更通知在同 session 內其他引擎啟停時也會送達本
+    /// 引擎（調音開麥即觸發），但圖格式只依輸出取樣率建成
+    /// ——速率未變時圖與調度時間格仍有效（批6 以前無此處
+    /// 置、實機正常，即為證），整圖重建只會丟已排點音、且
+    /// 在 session 切換中途可能讀到 0 速率而殭屍化（實機
+    /// 「節拍器有時沒聲音」主因形）。批8 改為：速率未變 →
+    /// 完全不動（不拆圖、也不 resync——player 佇列裡已排
+    /// 的點音仍在，重新錨定會與之重疊成雙響）；速率真變
+    /// （藍牙裝置切換等）→ 才重建，且先建新圖、驗速率可
+    /// 用後才停舊圖（先驗後拆）。重建失敗比照 D1：完整
+    /// stop＋lastError 可見，不留假播放狀態。
     private func rebuildEngineAfterConfigurationChange() {
         guard isPlaying, let oldEngine = avEngine else { return }
-        oldEngine.stop()
+        if let player,
+           abs(player.outputFormat(forBus: 0).sampleRate
+                - core.configuredSampleRate) < 1 {
+            return
+        }
         let engine = AVAudioEngine()
         let playerNode = AVAudioPlayerNode()
         let eq = AVAudioUnitEQ(numberOfBands: 1)
@@ -799,6 +836,11 @@ final class MetronomeEngine: ObservableObject {
         engine.connect(eq, to: engine.mainMixerNode, format: nil)
         engine.prepare()
         let outputRate = playerNode.outputFormat(forBus: 0).sampleRate
+        guard outputRate > 0 else {
+            // 新圖速率未就緒：不拆舊圖，維持現行播放。
+            return
+        }
+        oldEngine.stop()
         core.configure(player: playerNode, sampleRate: outputRate,
                        buffers: buffers(for: outputRate))
         do {
@@ -816,5 +858,16 @@ final class MetronomeEngine: ObservableObject {
         lastEngineStartUptime = ProcessInfo.processInfo.systemUptime
         core.resyncAfterInterruption()
         registerConfigurationChangeObserver()
+    }
+
+    /// 前台對帳（返修批8）：中斷 .began 凍結調度（D6）後，
+    /// 若 .ended 未送達或恢復路徑未跑完，節拍器會停在
+    /// 「isPlaying 為真、調度已死」的殭屍態（畫面在播、
+    /// 無聲無震）。回前台時對帳：仍在播但調度已死 → 走
+    /// 既有恢復路徑（resumeAfterInterruption 內含失敗時
+    /// stop＋lastError 的收斂），不留靜默殭屍。
+    func reconcileAfterForeground() {
+        guard isPlaying, !core.isSchedulingAlive else { return }
+        resumeAfterInterruption()
     }
 }

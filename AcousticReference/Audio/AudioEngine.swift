@@ -461,6 +461,18 @@ final class AudioEngine: ObservableObject {
         }
         try session.setActive(true)
 
+        // 【返修批8】輸入增益恆設滿：session 的 inputGain 是
+        // 跨 App 持久值（語音備忘錄／通話類 App 可調低），且
+        // .measurement 模式關閉系統自動增益後無人託管——原
+        // 生路徑從未設定此值，殘值偏低時麥克風「在跑」但訊
+        // 號整體低於噪聲門，檢測恆無輸出（實機「校音中但
+        // 0.0 Hz」）。可設時恆設 1.0，與母本 getUserMedia
+        // 在 iOS 上由系統託管的等效增益對齊；不可設（外接
+        // 麥等）時跳過，不影響啟動。
+        if session.isInputGainSettable {
+            try? session.setInputGain(1.0)
+        }
+
         let audioEngine = AVAudioEngine()
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)

@@ -252,6 +252,25 @@ struct TunerTheme {
                     colors: [Color(hex: 0x17171A), Color.clear],
                     center: .top, startRadius: 0, endRadius: 560
                 )
+                // 【返修批8】環境微光（靜態）：真液態玻璃要
+                // 有內容可折射——純黑底上系統玻璃只剩漫射
+                // 霧面、讀作乳灰塑膠（批7 實機）。比照開屏
+                // 三團柔光的語言，在頁底鋪極淡的藍／紫／青
+                // 光暈（靜止圖層、零逐幀成本），玻璃的折射
+                // 與邊緣高光由此承載；濃度壓在文字對比無感
+                // 的範圍內。
+                RadialGradient(
+                    colors: [Color(hex: 0x0A84FF).opacity(0.10), Color.clear],
+                    center: UnitPoint(x: 0.10, y: 0.04),
+                    startRadius: 0, endRadius: 340)
+                RadialGradient(
+                    colors: [Color(hex: 0xBF5AF2).opacity(0.07), Color.clear],
+                    center: UnitPoint(x: 0.92, y: 0.36),
+                    startRadius: 0, endRadius: 380)
+                RadialGradient(
+                    colors: [Color(hex: 0x64D2FF).opacity(0.05), Color.clear],
+                    center: UnitPoint(x: 0.45, y: 1.02),
+                    startRadius: 0, endRadius: 420)
             }
         case .pit:
             ZStack {
@@ -260,6 +279,16 @@ struct TunerTheme {
                     colors: [Color(hex: 0x140404), Color.clear],
                     center: .top, startRadius: 0, endRadius: 560
                 )
+                // 【返修批8】同 dark 的環境微光，換樂池暗紅
+                // 家族、濃度更收。
+                RadialGradient(
+                    colors: [Color(hex: 0x8E2F26).opacity(0.12), Color.clear],
+                    center: UnitPoint(x: 0.10, y: 0.04),
+                    startRadius: 0, endRadius: 340)
+                RadialGradient(
+                    colors: [Color(hex: 0xD63A22).opacity(0.05), Color.clear],
+                    center: UnitPoint(x: 0.92, y: 0.40),
+                    startRadius: 0, endRadius: 380)
             }
         case .light:
             ZStack {
@@ -268,6 +297,16 @@ struct TunerTheme {
                     colors: [Color.white, Color.clear],
                     center: .top, startRadius: 0, endRadius: 560
                 )
+                // 【返修批8】淺色同鋪極淡微光，給 .clear
+                // 鏡片與玻璃面留可折射的色彩邊界。
+                RadialGradient(
+                    colors: [Color(hex: 0x0A84FF).opacity(0.05), Color.clear],
+                    center: UnitPoint(x: 0.10, y: 0.04),
+                    startRadius: 0, endRadius: 340)
+                RadialGradient(
+                    colors: [Color(hex: 0xBF5AF2).opacity(0.04), Color.clear],
+                    center: UnitPoint(x: 0.92, y: 0.36),
+                    startRadius: 0, endRadius: 380)
             }
         }
     }
@@ -284,29 +323,39 @@ extension TunerTheme {
     }
 
     /// 全 App 統一的玻璃配方（對齊 iOS 27 系統玻璃）：
-    /// tint alpha = 0.05 + 0.36t（t = (不透明度−8)/88，
-    /// 預設 50 → ≈0.22）。interactive 版供「整體即玻璃」
+    /// tint alpha = 0.02 + 0.16t（t = (不透明度−8)/88，
+    /// 預設 50 → ≈0.096）。interactive 版供「整體即玻璃」
     /// 的按鍵本體（頂欄圓鈕等），按壓形變由玻璃本體給出。
-    /// 【返修批2】alpha 曲線整體上調：舊版 0.02+0.34t 在
+    /// 【返修批2】alpha 曲線曾上調（0.03+0.24t）：舊版在
     /// 近黑頁面上玻璃與背景幾乎同色，實機看「完全沒有
-    /// 玻璃感」（Laurent 點名偏好頁）；深色 tint 色版本身
-    /// 亦提亮至 #26262A，讓卡面與頁面底色拉開層次。
+    /// 玻璃感」；深色 tint 色版提亮至 #26262A 拉開層次。
+    /// 【返修批8】曲線回调至 0.02+0.16t：批7 實機整體讀作
+    /// 不透明乳灰塑膠（Laurent 點名要「真的液態玻璃、透
+    /// 明」）——tint 是把系統玻璃推向塑料的主因；玻璃感改
+    /// 由頁面底的微光漸層（themedBackground）提供可折射
+    /// 內容承載，不再靠染色硬撐。
     func glass(_ opacity: Int, interactive: Bool = false) -> Glass {
         let t = min(1, max(0, (Double(opacity) - 8) / 88))
-        let base = Glass.regular.tint(glassTintBase.opacity(0.03 + 0.24 * t))
+        let base = Glass.regular.tint(glassTintBase.opacity(0.02 + 0.16 * t))
         return interactive ? base.interactive() : base
     }
 
-    /// 選中鏡片的玻璃（返修批3・嚴格 iOS 27 標準）：無 tint
-    /// 的系統真玻璃——返修批2 的白 tint（深 0.26／淺 0.85）
-    /// 在實機讀作不透明的扁平灰白膠囊，Laurent 點名「不
-    /// 是真液態玻璃，不是透明」。iOS 27 系統分段鏡片本體
-    /// 即無染色 .regular 玻璃：透明度、邊緣折射、鏡面高光
-    /// 全由 glassEffect 本體按背後內容即時算出，任何 tint
-    /// 都只會把它推向塑料。淺色下系統玻璃自帶亮面，深字
-    /// 成立；深色下為清透暗玻璃，近白字成立。
+    /// 選中鏡片的玻璃（返修批3・嚴格 iOS 27 標準；返修批8
+    /// 改 .clear）：無 tint 的系統真玻璃——返修批2 的白
+    /// tint（深 0.26／淺 0.85）在實機讀作不透明的扁平灰白
+    /// 膠囊，Laurent 點名「不是真液態玻璃，不是透明」。
+    /// 批3 去 tint 後用 .regular：透明度、邊緣折射、鏡面
+    /// 高光全由 glassEffect 本體按背後內容即時算出。批7
+    /// 實機 .regular 鏡片在深色軌道上仍呈一層乳灰（regular
+    /// 自帶的漫射霧面），Laurent 再點名要透明——批8 改用
+    /// .clear 變體：系統為多彩／媒體背景設計的清透玻璃，
+    /// 幾乎無霧面、只留折射與邊緣高光，正是他給的液態玻
+    /// 璃參考圖（厚玻璃本體、透明、內部折射、邊緣色散）
+    /// 在系統玻璃裡的對應物。選中字 textPrimary 粗體在清
+    /// 透鏡片上直接可讀（批7 實機選中字被乳灰鏡片吃掉的
+    /// 問題隨之消失）。
     var lensGlass: Glass {
-        .regular.interactive()
+        .clear.interactive()
     }
 }
 
@@ -323,10 +372,11 @@ extension TunerTheme {
 /// Apple 液態玻璃與仿製材質的分野。
 ///
 /// 不透明度（8–96）語義：只走 tint 單通道——alpha =
-/// 0.02 + 0.34t（t = (值−8)/88）。預設 50 → ≈0.18，
-/// 對齊 iOS 27 系統玻璃的清透濃度（重 tint 是仿製材質
-/// 發塑料感的主因，Apple 官方亦明示 tint 須透）；拉高
-/// 趨近實色、拉低趨近清透，全程不離折射本體。
+/// 0.02 + 0.16t（t = (值−8)/88，返修批8 曲線，見
+/// TunerTheme.glass）。預設 50 → ≈0.096，對齊 iOS 27
+/// 系統玻璃的清透濃度（重 tint 是仿製材質發塑料感的主
+/// 因，Apple 官方亦明示 tint 須透）；拉高趨近實色、拉
+/// 低趨近清透，全程不離折射本體。
 /// interactive 不加於本背景層：按壓形變作用在控件本體
 /// （GlassPressButtonStyle／鏡片），不加在襯底。
 struct GlassSurface<S: InsettableShape>: View {
@@ -415,19 +465,22 @@ struct GlassSegmentedControl<Option: Hashable>: View {
                     min(max($0, 3 + segW / 2), geo.size.width - 3 - segW / 2)
                 } ?? selCenter
                 ZStack(alignment: .leading) {
-                    // 鏡片：無 tint 真玻璃＋glassEffectID morph；
-                    // 幾何內縮（寬 segW−4、高 height−2、上下
-                    // 置中），不凸出軌道。拖動形變：系統
+                    // 鏡片：無 tint 真玻璃（.clear，見
+                    // theme.lensGlass）＋glassEffectID morph；
+                    // 幾何內縮（寬 segW−4、高 height−2），
+                    // ZStack 本已垂直置中——【返修批8】刪除
+                    // 舊版多加的 y+4 偏移與投影：偏移令鏡片
+                    // 貼軌道下緣（實機「玻璃位置不對」），投
+                    // 影在鏡片周圍積一圈灰暈、加重塑膠感；系
+                    // 統鏡片本無投影、無偏移。拖動形變：系統
                     // .interactive() 本體形變＋速度拉伸疊加。
                     Capsule()
                         .fill(.clear)
                         .frame(width: segW - 4, height: height - 2)
                         .glassEffect(theme.lensGlass, in: Capsule())
                         .glassEffectID("lens", in: glassNS)
-                        .shadow(color: Color.black.opacity(theme.isDark ? 0.18 : 0.10),
-                                radius: 3, x: 0, y: 1)
                         .scaleEffect(x: 1 + stretch, y: 1 - stretch * 0.35)
-                        .offset(x: lensCenter - (segW - 4) / 2, y: 4)
+                        .offset(x: lensCenter - (segW - 4) / 2, y: 0)
                         .animation(pressing ? nil
                                    : .spring(response: 0.38, dampingFraction: 0.82),
                                    value: lensCenter)

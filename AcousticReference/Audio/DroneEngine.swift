@@ -736,13 +736,19 @@ final class DroneEngine: ObservableObject {
                 self.start(targetMidi: midi, timbre: currentTimbre)
             }
         })
-        // 配置變更自愈（返修批7・D2，比照 AudioEngine 形制）：
-        // 播放中裝置切換致取樣率改變時，本引擎的圖以啟動時
-        // session 取樣率的固定格式建成、格式可能失效——同步
-        // 拆卸後以同一目標音／音色重建（形制同上媒體服務重置
-        // 路徑；start 內以當下 session 取樣率重新建格式）。
+        // 配置變更自愈（返修批7・D2，比照 AudioEngine 形制；
+        // 返修批8 加速率閘門）：播放中裝置切換致取樣率改變
+        // 時，本引擎的圖以啟動時 session 取樣率的固定格式
+        // 建成、格式可能失效——同步拆卸後以同一目標音／音
+        // 色重建（形制同上媒體服務重置路徑；start 內以當下
+        // session 取樣率重新建格式）。
         // 與 routeChange 的分工：裝置被拔（.oldDeviceUnavailable）
         // 走 stop 防外放突響；本路徑只處理仍有裝置而格式改變。
+        // 【返修批8】本觀察以 object: nil 註冊（一次性註冊
+        // 制），同 session 內任何引擎的配置變更都送達——其
+        // 他引擎啟停（調音開麥等）引發的通知下 session 取樣
+        // 率並未改變、圖仍有效，拆建只製造斷音與重建競態；
+        // 故先比對速率，未變直接忽略，真變才重建。
         observerBag.add(center.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: nil, queue: nil
@@ -751,6 +757,8 @@ final class DroneEngine: ObservableObject {
                 guard let self, self.isPlaying,
                       ProcessInfo.processInfo.systemUptime - self.lastEngineStartUptime >= 0.75
                 else { return }
+                if abs(AVAudioSession.sharedInstance().sampleRate
+                        - self.core.sampleRate) < 1 { return }
                 let midi = self.targetMidi
                 let currentTimbre = self.timbre
                 self.resumeAfterInterruption = false
