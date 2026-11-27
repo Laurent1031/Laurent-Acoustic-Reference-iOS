@@ -149,7 +149,21 @@ struct TunerView: View {
                 }
             }
         )
-        .onDisappear { viewModel.viewDidDisappear() }
+        .onDisappear {
+            viewModel.viewDidDisappear()
+            // 手勢狀態兜底重置（審計修復）：收藏拖曳與目標列
+            // 滑奏的狀態此前只在各自 onEnded 清理，系統中斷且
+            // onEnded 未送達時 favDragId 殘留會令收藏列捲動
+            // 鎖死（scrollDisabled 恆真）、isGliding 殘留令
+            // Drone 滑音常數不復位；離頁一律歸零。
+            favDragId = nil
+            favDragTranslation = 0
+            favShifted = [:]
+            glideActive = false
+            glideEngaged = false
+            glideBlocked = false
+            viewModel.setGliding(false)
+        }
     }
 
     // MARK: - Row 1：樂器觸發鈕＋記譜/實音分段（母本行 5231）
@@ -160,25 +174,35 @@ struct TunerView: View {
         HStack(spacing: 8) {
             // 【返修批3】卡身改 HStack＋onTapGesture（原為
             // Button 包整卡）：卡內嵌收藏星 Button——Button
-            // 內不能再嵌 Button，改手勢後星鈕獨立命中、卡身
-            // 其餘區域點按開樂器庫，互不干擾。星與樂器庫共用
-            // FavoriteStarButton（爆裂參數單一真源）。
+            // 內不能再嵌 Button。【審計修復】批 3 註解稱星鈕
+            // 與卡身手勢「互不干擾」並不成立：父層 onTapGesture
+            // 與子 Button 可同時觸發，點星可能連帶開樂器庫。
+            // 改手勢分區：名稱區（含 Spacer）與調號籤各自掛
+            // 點按開樂器庫，星鈕獨立於任何父手勢之外，命中
+            // 互不重疊。星與樂器庫共用 FavoriteStarButton
+            // （爆裂參數單一真源）。
             HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(L10n.localizedName(store.selectedInstrument.categoryLabel))
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(0.8)
-                        .foregroundStyle(theme.accent)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Text(L10n.headerInstrumentLabel(name: store.selectedInstrument.name,
-                                    englishName: store.selectedInstrument.englishName))
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(L10n.localizedName(store.selectedInstrument.categoryLabel))
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(0.8)
+                            .foregroundStyle(theme.accent)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Text(L10n.headerInstrumentLabel(name: store.selectedInstrument.name,
+                                        englishName: store.selectedInstrument.englishName))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                    Spacer(minLength: 4)
                 }
-                Spacer(minLength: 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { showLibrary = true }
+
                 FavoriteStarButton(store: store,
                                    instrumentId: store.selectedInstrument.id,
                                    theme: theme)
@@ -188,12 +212,12 @@ struct TunerView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(theme.accent.opacity(0.14), in: Capsule())
+                    .contentShape(Capsule())
+                    .onTapGesture { showLibrary = true }
             }
             .padding(.horizontal, 12)
             .frame(height: 40)
             .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .onTapGesture { showLibrary = true }
 
             pitchModeSegment(theme: theme)
         }

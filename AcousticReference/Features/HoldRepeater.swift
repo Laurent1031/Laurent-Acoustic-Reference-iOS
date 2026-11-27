@@ -8,6 +8,7 @@ import SwiftUI
 @MainActor
 final class HoldRepeatController: ObservableObject {
     private var task: Task<Void, Never>?
+    private var generation = 0
     private var fired = false
     /// 按壓中（供 label 亮斑回饋，母本 .glass-press）。
     @Published private(set) var isPressing = false
@@ -16,6 +17,8 @@ final class HoldRepeatController: ObservableObject {
         guard task == nil else { return }
         isPressing = true
         fired = false
+        generation += 1
+        let gen = generation
         task = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(nanoseconds: 340_000_000)
@@ -31,6 +34,11 @@ final class HoldRepeatController: ObservableObject {
             } catch {
                 // 已取消（手指抬起）：結束連調。
             }
+            // 自然跑完時自清（審計修復）：完成路徑此前不清
+            // task，若 pressing(false) 又未送達，pressBegan 的
+            // guard 會令此鈕在 View 生命週期內永久無反應。
+            // 以代次比對防誤清後繼按壓的 Task。
+            if let self, self.generation == gen { self.task = nil }
         }
     }
 

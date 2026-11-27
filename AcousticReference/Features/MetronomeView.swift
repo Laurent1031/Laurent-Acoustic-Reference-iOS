@@ -632,6 +632,10 @@ struct MetronomeView: View {
         if untouched && viewModel.settings.bpm != editorStartBpm { return }
         if let value = Int(editorText.trimmingCharacters(in: .whitespaces)) {
             viewModel.setBpm(value)
+        } else {
+            // 輸入無法解析（審計修復）：此前靜默關閉、不套用
+            // 也不提示，與「按了沒反應」同類；改以 Toast 明示。
+            viewModel.showToast("请输入有效的 BPM 数字")
         }
     }
 
@@ -756,10 +760,34 @@ struct MetronomeView: View {
                     Button {
                         if viewModel.applyRampQuick(scheme) { showCustomRamp = true }
                     } label: {
-                        menuItemLabel(L10n.t(scheme.label), checked: false)
+                        menuItemLabel(L10n.t(scheme.label),
+                                      checked: rampSchemeChecked(scheme))
                     }
                 }
             }
+        }
+    }
+
+    /// 漸速 Menu 勾選態（審計修復）：此前 checked 恆 false、
+    /// 永不標示作用中方案。RampState 不存方案 id，以運行參數
+    /// （step／每步小節／方向）反推：快速方案全匹配者為作用
+    /// 中；自訂＝進行中且無快速方案匹配；關閉＝未進行。
+    private func rampSchemeChecked(_ scheme: RampQuickScheme) -> Bool {
+        let r = viewModel.rampState
+        switch scheme.id {
+        case "off":
+            return !r.active
+        case "custom":
+            guard r.active else { return false }
+            return !RampQuickScheme.all.contains { s in
+                guard let d = s.delta else { return false }
+                return s.step == r.step && s.bars == r.barsPerStep
+                    && (d > 0) == (r.to > r.from)
+            }
+        default:
+            guard let d = scheme.delta, r.active else { return false }
+            return scheme.step == r.step && scheme.bars == r.barsPerStep
+                && (d > 0) == (r.to > r.from)
         }
     }
 
@@ -917,6 +945,7 @@ struct MetronomeView: View {
 @MainActor
 private final class HoldRepeater: ObservableObject {
     private var task: Task<Void, Never>?
+    private var generation = 0
     private var fired = false
     /// 按壓中（供按壓亮斑回饋，母本 .glass-press）。
     @Published private(set) var isPressing = false
@@ -925,6 +954,8 @@ private final class HoldRepeater: ObservableObject {
         guard task == nil else { return }
         isPressing = true
         fired = false
+        generation += 1
+        let gen = generation
         task = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(nanoseconds: 340_000_000)
@@ -940,6 +971,11 @@ private final class HoldRepeater: ObservableObject {
             } catch {
                 // 已取消（手指抬起）：結束連調。
             }
+            // 自然跑完時自清（審計修復）：完成路徑此前不清
+            // task，若 pressing(false) 又未送達，pressBegan 的
+            // guard 會令此鈕在 View 生命週期內永久無反應。
+            // 以代次比對防誤清後繼按壓的 Task。
+            if let self, self.generation == gen { self.task = nil }
         }
     }
 
@@ -995,18 +1031,22 @@ private struct CustomRampSheet: View {
     @State private var toText = ""
     @State private var barsText = "4"
     @State private var stepText = "2"
+    /// 驗證失敗的面板內提示（審計修復）：此前失敗只觸發主頁
+    /// Toast，而 sheet 蓋在主頁之上、Toast 不可見，實機表現
+    /// 為「按了沒反應」；改面板內直接顯示錯誤。
+    @State private var showError = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section(L10n.t("渐速参数")) {
                     LabeledContent(L10n.t("起始 BPM")) {
-                        TextField("20–300", text: $fromText)
+                        TextField("20–\(viewModel.settings.bpmMaxNow)", text: $fromText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
                     LabeledContent(L10n.t("目标 BPM")) {
-                        TextField("20–300", text: $toText)
+                        TextField("20–\(viewModel.settings.bpmMaxNow)", text: $toText)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
@@ -1030,6 +1070,13 @@ private struct CustomRampSheet: View {
                         }
                     }
                 }
+                if showError {
+                    Section {
+                        Text(L10n.t("请检查渐速参数"))
+                            .font(.system(size: 13.5, weight: .medium))
+                            .foregroundStyle(.red)
+                    }
+                }
                 Section {
                     Button(L10n.t("开始渐速")) {
                         let from = Int(fromText) ?? -1
@@ -1039,6 +1086,8 @@ private struct CustomRampSheet: View {
                         if viewModel.startCustomRamp(from: from, to: to,
                                                      bars: bars, step: step) {
                             isPresented = false
+                        } else {
+                            showError = true
                         }
                     }
                 }
@@ -1056,6 +1105,10 @@ private struct CustomRampSheet: View {
                     toText = String(viewModel.settings.clampedBpm(viewModel.settings.bpm + 20))
                 }
             }
+            .onChange(of: fromText) { _, _ in showError = false }
+            .onChange(of: toText) { _, _ in showError = false }
+            .onChange(of: barsText) { _, _ in showError = false }
+            .onChange(of: stepText) { _, _ in showError = false }
         }
         .presentationDetents([.medium])
     }

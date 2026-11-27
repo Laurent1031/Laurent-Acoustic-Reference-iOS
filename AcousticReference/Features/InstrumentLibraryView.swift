@@ -78,9 +78,15 @@ struct InstrumentLibraryView: View {
             .toolbar {
                 // 【返修批2】左上「點亮 ★…」提示經 Laurent
                 // 指示去掉（工具列裡被擠成圓形殘片、字截斷）。
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(L10n.t("完成")) { dismiss() }
-                        .font(.system(size: 15, weight: .semibold))
+                // 【審計修復】自訂樂器表單開啟時隱藏「完成」：
+                // 此前表單接管主體後此鈕仍在，點之直接 dismiss
+                // 整張樂器庫、繞過表單自身的取消——編輯中誤點
+                // 即整份草稿無確認丟棄。
+                if !showingForm {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(L10n.t("完成")) { dismiss() }
+                            .font(.system(size: 15, weight: .semibold))
+                    }
                 }
             }
         }
@@ -336,7 +342,7 @@ private struct CustomInstrumentFormView: View {
 
     /// 選項標籤為 zh-CN 源串（母本 ciTrans 原文）；顯示時經
     /// L10n.t 查字典（十條皆為字典鍵）。
-    private static let transpositionOptions: [TranspositionOption] = [
+    private static let transpositionOptionsBase: [TranspositionOption] = [
         TranspositionOption(value: 0, label: "同度 · 记谱 = 实音（钢琴/长笛）"),
         TranspositionOption(value: -2, label: "降B乐器 · 记谱高大二度（单簧管/小号）"),
         TranspositionOption(value: -3, label: "A调 · 记谱高小三度（A调单簧管）"),
@@ -348,6 +354,20 @@ private struct CustomInstrumentFormView: View {
         TranspositionOption(value: 2, label: "D调 · 记谱低大二度"),
         TranspositionOption(value: 5, label: "F调 · 记谱低纯四度"),
     ]
+
+    /// 含草稿現值的選項表（審計修復）：匯入的自訂樂器移調可
+    /// 為 [−24, 24] 任意整數，不在母本十個固定選項內時 Picker
+    /// 無匹配 tag、選單顯示空白（草稿值本身保留、保存不丟）；
+    /// 現值不在表內時補一項，令選單如實顯示現值。
+    private var transpositionOptions: [TranspositionOption] {
+        var options = Self.transpositionOptionsBase
+        if !options.contains(where: { $0.value == transposition }) {
+            options.append(TranspositionOption(
+                value: transposition,
+                label: "移调 \(transposition)（自定义）"))
+        }
+        return options
+    }
 
     init(store: AppStore, editing: Instrument?,
          onCancel: @escaping () -> Void,
@@ -407,7 +427,7 @@ private struct CustomInstrumentFormView: View {
 
                 labeledPicker(theme: theme, label: L10n.t("移调关系（记谱与实音）")) {
                     Picker(L10n.t("移调关系（记谱与实音）"), selection: $transposition) {
-                        ForEach(Self.transpositionOptions) { option in
+                        ForEach(transpositionOptions) { option in
                             Text(L10n.t(option.label)).tag(option.value)
                         }
                     }

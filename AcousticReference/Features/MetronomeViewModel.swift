@@ -131,9 +131,12 @@ final class MetronomeViewModel: ObservableObject {
     var hintText: String {
         if isPlaying {
             if displayIsCountIn {
+                // 分母須與引擎實際計拍一致（審計修復）：引擎預備
+                // 拍按 beatsInBar（附點調整後）計，舊寫 beatsPerBar
+                // 令附點 6/8 的 2 拍預備拍顯示為「第 x/6 拍」。
                 return "● " + String(
                     format: L10n.t("预备拍 · 第 %d/%d 拍 (%d BPM)"),
-                    displayBeat + 1, settings.beatsPerBar, settings.bpm)
+                    displayBeat + 1, settings.beatsInBar, settings.bpm)
             }
             let suffix = settings.isDottedBeat
                 ? " (♩. \(settings.bpm) BPM)" : " (\(settings.bpm) BPM)"
@@ -420,9 +423,14 @@ final class MetronomeViewModel: ObservableObject {
         if settings.bpm > settings.bpmMaxNow {
             setBpmRaw(settings.bpm)
         }
+        // 與其餘 setter 一致（審計修復）：清除作用中預置標記
+        // （此前唯獨此 setter 不清，預置列顯示與實際狀態不符）
+        // 並補 tick 音效。
+        activePresetId = nil
         publishFill()
         if isPlaying { engine.resetBeatIndex() }
         HapticsEngine.shared.tap(milliseconds: 6)
+        UISoundEngine.shared.play(.tick)
     }
 
     /// 點按拍柱：等級向下循環 3→2→1→0→3（母本行 11575；
@@ -531,6 +539,20 @@ final class MetronomeViewModel: ObservableObject {
 
     // MARK: - 預置（母本 applyMetroPreset/saveCurrentMetroPreset）
 
+    /// store → VM 同步（審計修復）：備份匯入直接寫
+    /// store.metronomeUserPresets 時，運行中的 VM 以此刷新副本
+    /// ——此前同步只有 VM→store 單向，匯入後節拍器頁仍顯示舊
+    /// 預置，且 VM 下次落盤會以舊副本覆寫匯入值。
+    func syncUserPresetsFromStore(_ presets: [MetronomePreset]) {
+        // VM 自身落盤回寫 store 時 onChange 亦會觸發，同值直退。
+        guard presets != userPresets else { return }
+        userPresets = presets
+        if let id = activePresetId,
+           !allPresets.contains(where: { $0.id == id }) {
+            activePresetId = nil
+        }
+    }
+
     func applyPreset(_ preset: MetronomePreset) {
         engine.cancelRamp()
         rampState = engine.rampSnapshot()
@@ -539,8 +561,20 @@ final class MetronomeViewModel: ObservableObject {
         settings.beatUnit = preset.noteUnit
         settings.subdivision = preset.subdivision
         settings.timbre = preset.timbre
-        settings.beatAccents = MetronomeSettings.defaultAccents(
-            beats: preset.beats, unit: preset.noteUnit)
+        // 與 setSignature 同路徑（審計修復）：優先套用該拍號的
+        // 分組記憶推導重音；此前直接寫預設重音，手動切同拍號
+        // 與套預置切同拍號的重音結果不一致。播放中拍位歸零
+        // 亦與 setSignature 齊平。
+        if let groups = settings.groupingBySignature[
+            MetronomeSettings.signatureKey(beats: preset.beats,
+                                           unit: preset.noteUnit)],
+           groups.reduce(0, +) == preset.beats {
+            settings.beatAccents = MetronomeSettings.accents(forGroups: groups)
+        } else {
+            settings.beatAccents = MetronomeSettings.defaultAccents(
+                beats: preset.beats, unit: preset.noteUnit)
+        }
+        if isPlaying { engine.resetBeatIndex() }
         activePresetId = preset.id
         HapticsEngine.shared.tap(milliseconds: 8)
         UISoundEngine.shared.play(.tick)
@@ -624,8 +658,11 @@ final class MetronomeViewModel: ObservableObject {
     /// 自訂漸速（母本驗證：from/to ∈ [40,208]、to≠from、
     /// bars 1–32、step 1–20）。成功回 true。
     func startCustomRamp(from: Int, to: Int, bars: Int, step: Int) -> Bool {
-        guard (MetronomeSettings.bpmMin...MetronomeSettings.bpmMax).contains(from),
-              (MetronomeSettings.bpmMin...MetronomeSettings.bpmMax).contains(to),
+        // 上限隨附點計拍（審計修復）：附點模式 BPM 可達 307，
+        // 舊驗證寫死 300 令 301–307 的合法目標被拒。
+        let maxBpm = settings.bpmMaxNow
+        guard (MetronomeSettings.bpmMin...maxBpm).contains(from),
+              (MetronomeSettings.bpmMin...maxBpm).contains(to),
               to != from, (1...32).contains(bars), (1...20).contains(step)
         else {
             // 母本行 11317：漸速參數無效 uiSound("warn")。

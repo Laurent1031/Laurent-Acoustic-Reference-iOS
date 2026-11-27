@@ -295,6 +295,15 @@ extension MetronomeSettings: Codable {
         subdivision = try c.decode(Int.self, forKey: .subdivision)
         timbre = try c.decode(MetronomeTimbre.self, forKey: .timbre)
         beatAccents = try c.decode([Int].self, forKey: .beatAccents)
+        // 長度正規化（操作邏輯審計修復）：舊存檔／匯入備份的
+        // 重音陣列長度可與拍數不符——超界拍柱會顯示弱拍且點按
+        // 靜默失效（cycleAccent 索引守衛）。解碼即校正：長度
+        // 不符重建預設重音；長度符者等級鉗 [0, 3] 防越界渲染。
+        if beatAccents.count != beatsPerBar {
+            beatAccents = Self.defaultAccents(beats: beatsPerBar, unit: beatUnit)
+        } else {
+            beatAccents = beatAccents.map { min(3, max(0, $0)) }
+        }
         bluetoothCompMs = try c.decode(Int.self, forKey: .bluetoothCompMs)
         countIn = false
         // 補強段新增欄：舊檔缺欄退預設，並做範圍健全化。

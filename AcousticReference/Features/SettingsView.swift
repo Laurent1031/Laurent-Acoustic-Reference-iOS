@@ -122,6 +122,25 @@ struct PreferencesView: View {
         _draftMetroDefault = State(initialValue: nil)
     }
 
+    /// 容差選項（審計修復）：固定三檔之外，草稿值若為匯入等
+    /// 路徑帶入的任意值（如網頁版常見的 2.5），動態插入一檔
+    /// 令鏡片與選中態如實對應生效值——此前 GlassSegmentedControl
+    /// 找不到匹配時回退第一格，顯示「严苛 ±1.5¢」而實際生效
+    /// 2.5，顯示與生效不一致（數據本身不丟）。
+    private var toleranceOptions: [(Double, String)] {
+        var options: [(Double, String)] = [
+            (1.5, L10n.t("严苛 ±1.5¢")),
+            (3.0, L10n.t("乐团 ±3.0¢")),
+            (4.0, L10n.t("宽容 ±4.0¢")),
+        ]
+        if !options.contains(where: { $0.0 == draftTolerance }) {
+            let label = String(format: "±%.1f¢", draftTolerance)
+            let idx = options.firstIndex { $0.0 > draftTolerance } ?? options.count
+            options.insert((draftTolerance, label), at: idx)
+        }
+        return options
+    }
+
     var body: some View {
         let theme = store.resolvedTheme(system: colorScheme)
         NavigationStack {
@@ -246,9 +265,7 @@ struct PreferencesView: View {
                           title: L10n.t("准音判定容差范围"),
                           sub: L10n.t("决定指针与沉浸式全屏变绿的判定松紧"))
             SettingsChips(theme: theme, glassOpacity: store.glassOpacity,
-                          options: [(1.5, L10n.t("严苛 ±1.5¢")),
-                                    (3.0, L10n.t("乐团 ±3.0¢")),
-                                    (4.0, L10n.t("宽容 ±4.0¢"))],
+                          options: toleranceOptions,
                           selection: $draftTolerance)
 
             SettingsLabel(theme: theme,
@@ -359,9 +376,14 @@ struct SystemSettingsView: View {
     @State private var backupImportError = false
     /// 自訂背景（裝機返修批）：選圖與自選色的本地狀態。
     @State private var backgroundPhotoItem: PhotosPickerItem?
+    /// 選圖讀取／解碼失敗的提示（審計修復）：此前靜默無反應，
+    /// 用戶無從分辨未選中還是失敗。
+    @State private var backgroundPhotoError = false
     @State private var customColor: Color = Color(hex: 0x0A84FF)
-    /// 備份導出（裝機返修批）：暫存檔 URL，生成後以 ShareLink 呈現。
+    /// 備份導出：暫存檔 URL 與分享表呈現狀態（點按即生成最新
+    /// 快照並呈現，見 backupGroup 註解）。
     @State private var backupExportURL: URL?
+    @State private var showExportShare = false
 
     var body: some View {
         let theme = store.resolvedTheme(system: colorScheme)
@@ -433,21 +455,25 @@ struct SystemSettingsView: View {
             }
             .buttonStyle(GlassPressButtonStyle())
             Divider()
-            if let backupExportURL {
-                ShareLink(item: backupExportURL) {
-                    Text(L10n.t("导出备份"))
-                        .font(.system(size: 13.5, weight: .semibold))
-                        .foregroundStyle(theme.accent)
+            // 導出改單擊（審計修復）：此前兩段式——首次點按只
+            // 生成暫存檔並把按鈕換成 ShareLink、須再點一次；
+            // 且生成後再改任何設定，導出的仍是舊快照。改點按
+            // 當下生成最新快照並直接呈現系統分享表。
+            Button {
+                if let url = BackupExporter.writeTempFile(store: store) {
+                    backupExportURL = url
+                    showExportShare = true
                 }
-            } else {
-                Button {
-                    backupExportURL = BackupExporter.writeTempFile(store: store)
-                } label: {
-                    Text(L10n.t("导出备份"))
-                        .font(.system(size: 13.5, weight: .semibold))
-                        .foregroundStyle(theme.accent)
+            } label: {
+                Text(L10n.t("导出备份"))
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(theme.accent)
+            }
+            .buttonStyle(GlassPressButtonStyle())
+            .sheet(isPresented: $showExportShare) {
+                if let backupExportURL {
+                    ShareSheet(items: [backupExportURL])
                 }
-                .buttonStyle(GlassPressButtonStyle())
             }
         }
     }
@@ -559,6 +585,15 @@ struct SystemSettingsView: View {
                         supportsOpacity: false)
                 .font(.system(size: 13))
                 .foregroundStyle(theme.textPrimary)
+                .onAppear {
+                    // 初值對齊目前背景色（審計修復）：此前固定
+                    // 藍色起手，用戶此前以色票／匯入設過其他
+                    // 顏色時，色樣顯示與實際背景不符。
+                    if store.bgKind == "color",
+                       let rgb = AppStore.parseHexColor(store.bgColorHex) {
+                        customColor = Color(hex: rgb)
+                    }
+                }
                 .onChange(of: customColor) { _, newColor in
                     if let hex = newColor.hexString {
                         store.setCustomBackgroundColor(hex)
@@ -578,9 +613,15 @@ struct SystemSettingsView: View {
                         type: Data.self),
                        let processed = Self.processBackgroundImage(data) {
                         store.setCustomBackgroundImage(processed)
+                    } else {
+                        backgroundPhotoError = true
                     }
                     backgroundPhotoItem = nil
                 }
+            }
+            .alert(L10n.t("图片读取失败，请重新选择"),
+                   isPresented: $backgroundPhotoError) {
+                Button(L10n.t("关闭"), role: .cancel) {}
             }
         }
 
@@ -704,4 +745,17 @@ struct SystemSettingsView: View {
                           sub: L10n.t("校音或节拍器运行时自动保持屏幕常亮，无需手动设置"))
         }
     }
+}
+
+/// 系統分享表包裝（備份導出單擊化，審計修復）：點按導出即
+/// 生成最新快照並呈現，不再經 ShareLink 兩段式。
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController,
+                                  context: Context) {}
 }

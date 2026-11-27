@@ -766,8 +766,22 @@ final class AppStore: ObservableObject {
     func deleteCustomInstrument(id: String) {
         customInstruments.removeAll { $0.id == id }
         favoriteInstrumentIds.removeAll { $0 == id }
+        // 收藏最低 1 個不變量（審計修復）：toggleFavorite 有守衛，
+        // 刪除路徑此前無——刪掉唯一收藏的自訂樂器會令收藏歸零
+        // （運行期收藏列只剩「＋常用」，要下次啟動才回填）。比照
+        // init 的空收藏回填預設。
+        if favoriteInstrumentIds.isEmpty {
+            favoriteInstrumentIds = ["alto_sax", "piano", "violin"]
+                .filter { instrument(id: $0) != nil }
+        }
         if selectedInstrumentId == id {
             selectInstrument(id: InstrumentCatalog.builtins[0].id)
+        }
+        // 主樂器懸空清理（審計修復）：被刪樂器若是預設主樂器，
+        // primary 此前要等下次啟動的健全化才修正，期間偏好頁
+        // 主樂器 Picker 草稿指向不存在的 id（無選中項）。
+        if primaryInstrumentId == id {
+            primaryInstrumentId = selectedInstrumentId
         }
     }
 }

@@ -232,6 +232,19 @@ struct ContentView: View {
         .onChange(of: store.guzhengKey) { _, _ in
             engine.range = store.effectiveRange
         }
+        // 編輯自訂樂器後引擎音域同步（審計修復）：編輯「目前已
+        // 選中」的自訂樂器音域／移調並保存時，selectedInstrumentId
+        // 值未變、其 onChange 不觸發，引擎會繼續以舊音域檢測；
+        // 自訂樂器清單變更（編輯／新增／刪除／匯入）統一在此
+        // 刷新 effectiveRange。
+        .onChange(of: store.customInstruments) { _, _ in
+            engine.range = store.effectiveRange
+        }
+        // 備份匯入的節拍器預置同步進運行中的 VM（審計修復，
+        // 見 MetronomeViewModel.syncUserPresetsFromStore）。
+        .onChange(of: store.metronomeUserPresets) { _, newPresets in
+            metronomeViewModel.syncUserPresetsFromStore(newPresets)
+        }
         .onChange(of: store.droneTimbre) { _, newTimbre in
             droneEngine.setTimbre(newTimbre)
         }
