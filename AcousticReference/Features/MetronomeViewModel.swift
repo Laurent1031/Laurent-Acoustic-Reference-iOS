@@ -51,6 +51,11 @@ final class DialRenderState: ObservableObject {
     @Published var faderRatio: Double = 0
 }
 
+/// 【返修批3 CI 修復】@MainActor 屬本類：批3 抽出 DialRenderState
+/// 時把它插在本類之上，原 @MainActor 被吸到 DialRenderState，
+/// 本類失隔離致 CI 4 錯（didSet 內 engine.updateSettings／
+/// LiveActivity.shared.update／dial 預設值）。
+@MainActor
 final class MetronomeViewModel: ObservableObject {
     // MARK: - 設定與預置
 
