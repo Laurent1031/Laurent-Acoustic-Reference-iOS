@@ -680,6 +680,14 @@ private struct GlowSpotView: View {
 private struct GlowTouchTracker: UIViewRepresentable {
     var onUpdate: ([(id: Int, point: CGPoint)]) -> Void
 
+    /// 【CI 修復・run #55】自訂 Coordinator 類別在場時
+    /// 框架的預設 makeCoordinator（Coordinator == Void
+    /// 專用）不再適用，須顯式給出——原實現漏寫，協議
+    /// 符合性失敗（唯一的編譯錯誤）。
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeUIView(context: Context) -> GlowAnchorView {
         let view = GlowAnchorView()
         view.isUserInteractionEnabled = false
