@@ -107,7 +107,12 @@ struct ContentView: View {
 
     var body: some View {
         let theme = store.resolvedTheme(system: colorScheme)
-        VStack(spacing: 0) {
+        // 【CI 修復・run #56 嘗試 6】型別檢查超時：body 原為
+        // 單一表達式（視圖樹＋約 25 個修飾器鏈），編譯器在
+        // handleDeepLink 處推斷逾時（ContentView.swift:239）。
+        // 拆為 content／withSheets／return 三段各自推斷
+        // （編譯器建議的拆分法；行為、版面皆不變）。
+        let content = VStack(spacing: 0) {
             topBar(theme: theme)
 
             ZStack {
@@ -182,6 +187,7 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(store.effectiveForcedColorScheme)
+        let withSheets = content
         .sheet(item: $activeSheet) { sheet in
             // 【返修批2】sheet 內強制套 App 主題外觀＋以主題
             // 背景作呈現底：此前 sheet 的 glassEffect 與導航
@@ -244,26 +250,13 @@ struct ContentView: View {
         // 【邏輯補查・低】呈現改走 presentedImportPlan 副本
         // 與 activeSheet 串行（見其宣告註）：plan 在另一
         // sheet 開著時到達不再同帧相撞被吞。
-        .sheet(item: $presentedImportPlan, onDismiss: {
-            // 關閉收尾（二次驗證・低改進）：真源仍是剛關
-            // 掉的那份（滑動關閉＝取消）才清；呈現期間有
-            // 新 plan 到達（連續分享入）時不清、直接晉升
-            // 呈現新份——舊版無條件清真源會把新 plan 一併
-            // 靜默丟棄。按鈕路徑已先清真源者，此處比對不
-            // 中、為冪等空操作。
-            if store.pendingImportPlan?.id == presentedImportPlanID {
-                store.pendingImportPlan = nil
-            }
-            presentedImportPlanID = nil
-            if let waiting = store.pendingImportPlan {
-                presentedImportPlan = waiting
-                presentedImportPlanID = waiting.id
-            }
-        }) { plan in
+        .sheet(item: $presentedImportPlan,
+               onDismiss: handleImportSheetDismissed) { plan in
             BackupImportSheet(store: store, plan: plan)
                 .preferredColorScheme(store.effectiveForcedColorScheme)
                 .presentationBackground { theme.background }
         }
+        return withSheets
         // 【二次驗證・高】觀察值改 plan 的 id：ImportPlan
         // 僅 Identifiable、未 conform Equatable，
         // Optional<ImportPlan> 不滿足 onChange 的型別約
@@ -547,6 +540,22 @@ struct ContentView: View {
     /// laurent-acoustic:// 的三條路徑；未知路徑不動作。
     /// start 路徑在節拍器已播放時不重啟（ViewModel.start 的
     /// 引擎側亦有冪等守衛，此處先擋避免多餘的啟動觸感）。
+    /// 匯入確認 sheet 關閉收尾（自 onDismiss 閉包抽出，
+    /// 同為 run #56 型別超時拆分的一部分）：真源仍是剛關
+    /// 掉的那份（滑動關閉＝取消）才清；呈現期間有新 plan
+    /// 到達（連續分享入）時不清、直接晉升呈現新份。按鈕
+    /// 路徑已先清真源者，此處比對不中、為冪等空操作。
+    private func handleImportSheetDismissed() {
+        if store.pendingImportPlan?.id == presentedImportPlanID {
+            store.pendingImportPlan = nil
+        }
+        presentedImportPlanID = nil
+        if let waiting = store.pendingImportPlan {
+            presentedImportPlan = waiting
+            presentedImportPlanID = waiting.id
+        }
+    }
+
     private func handleDeepLink(_ url: URL) {
         guard url.scheme == "laurent-acoustic" else { return }
         switch url.host {
