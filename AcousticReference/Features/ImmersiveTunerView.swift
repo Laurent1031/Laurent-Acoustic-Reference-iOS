@@ -46,8 +46,15 @@ struct ImmersiveTunerView: View {
                     }
                     .frame(maxHeight: .infinity)
                 }
-                .padding(.horizontal, 26)
-                .padding(.vertical, 14)
+                // 【返修批7・E6】四邊內縮改隨 safeAreaInsets：
+                // 舊固定水平 26 在橫屏靈動島側（內縮 ≈59）
+                // 不足，頂列膠囊左段可落入島體範圍；改每邊
+                // max(原值, 內縮＋12)，島側自動讓出 ≈71，
+                // 無內縮邊維持原 26/14、視覺不變。
+                .padding(.leading, max(26, geo.safeAreaInsets.leading + 12))
+                .padding(.trailing, max(26, geo.safeAreaInsets.trailing + 12))
+                .padding(.top, max(14, geo.safeAreaInsets.top + 8))
+                .padding(.bottom, max(14, geo.safeAreaInsets.bottom + 8))
             }
         }
         .onAppear {
@@ -227,7 +234,7 @@ struct ImmersiveTunerView: View {
                     .foregroundStyle(theme.clipWarning)
             }
             if let error = engine.lastError {
-                Text(error)
+                Text(L10n.t(error))
                     .font(.footnote)
                     .foregroundStyle(theme.clipWarning)
             }

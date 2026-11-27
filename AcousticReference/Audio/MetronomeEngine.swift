@@ -195,6 +195,37 @@ final class MetronomeCore: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// 中斷開始：凍結調度（返修批7・D6）。定時器取消；playing
+    /// 與拍序／漸速狀態保留，已排進 player 的 ≤0.12 s 前瞻照常
+    /// 播完，其後不再新排點音／震動／視覺。
+    func pauseScheduling() {
+        lock.lock()
+        let source = timer
+        timer = nil
+        lock.unlock()
+        source?.cancel()
+    }
+
+    /// 中斷恢復：重建調度定時器（未在播放或定時器已存在時
+    /// 不動作）；拍點錨定由 resyncAfterInterruption 的
+    /// needsInitTick 在下一 tick 完成。
+    func resumeScheduling() {
+        lock.lock()
+        guard playing, timer == nil else {
+            lock.unlock()
+            return
+        }
+        lock.unlock()
+        let source = DispatchSource.makeTimerSource(queue: schedQueue)
+        source.schedule(deadline: .now(), repeating: .milliseconds(25),
+                        leeway: .milliseconds(2))
+        source.setEventHandler { [weak self] in self?.schedulerTick() }
+        source.resume()
+        lock.lock()
+        timer = source
+        lock.unlock()
+    }
+
     // MARK: - 調度（schedQueue）
 
     private func schedulerTick() {
@@ -240,7 +271,11 @@ final class MetronomeCore: @unchecked Sendable {
 
         // —— 點音（母本 triggerMetroSound；accentLevel==0 不發聲；
         // Gap 靜音小節整節不發聲，含細分拍）——
-        let keyLevel = isSub ? s.beatAccents[pillarIdx] : lvl
+        // 預備拍期間母本把覆蓋等級（首拍 3、其餘 2）一併傳給細分拍，
+        // 不讀拍柱重音；正式小節細分拍才讀 beatAccents。
+        let keyLevel = isSub
+            ? (countInActive ? (beatIndex == 0 ? 3 : 2) : s.beatAccents[pillarIdx])
+            : lvl
         if keyLevel > 0, !currentBarSilent,
            let buffer = buffers[ClickKey(timbre: s.timbre, level: keyLevel, isSub: isSub)] {
             let when = AVAudioTime(sampleTime: AVAudioFramePosition(nextTickSamples),
@@ -264,7 +299,10 @@ final class MetronomeCore: @unchecked Sendable {
             let hostSeconds = tickHostSeconds
             if let last = lastMainBeatSamples {
                 let intervalMs = (nextTickSamples - last) / sampleRate * 1000
-                let nominalMs = 60000.0 / Double(s.bpm) * (dotted ? 3.0 : 1.0)
+                // 主拍間隔恆為 60000/bpm：每 tick 間隔 (60/bpm)/subs、
+                // 主拍每 subs tick 一次，subs 抵消；附點只改 subs 與
+                // beatsInBar，不改主拍名義間隔（舊式多乘 ×3 已撤）。
+                let nominalMs = 60000.0 / Double(s.bpm)
                 let deviation = abs(intervalMs - nominalMs)
                 intervalCount += 1
                 sumAbsDeviation += deviation
@@ -392,6 +430,14 @@ final class MetronomeEngine: ObservableObject {
     private var compensationDB: Float = 0
     private var sessionAcquired = false
     private var notificationTokens: [NSObjectProtocol] = []
+    /// 配置變更觀察代幣（返修批7・D2）：觀察對象是當下的
+    /// AVAudioEngine 實例，引擎圖重建後須換綁新實例，故獨立
+    /// 於 notificationTokens 管理（start 註冊、stop 移除、
+    /// 重建完成時換綁）。
+    private var configurationChangeToken: NSObjectProtocol?
+    /// 最近一次引擎啟動的 uptime（配置變更自愈去抖，同
+    /// AudioEngine 形制：重建自身觸發的變更 0.75 s 內忽略）。
+    private var lastEngineStartUptime: TimeInterval = 0
 
     init(settings: MetronomeSettings) {
         core = MetronomeCore(settings: settings)
@@ -511,7 +557,17 @@ final class MetronomeEngine: ObservableObject {
                     engine.auditionEngine = nil
                     engine.auditionPlayer = nil
                     if ownsSession {
-                        try? AVAudioSession.sharedInstance().setActive(false)
+                        // 【返修批7・D3】拆卸當下重查協調器
+                        // 佔用：試聽開始後其他引擎（調音／節
+                        // 拍器／Drone）可能已接手 session，仍有
+                        // 使用者時不得 setActive(false) 誤殺對方。
+                        let coordinatorBusy =
+                            AudioSessionCoordinator.shared.isActive(.tuner)
+                            || AudioSessionCoordinator.shared.isActive(.metronome)
+                            || AudioSessionCoordinator.shared.isActive(.drone)
+                        if !coordinatorBusy {
+                            try? AVAudioSession.sharedInstance().setActive(false)
+                        }
                     }
                 }
             }
@@ -536,7 +592,7 @@ final class MetronomeEngine: ObservableObject {
             AudioSessionCoordinator.shared.applyProfile()
             try session.setActive(true)
         } catch {
-            lastError = "音訊工作階段啟動失敗：\(error.localizedDescription)"
+            lastError = "音频工作阶段启动失败：\(error.localizedDescription)"
             releaseSessionIfUnused()
             return
         }
@@ -556,7 +612,7 @@ final class MetronomeEngine: ObservableObject {
         do {
             try engine.start()
         } catch {
-            lastError = "節拍器引擎啟動失敗：\(error.localizedDescription)"
+            lastError = "节拍器引擎启动失败：\(error.localizedDescription)"
             releaseSessionIfUnused()
             return
         }
@@ -567,6 +623,7 @@ final class MetronomeEngine: ObservableObject {
         HapticsEngine.shared.warmUp()
         core.startScheduling()
         isPlaying = true
+        lastEngineStartUptime = ProcessInfo.processInfo.systemUptime
         registerNotifications()
     }
 
@@ -614,6 +671,11 @@ final class MetronomeEngine: ObservableObject {
                     // 系統停用，player 繼續跑只會空轉排程）；
                     // 拍序不重置，恢復時 resync 重新錨定。
                     self.player?.pause()
+                    // 【返修批7・D6】調度器一併凍結：舊版只
+                    // pause player，25 ms 定時器續跑，0.12 s
+                    // 前瞻耗盡後仍逐拍派發震動／視覺（聲音已
+                    // 停、震動先行）。恢復走 resumeScheduling。
+                    self.core.pauseScheduling()
                 case .ended:
                     if AVAudioSession.InterruptionOptions(rawValue: optionsRaw).contains(.shouldResume) {
                         self.resumeAfterInterruption()
@@ -622,7 +684,7 @@ final class MetronomeEngine: ObservableObject {
                         // 提示（View 層以 toast 呈現 lastError），
                         // 不留「畫面在跑、聲音已死」的靜默狀態。
                         self.stop()
-                        self.lastError = "節拍器因中斷停止，點按開始可繼續"
+                        self.lastError = "节拍器因中断停止，点按开始可继续"
                     }
                 @unknown default:
                     break
@@ -642,7 +704,7 @@ final class MetronomeEngine: ObservableObject {
                 // stop 落地（調度、Live Activity、session 會計
                 // 一致收尾），提示經 lastError → toast 可見。
                 self.stop()
-                self.lastError = "耳機已拔出，節拍器已自動暫停"
+                self.lastError = "耳机已拔出，节拍器已自动暂停"
             }
         })
         notificationTokens.append(center.addObserver(
@@ -654,6 +716,7 @@ final class MetronomeEngine: ObservableObject {
                 self.start()
             }
         })
+        registerConfigurationChangeObserver()
     }
 
     private func unregisterNotifications() {
@@ -661,6 +724,33 @@ final class MetronomeEngine: ObservableObject {
             NotificationCenter.default.removeObserver(token)
         }
         notificationTokens = []
+        unregisterConfigurationChangeObserver()
+    }
+
+    /// 配置變更觀察（返修批7・D2）：綁當下引擎實例；自愈
+    /// 重建後由 rebuild 路徑重新呼叫本函數換綁新實例（先移
+    /// 除舊代幣，不重複註冊）。重建自身觸發的變更以 0.75 s
+    /// 去抖忽略（同 AudioEngine 形制）。
+    private func registerConfigurationChangeObserver() {
+        unregisterConfigurationChangeObserver()
+        guard let engine = avEngine else { return }
+        configurationChangeToken = NotificationCenter.default.addObserver(
+            forName: AVAudioEngine.configurationChangeNotification,
+            object: engine, queue: nil) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isPlaying,
+                      ProcessInfo.processInfo.systemUptime - self.lastEngineStartUptime >= 0.75
+                else { return }
+                self.rebuildEngineAfterConfigurationChange()
+            }
+        }
+    }
+
+    private func unregisterConfigurationChangeObserver() {
+        if let token = configurationChangeToken {
+            NotificationCenter.default.removeObserver(token)
+            configurationChangeToken = nil
+        }
     }
 
     private func resumeAfterInterruption() {
@@ -668,7 +758,7 @@ final class MetronomeEngine: ObservableObject {
             // 引擎引用遺失卻仍標記播放中：不靜默——停機並
             // 報錯，讓 UI 狀態與聲音現實重新一致。
             stop()
-            lastError = "中斷後恢復失敗：引擎狀態遺失，已停止"
+            lastError = "中断后恢复失败：引擎状态遗失，已停止"
             return
         }
         do {
@@ -676,8 +766,55 @@ final class MetronomeEngine: ObservableObject {
             try avEngine.start()
             player.play()
             core.resyncAfterInterruption()
+            core.resumeScheduling()
         } catch {
-            lastError = "中斷後恢復失敗：\(error.localizedDescription)"
+            // 【返修批7・D1】舊版只寫 lastError 不停機：引擎已
+            // 死、isPlaying 恆 true，UI 顯示播放中卻無聲，須手
+            // 動按停才收斂。比照本函數 guard 分支與 .ended 不
+            // 恢復分支——完整 stop 落地（調度／session 會計／
+            // 觀察者一併收尾），再寫錯誤供 toast 呈現。
+            stop()
+            lastError = "中断后恢复失败：\(error.localizedDescription)"
         }
+    }
+
+    /// 配置變更自愈（返修批7・D2）：播放中裝置切換致輸出
+    /// 格式（取樣率）改變時，舊 player 的連接格式與按舊速率
+    /// 渲染的點音緩衝可能失效——按 start() 的建圖配方原地
+    /// 重建引擎圖。調度狀態不動（拍序／漸速保留），resync
+    /// 重新錨定樣本時間格。與 routeChange 的分工：裝置被拔
+    /// （.oldDeviceUnavailable）走 stop 防外放突響；仍有裝置
+    /// 而格式改變走本路徑。重建失敗比照 D1：完整 stop＋
+    /// lastError 可見，不留假播放狀態。
+    private func rebuildEngineAfterConfigurationChange() {
+        guard isPlaying, let oldEngine = avEngine else { return }
+        oldEngine.stop()
+        let engine = AVAudioEngine()
+        let playerNode = AVAudioPlayerNode()
+        let eq = AVAudioUnitEQ(numberOfBands: 1)
+        eq.globalGain = compensationDB
+        engine.attach(playerNode)
+        engine.attach(eq)
+        engine.connect(playerNode, to: eq, format: nil)
+        engine.connect(eq, to: engine.mainMixerNode, format: nil)
+        engine.prepare()
+        let outputRate = playerNode.outputFormat(forBus: 0).sampleRate
+        core.configure(player: playerNode, sampleRate: outputRate,
+                       buffers: buffers(for: outputRate))
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+            try engine.start()
+        } catch {
+            stop()
+            lastError = "音频配置变更后重建失败：\(error.localizedDescription)"
+            return
+        }
+        playerNode.play()
+        avEngine = engine
+        player = playerNode
+        gainEQ = eq
+        lastEngineStartUptime = ProcessInfo.processInfo.systemUptime
+        core.resyncAfterInterruption()
+        registerConfigurationChangeObserver()
     }
 }

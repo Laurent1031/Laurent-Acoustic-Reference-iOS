@@ -26,8 +26,7 @@ struct BackupImportSheet: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let theme = TunerTheme.resolve(preference: store.themePreference,
-                                       system: colorScheme)
+        let theme = store.resolvedTheme(system: colorScheme)
         NavigationStack {
             ZStack {
                 theme.background.ignoresSafeArea()
@@ -35,7 +34,7 @@ struct BackupImportSheet: View {
                     VStack(alignment: .leading, spacing: 12) {
                         section(theme: theme, title: L10n.t("将汇入的内容")) {
                             ForEach(plan.summaryLines, id: \.self) { line in
-                                Text(line)
+                                Text(L10n.t(line))
                                     .font(.system(size: 13.5))
                                     .foregroundStyle(theme.textPrimary)
                             }
@@ -52,7 +51,7 @@ struct BackupImportSheet: View {
                         if !plan.warnings.isEmpty {
                             section(theme: theme, title: L10n.t("注意事项")) {
                                 ForEach(plan.warnings, id: \.self) { warning in
-                                    Text(warning)
+                                    Text(L10n.t(warning))
                                         .font(.system(size: 12.5))
                                         .foregroundStyle(theme.textSecondary)
                                 }

@@ -51,6 +51,19 @@ final class DialRenderState: ObservableObject {
     @Published var faderRatio: Double = 0
 }
 
+/// 脈衝渲染狀態（返修批7・F1 隔離）：拍點包絡以 display
+/// link 速率（120 Hz）寫入，原掛 VM 本體時 MetronomeView
+/// 整頁觀察 VM——播放期間整頁 body 近乎連續重算（深度
+/// 檢查 F1、發熱主因之一）。獨立成小對象後只有真正讀
+/// 脈衝的子視圖觀察它：節拍圓點（BeatDotCell）與頂欄外
+/// 的背景膠囊（MetronomeCapsuleView）；頁面本體與錶盤／
+/// 推子不再被脈衝幀牽動。值與寫入時序與舊版逐幀一致。
+final class PulseRenderState: ObservableObject {
+    @Published var value: Double = 0
+    @Published var level: Int = 0
+    @Published var isCountIn: Bool = false
+}
+
 /// 【返修批3 CI 修復】@MainActor 屬本類：批3 抽出 DialRenderState
 /// 時把它插在本類之上，原 @MainActor 被吸到 DialRenderState，
 /// 本類失隔離致 CI 4 錯（didSet 內 engine.updateSettings／
@@ -89,9 +102,10 @@ final class MetronomeViewModel: ObservableObject {
     @Published var capsulePaused = false
     @Published private(set) var rampState = RampState()
     @Published private(set) var currentPillar: Int?
-    @Published private(set) var pulseValue: Double = 0
-    @Published private(set) var pulseLevel: Int = 0
-    @Published private(set) var pulseIsCountIn: Bool = false
+    /// 脈衝包絡改經 pulseRender 發布（返修批7・F1，見
+    /// PulseRenderState 註解）；原 pulseValue／pulseLevel／
+    /// pulseIsCountIn 三屬性已遷入該對象。
+    let pulseRender = PulseRenderState()
     @Published private(set) var displayBar = 1
     @Published private(set) var displayBeat = 0
     @Published private(set) var displayBeatsInBar = 4
@@ -159,6 +173,8 @@ final class MetronomeViewModel: ObservableObject {
 
     private let linkProxy = MetroDisplayLinkProxy()
     private var displayLink: CADisplayLink?
+    /// 頁面可見性（返修批7・F11 門控，見 setPageVisible）。
+    private var pageVisible = true
     private var lastTickTime: TimeInterval = 0
 
     private var pulse = PulseState()
@@ -225,7 +241,7 @@ final class MetronomeViewModel: ObservableObject {
                         MetronomeLiveActivityController.shared.stop()
                         self.currentPillar = nil
                         self.pulse.active = false
-                        self.pulseValue = 0
+                        self.pulseRender.value = 0
                     }
                 }
             }
@@ -732,20 +748,37 @@ final class MetronomeViewModel: ObservableObject {
             let elapsedMs = (now - pulse.start) * 1000
             if elapsedMs >= pulse.durationMs {
                 pulse.active = false
-                pulseValue = 0
+                pulseRender.value = 0
             } else {
                 let t = elapsedMs / pulse.durationMs
                 // 母本包絡：attack 段三次方入、decay 段 2.4 次冪出。
-                pulseValue = t < 0.08
+                // 【F1】寫入改走 pulseRender（值與時序不變）。
+                pulseRender.value = t < 0.08
                     ? 1 - pow(1 - t / 0.08, 3)
                     : pow(1 - t, 2.4)
-                pulseLevel = pulse.level
-                pulseIsCountIn = pulse.isCountIn
+                pulseRender.level = pulse.level
+                pulseRender.isCountIn = pulse.isCountIn
             }
         }
         if !odoSettled { stepOdometer(dt: dt) }
         if !fillSettled { stepFill(dt: dt) }
         if !needsMotion { pauseDisplayLink() }
+    }
+
+    /// 頁面可見性門控（返修批7・F11）：本 link 的消費者
+    /// 為節拍器頁的圓點／錶盤／推子，以及調音頁上的背景
+    /// 膠囊（其脈衝圓點讀 pulseRender、由本 link 逐幀
+    /// 寫入）。接線（ContentView）以「節拍器頁可見 ||
+    /// 膠囊可見」為 visible：兩者皆不可見時停驅動（舊版
+    /// 頁面不可見仍 120 Hz 空轉）；任一可見即保持原節律，
+    /// 行為等價。重見且仍需動態時恢復。
+    func setPageVisible(_ visible: Bool) {
+        pageVisible = visible
+        if visible {
+            if needsMotion { ensureDisplayLink() }
+        } else {
+            displayLink?.isPaused = true
+        }
     }
 
     private func ensureDisplayLink() {
@@ -759,7 +792,8 @@ final class MetronomeViewModel: ObservableObject {
             displayLink = link
         }
         lastTickTime = ProcessInfo.processInfo.systemUptime
-        displayLink?.isPaused = false
+        // 【F11】不可見頁不解暫停（setPageVisible 統一門控）。
+        displayLink?.isPaused = !pageVisible
     }
 
     private func pauseDisplayLink() {
@@ -892,6 +926,19 @@ final class MetronomeViewModel: ObservableObject {
             guard !Task.isCancelled, let self else { return }
             self.persistSettings(self.settings)
         }
+    }
+
+    /// 【返修批7・C5】立即落盤：取消待執行的防抖任務並即時
+    /// persist 現行設定（只提前執行既有 persist，不改資料）。
+    /// 供 ContentView 在 scenePhase 離開 active 時呼叫——600ms
+    /// 防抖期間 App 被殺或久置背景，最後變更會隨程序消亡而
+    /// 丟失，進背景先 flush 即關此窗。無待執行任務時不動作
+    /// （沒有未落盤的變更，避免無謂觸發 store 寫盤）。
+    func flushPersist() {
+        guard persistTask != nil else { return }
+        persistTask?.cancel()
+        persistTask = nil
+        persistSettings(settings)
     }
 
     func showToast(_ text: String) {

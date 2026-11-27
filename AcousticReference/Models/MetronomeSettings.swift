@@ -288,13 +288,29 @@ extension MetronomeSettings: Codable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        bpm = try c.decode(Int.self, forKey: .bpm)
-        beatsPerBar = try c.decode(Int.self, forKey: .beatsPerBar)
-        beatUnit = try c.decode(Int.self, forKey: .beatUnit)
-        dottedBeat = try c.decode(Bool.self, forKey: .dottedBeat)
-        subdivision = try c.decode(Int.self, forKey: .subdivision)
-        timbre = try c.decode(MetronomeTimbre.self, forKey: .timbre)
-        beatAccents = try c.decode([Int].self, forKey: .beatAccents)
+        // 【返修批7・C2／B3】核心 8 欄改逐欄容錯＋鉗制：舊版
+        // 嚴格 try decode，任一欄型別不符或手改 JSON 越界即
+        // 整份 throw，經 AppStateFile 退回出廠值（全 App 狀態
+        // 丟失），且越界值可直進引擎。現逐欄 tolerantDecode
+        // （壞欄回該欄出廠值）＋沿 UI 既有範圍鉗制（bpm 讀
+        // 型別常數、拍數 1–12、單位限 [2,4,8,16]、細分 1–5、
+        // 藍牙補償 0–300，與匯入端同一口徑）。
+        beatsPerBar = min(12, max(1,
+            c.tolerantDecodeIfPresent(Int.self, forKey: .beatsPerBar) ?? 4))
+        let rawUnit = c.tolerantDecodeIfPresent(Int.self, forKey: .beatUnit) ?? 4
+        beatUnit = [2, 4, 8, 16].contains(rawUnit) ? rawUnit : 4
+        dottedBeat = c.tolerantDecodeIfPresent(Bool.self, forKey: .dottedBeat) ?? false
+        // bpm 上限隨附點態（bpmMaxNow 的解碼期形：self 尚未
+        // 完整初始化，不能讀實例計算屬性，就地推導）。
+        let bpmCap = (dottedBeat && beatUnit == 8) ? Self.bpmMaxDotted : Self.bpmMax
+        bpm = min(bpmCap, max(Self.bpmMin,
+            c.tolerantDecodeIfPresent(Int.self, forKey: .bpm) ?? 120))
+        subdivision = min(5, max(1,
+            c.tolerantDecodeIfPresent(Int.self, forKey: .subdivision) ?? 1))
+        timbre = c.tolerantDecodeIfPresent(MetronomeTimbre.self, forKey: .timbre)
+            ?? .woodblock
+        beatAccents = c.tolerantDecodeIfPresent([Int].self, forKey: .beatAccents)
+            ?? [3, 1, 2, 1]
         // 長度正規化（操作邏輯審計修復）：舊存檔／匯入備份的
         // 重音陣列長度可與拍數不符——超界拍柱會顯示弱拍且點按
         // 靜默失效（cycleAccent 索引守衛）。解碼即校正：長度
@@ -304,14 +320,22 @@ extension MetronomeSettings: Codable {
         } else {
             beatAccents = beatAccents.map { min(3, max(0, $0)) }
         }
-        bluetoothCompMs = try c.decode(Int.self, forKey: .bluetoothCompMs)
+        bluetoothCompMs = min(300, max(0,
+            c.tolerantDecodeIfPresent(Int.self, forKey: .bluetoothCompMs) ?? 0))
         countIn = false
         // 補強段新增欄：舊檔缺欄退預設，並做範圍健全化。
-        gapEnabled = try c.decodeIfPresent(Bool.self, forKey: .gapEnabled) ?? false
-        gapSoundBars = min(16, max(1, try c.decodeIfPresent(Int.self, forKey: .gapSoundBars) ?? 4))
-        gapSilentBars = min(16, max(1, try c.decodeIfPresent(Int.self, forKey: .gapSilentBars) ?? 4))
-        groupingBySignature = try c.decodeIfPresent(
+        gapEnabled = c.tolerantDecodeIfPresent(Bool.self, forKey: .gapEnabled) ?? false
+        gapSoundBars = min(16, max(1,
+            c.tolerantDecodeIfPresent(Int.self, forKey: .gapSoundBars) ?? 4))
+        gapSilentBars = min(16, max(1,
+            c.tolerantDecodeIfPresent(Int.self, forKey: .gapSilentBars) ?? 4))
+        groupingBySignature = c.tolerantDecodeIfPresent(
             [String: [Int]].self, forKey: .groupingBySignature) ?? [:]
+        // 分組健全化：空組或含 <1 的組長皆為壞值，整筆丟棄
+        // （該拍號回落母本 defaultAccents 生成路徑）。
+        groupingBySignature = groupingBySignature.filter {
+            !$0.value.isEmpty && $0.value.allSatisfy { $0 >= 1 }
+        }
     }
 
     func encode(to encoder: Encoder) throws {

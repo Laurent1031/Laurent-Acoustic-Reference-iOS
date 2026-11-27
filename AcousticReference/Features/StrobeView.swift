@@ -52,10 +52,15 @@ struct StrobeView: View {
     ]
     private static let duty: Double = 0.52
 
-    /// 圖案已靜止（無訊號或角速度近零且可信度已落底）→ 暫停
-    /// TimelineView；麥克風未開恆暫停。
+    /// 圖案已靜止 → 暫停 TimelineView；麥克風未開恆暫停。
+    /// 【返修批7・F4】舊條件要求 confidence 落底才暫停：準音
+    /// 持續音時相位恆定（rate ≈ 0）但 confidence 恆高，盤面
+    /// 以 120fps 全量重繪同一圖案（~500 次三角函數/幀白耗）。
+    /// 改以 rate 為唯一判準（不論 confidence）：|rate| ≤ 0.02
+    /// 時外推相位在 0.5 s 鉗制內位移 ≤ 0.01 rad，視覺靜止，
+    /// 停繪無差異。
     private var isSettled: Bool {
-        !micActive || (confidence <= 0.01 && abs(rate) <= 0.02)
+        !micActive || abs(rate) <= 0.02
     }
 
     var body: some View {

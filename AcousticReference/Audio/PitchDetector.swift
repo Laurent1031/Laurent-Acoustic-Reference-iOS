@@ -49,6 +49,25 @@ final class PitchDetector {
     private var fftSetups: [Int: FFTSetup] = [:]      // key: log2(FFT size)
     private var scaleCalibration: [Int: Double] = [:] // key: FFT size
 
+    // 【返修批7・F3】逐幀工作緩衝預分配復用：舊版每幀新建
+    // centered／nsdf／acf 與 7 個 FFT 工作陣列（8192 窗
+    // ≈0.92MB/幀、16384 窗 ≈1.83MB/幀，86–172MB/s 周轉）。
+    // 本類僅供 EngineCore 的單一串行分析佇列使用（類註解
+    // 已聲明非線程安全、呼叫端另有 analysisPending 閘門），
+    // 同一時刻只有一個 detect 在跑，成員緩衝復用無競態；
+    // 尺寸不符（窗長／FFT 尺寸切換）時才重建。
+    private var bufCentered: [Float] = []
+    private var bufNsdf: [Double] = []
+    private var bufAcf: [Double] = []
+    private var fftWorkSize = 0
+    private var fftInReal: [Float] = []
+    private var fftInImag: [Float] = []
+    private var fftOutReal: [Float] = []
+    private var fftOutImag: [Float] = []
+    private var fftPower: [Float] = []
+    private var fftResultReal: [Float] = []
+    private var fftResultImag: [Float] = []
+
     deinit {
         for setup in fftSetups.values { vDSP_destroy_fftsetup(setup) }
     }
@@ -64,12 +83,17 @@ final class PitchDetector {
             return PitchDetection(frequency: nil, clarity: 0, rms: 0, peak: 0, rejectedByGate: true)
         }
 
-        // 去 DC（母本行 8893–8899）。
+        // 去 DC（母本行 8893–8899）。【F3】centered 走復用
+        // 緩衝（尺寸不符才重建），內容每幀由 vsadd 全量覆寫；
+        // 寫入後以 let 別名供本幀唯讀使用（同一儲存、無拷貝）。
         var mean: Float = 0
         vDSP_meanv(samples, 1, &mean, vDSP_Length(n))
-        var centered = [Float](repeating: 0, count: n)
+        if bufCentered.count != n {
+            bufCentered = [Float](repeating: 0, count: n)
+        }
         var negMean = -mean
-        vDSP_vsadd(samples, 1, &negMean, &centered, 1, vDSP_Length(n))
+        vDSP_vsadd(samples, 1, &negMean, &bufCentered, 1, vDSP_Length(n))
+        let centered = bufCentered
 
         // 峰值（補強段削波警示）：置中訊號最大絕對值，門檻判定前
         // 先算，任何回絕路徑都帶得出。
@@ -91,8 +115,16 @@ final class PitchDetector {
         }
 
         // NSDF：acf 走 FFT 自相關；divisor 走遞歸（Double 累加）。
+        // 【F3】nsdf 走復用緩衝：本幀在 [minTau, maxTau] 區間
+        // 全量覆寫（下方遞歸迴圈），選峰亦只讀該區間，尺寸
+        // 不符才重建。
         let acf = autocorrelation(centered, maxTau: maxTau)
-        var nsdf = [Double](repeating: 0, count: maxTau + 1)
+        if bufNsdf.count != maxTau + 1 {
+            bufNsdf = [Double](repeating: 0, count: maxTau + 1)
+        }
+        // 【F3】以下全程直用 bufNsdf（不取別名）：別名會令
+        // 下標寫入觸發 COW 拷貝、復用失效；成員緩衝唯一持有
+        // 時下標寫入原地進行。
         var divisor = 2.0 * acf[0] // m(0) = Σx² + Σx²（minTau ≥ 2，τ<minTau 不需填）
         for tau in 1...maxTau {
             // m(τ) = m(τ−1) − x[τ−1]² − x[N−τ]²
@@ -100,7 +132,7 @@ final class PitchDetector {
             let b = Double(centered[n - tau])
             divisor -= a * a + b * b
             if tau >= minTau {
-                nsdf[tau] = divisor > 0 ? (2 * acf[tau]) / divisor : 0
+                bufNsdf[tau] = divisor > 0 ? (2 * acf[tau]) / divisor : 0
             }
         }
 
@@ -108,15 +140,15 @@ final class PitchDetector {
         var peaks: [(tau: Int, val: Double)] = []
         var globalMax = 0.0
         var tau = minTau
-        while tau <= maxTau && nsdf[tau] > 0 { tau += 1 }
-        while tau <= maxTau && nsdf[tau] <= 0 { tau += 1 }
+        while tau <= maxTau && bufNsdf[tau] > 0 { tau += 1 }
+        while tau <= maxTau && bufNsdf[tau] <= 0 { tau += 1 }
 
         var curMaxTau = -1
         var curMaxVal = -1.0
         while tau <= maxTau {
-            if nsdf[tau] > 0 {
-                if nsdf[tau] > curMaxVal {
-                    curMaxVal = nsdf[tau]
+            if bufNsdf[tau] > 0 {
+                if bufNsdf[tau] > curMaxVal {
+                    curMaxVal = bufNsdf[tau]
                     curMaxTau = tau
                 }
             } else if curMaxTau != -1 {
@@ -143,9 +175,9 @@ final class PitchDetector {
         let t = chosen.tau
         var refinedTau = Double(t)
         if t > minTau && t < maxTau {
-            let y1 = nsdf[t - 1]
-            let y2 = nsdf[t]
-            let y3 = nsdf[t + 1]
+            let y1 = bufNsdf[t - 1]
+            let y2 = bufNsdf[t]
+            let y3 = bufNsdf[t + 1]
             let denom = y1 - 2 * y2 + y3
             if abs(denom) > 1e-6 {
                 refinedTau = Double(t) + (0.5 * (y1 - y3)) / denom
@@ -182,37 +214,46 @@ final class PitchDetector {
             setup = created
         }
 
-        var inReal = [Float](repeating: 0, count: m)
-        var inImag = [Float](repeating: 0, count: m)
-        var outReal = [Float](repeating: 0, count: m)
-        var outImag = [Float](repeating: 0, count: m)
-        inReal.replaceSubrange(0..<n, with: x)
+        // 【F3】7 個 FFT 工作陣列改成員緩衝：尺寸（m）不符
+        // 才重建；每幀僅需清零三個「輸入端假定為零」的緩衝
+        // （inReal／inImag／resultImag），其餘四個由 vDSP
+        // 呼叫全量覆寫（fft_zop 輸出、zvmags 輸出皆寫滿 m）。
+        if fftWorkSize != m {
+            fftInReal = [Float](repeating: 0, count: m)
+            fftInImag = [Float](repeating: 0, count: m)
+            fftOutReal = [Float](repeating: 0, count: m)
+            fftOutImag = [Float](repeating: 0, count: m)
+            fftPower = [Float](repeating: 0, count: m)
+            fftResultReal = [Float](repeating: 0, count: m)
+            fftResultImag = [Float](repeating: 0, count: m)
+            fftWorkSize = m
+        }
+        fftInReal.withUnsafeMutableBufferPointer { $0.update(repeating: 0) }
+        fftInImag.withUnsafeMutableBufferPointer { $0.update(repeating: 0) }
+        fftResultImag.withUnsafeMutableBufferPointer { $0.update(repeating: 0) }
+        fftInReal.replaceSubrange(0..<n, with: x)
 
-        var power = [Float](repeating: 0, count: m)
-        var resultReal = [Float](repeating: 0, count: m)
-        var resultImag = [Float](repeating: 0, count: m)
-
-        inReal.withUnsafeMutableBufferPointer { inRealPtr in
-            inImag.withUnsafeMutableBufferPointer { inImagPtr in
-                outReal.withUnsafeMutableBufferPointer { outRealPtr in
-                    outImag.withUnsafeMutableBufferPointer { outImagPtr in
+        fftInReal.withUnsafeMutableBufferPointer { inRealPtr in
+            fftInImag.withUnsafeMutableBufferPointer { inImagPtr in
+                fftOutReal.withUnsafeMutableBufferPointer { outRealPtr in
+                    fftOutImag.withUnsafeMutableBufferPointer { outImagPtr in
                         var input = DSPSplitComplex(
                             realp: inRealPtr.baseAddress!, imagp: inImagPtr.baseAddress!)
                         var output = DSPSplitComplex(
                             realp: outRealPtr.baseAddress!, imagp: outImagPtr.baseAddress!)
                         vDSP_fft_zop(setup, &input, 1, &output, 1,
                                      vDSP_Length(log2n), FFTDirection(FFT_FORWARD))
-                        vDSP_zvmags(&output, 1, &power, 1, vDSP_Length(m))
+                        vDSP_zvmags(&output, 1, &fftPower, 1, vDSP_Length(m))
                     }
                 }
             }
         }
 
         // 功率譜作為實數序列（虛部 0）做逆 FFT，實部即自相關。
-        power.withUnsafeMutableBufferPointer { powerPtr in
-            resultImag.withUnsafeMutableBufferPointer { zeroImagPtr in
-                resultReal.withUnsafeMutableBufferPointer { resultRealPtr in
-                    outImag.withUnsafeMutableBufferPointer { resultImagOutPtr in
+        fftPower.withUnsafeMutableBufferPointer { powerPtr in
+            fftResultImag.withUnsafeMutableBufferPointer { zeroImagPtr in
+                fftResultReal.withUnsafeMutableBufferPointer { resultRealPtr in
+                    fftOutImag.withUnsafeMutableBufferPointer { resultImagOutPtr in
                         var input = DSPSplitComplex(
                             realp: powerPtr.baseAddress!, imagp: zeroImagPtr.baseAddress!)
                         var output = DSPSplitComplex(
@@ -223,8 +264,9 @@ final class PitchDetector {
                 }
             }
         }
-        // 逆 FFT 結果實部在 resultReal（虛部寫入 outImag 緩衝，棄置不用）；
-        // resultImag 全程只是逆 FFT 輸入端的零虛部。
+        // 逆 FFT 結果實部在 fftResultReal（虛部寫入 fftOutImag
+        // 緩衝，棄置不用）；fftResultImag 全程只是逆 FFT 輸入
+        // 端的零虛部。
 
         // 尺度自校準：r(0) 必須等於 Σx²（vDSP_svesq 直算）。
         var sumSquares: Float = 0
@@ -232,32 +274,39 @@ final class PitchDetector {
         let factor: Double
         if let cached = scaleCalibration[m] {
             factor = cached
-        } else if resultReal[0] != 0 {
-            factor = Double(sumSquares) / Double(resultReal[0])
+        } else if fftResultReal[0] != 0 {
+            factor = Double(sumSquares) / Double(fftResultReal[0])
             scaleCalibration[m] = factor
         } else {
             factor = 1
         }
 
-        var r = [Double](repeating: 0, count: maxTau + 1)
-        for tau in 0...maxTau {
-            r[tau] = Double(resultReal[tau]) * factor
+        // 【F3】結果走復用緩衝 bufAcf（[0, maxTau] 全量覆寫；
+        // 呼叫端 detect 僅於本幀內唯讀使用，下幀覆寫無礙）。
+        if bufAcf.count != maxTau + 1 {
+            bufAcf = [Double](repeating: 0, count: maxTau + 1)
         }
-        return r
+        for tau in 0...maxTau {
+            bufAcf[tau] = Double(fftResultReal[tau]) * factor
+        }
+        return bufAcf
     }
 
     /// FFT 建立失敗時的兜底：逐 τ 內積（母本原算法，慢但正確）。
+    /// 【F3】結果同走 bufAcf 復用緩衝（語義見 autocorrelation）。
     private func directAutocorrelation(_ x: [Float], maxTau: Int) -> [Double] {
         let n = x.count
-        var r = [Double](repeating: 0, count: maxTau + 1)
+        if bufAcf.count != maxTau + 1 {
+            bufAcf = [Double](repeating: 0, count: maxTau + 1)
+        }
         for tau in 0...maxTau {
             var acc = 0.0
             let limit = n - tau
             for i in 0..<limit {
                 acc += Double(x[i]) * Double(x[i + tau])
             }
-            r[tau] = acc
+            bufAcf[tau] = acc
         }
-        return r
+        return bufAcf
     }
 }

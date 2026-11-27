@@ -28,22 +28,39 @@ struct MetronomeView: View {
             // 「我要一整頁剛剛好，不要讓我往下拉」）。返修批1
             // 的 ScrollView 版面撤除：各列定高，舞台列以
             // maxHeight 吸收全部剩餘高度、錶盤尺寸隨之伸縮
-            // （下限 120、上限 208）。附帶收益：推子／轉盤的
+            // （下限隨舞台高、上限 208；返修批7 起短屏另有
+            // 緊湊級，見下）。附帶收益：推子／轉盤的
             // 拖動不再被捲動手勢半路取消——返修批1 實機
             // 「推桿中途數字卡在中間」正是捲動取消 onEnded、
             // 里程表凍結在小數位置；VM 另有看門狗雙保險。
             let contentWidth = geo.size.width - 32
+            // 【返修批7・E2/E4】短屏緊湊級：頁面可用高
+            // < 640（SE 級）時各列定高收縮、間距收窄，把
+            // 高度還給舞台；緊湊級下同開 BPM 編輯列時再
+            // 隱藏圓點列與預置列，編輯列不被鍵盤整列遮住
+            // （E4）。16 Pro 級（≈695）不進緊湊級，其編輯
+            // ＋分組同開的 17pt 溢出由下方錶盤隨高收縮
+            // 吸收（E2 修法），各列不再相撞。
+            let compact = geo.size.height < 640
 
             ZStack {
                 theme.background.ignoresSafeArea()
 
-                VStack(spacing: 9) {
-                    hintRow(theme: theme)
-                    controlRow(theme: theme)
-                    dotsRow(theme: theme, width: contentWidth)
+                VStack(spacing: compact ? 5 : 9) {
+                    hintRow(theme: theme, compact: compact)
+                    controlRow(theme: theme, compact: compact)
+                    if !(compact && showEditor) {
+                        dotsRow(theme: theme, width: contentWidth,
+                                compact: compact)
+                    }
                     GeometryReader { stageGeo in
-                        let dialSize = min(208, max(120, min(stageGeo.size.height,
-                                                             contentWidth * 0.56)))
+                        // 【返修批7・E2】錶盤下限改隨舞台可用
+                        // 高：舊下限 120 在 SE 舞台僅 74pt 時
+                        // 上下各溢出 ≈23pt 壓圓點／步進列；改
+                        // 下限 56、尺寸由舞台高直接決定，擠壓
+                        // 由錶盤吸收。
+                        let dialSize = min(208, max(56, min(stageGeo.size.height,
+                                                            contentWidth * 0.56)))
                         stageRow(theme: theme, dialSize: dialSize,
                                  railHeight: dialSize)
                             .frame(width: stageGeo.size.width,
@@ -52,9 +69,11 @@ struct MetronomeView: View {
                     .frame(maxHeight: .infinity)
                     steppersRow(theme: theme)
                     if showEditor { editorRow(theme: theme) }
-                    tempoPresetRow(theme: theme)
-                    bentoGrid(theme: theme)
-                    startButton(theme: theme)
+                    if !(compact && showEditor) {
+                        tempoPresetRow(theme: theme)
+                    }
+                    bentoGrid(theme: theme, compact: compact)
+                    startButton(theme: theme, compact: compact)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 2)
@@ -63,6 +82,14 @@ struct MetronomeView: View {
         }
         .onChange(of: engine.lastError) { _, error in
             if let error { viewModel.showToast(error) }
+        }
+        // 【返修批7・F11】離頁拆 link：VM.viewDidDisappear
+        // 原無任何呼叫點（invalidate 死路徑），比照
+        // TunerView 接上——殼層卸載時不留 runloop 殘留
+        // 引用。雙頁保活下切頁不觸發本回調，可見性停啟
+        // 由 setPageVisible 門控（ContentView 接線）。
+        .onDisappear {
+            viewModel.viewDidDisappear()
         }
         // 外接鍵盤（母本行 12152，階段 7 補齊）：↑↓ ±1、
         // PageUp／PageDown ±10 BPM。
@@ -107,21 +134,21 @@ struct MetronomeView: View {
 
     // MARK: - 提示列（母本 metroHint）
 
-    private func hintRow(theme: TunerTheme) -> some View {
+    private func hintRow(theme: TunerTheme, compact: Bool) -> some View {
         Text(viewModel.hintText)
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(viewModel.displayIsCountIn && viewModel.isPlaying
                              ? theme.sharp : theme.textSecondary)
             .lineLimit(1)
             .frame(maxWidth: .infinity)
-            .frame(height: 26)
+            .frame(height: compact ? 20 : 26)
             .contentShape(Rectangle())
             .onTapGesture { viewModel.hintTapped() }
     }
 
     // MARK: - 預備拍／TAP 列
 
-    private func controlRow(theme: TunerTheme) -> some View {
+    private func controlRow(theme: TunerTheme, compact: Bool) -> some View {
         HStack {
             Button {
                 viewModel.toggleCountIn()
@@ -142,7 +169,7 @@ struct MetronomeView: View {
                 }
                 .foregroundStyle(viewModel.settings.countIn ? .white : theme.textPrimary)
                 .padding(.horizontal, 12)
-                .frame(height: 34)
+                .frame(height: compact ? 30 : 34)
                 .background {
                     if viewModel.settings.countIn {
                         Capsule().fill(theme.accent)
@@ -153,6 +180,12 @@ struct MetronomeView: View {
                 }
             }
             .buttonStyle(GlassPressButtonStyle())
+            // 【返修批7・E14】預備拍開關補開關態 value
+            // （此前 VoiceOver 只讀到「預备拍」鈕名、無狀態）；
+            // 用字走現成字典鍵（開啟／關閉兩條 toast 串）。
+            .accessibilityValue(viewModel.settings.countIn
+                                ? L10n.t("预备拍已开启：启动时先数一小节")
+                                : L10n.t("预备拍已关闭"))
 
             Spacer()
 
@@ -163,7 +196,7 @@ struct MetronomeView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(theme.textPrimary)
                     .padding(.horizontal, 14)
-                    .frame(height: 34)
+                    .frame(height: compact ? 30 : 34)
                     .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
             }
             .buttonStyle(GlassPressButtonStyle())
@@ -172,93 +205,138 @@ struct MetronomeView: View {
 
     // MARK: - 節拍圓點矩陣（母本 renderBeatDots + strikePulse）
 
-    private func dotsRow(theme: TunerTheme, width: CGFloat) -> some View {
+    private func dotsRow(theme: TunerTheme, width: CGFloat,
+                         compact: Bool) -> some View {
         let count = max(1, viewModel.settings.beatsPerBar)
         let slot = width / CGFloat(count)
         return HStack(spacing: 0) {
             ForEach(0..<count, id: \.self) { pillar in
-                dotCell(pillar: pillar, theme: theme, slot: slot)
+                // 【返修批7・F1】圓點抽成 BeatDotCell 獨立
+                // View 單獨觀察脈衝（見該型別註解）；lvl／
+                // isCurrent 為低頻值輸入、逐拍由本列重算帶入。
+                BeatDotCell(
+                    pillar: pillar,
+                    lvl: pillar < viewModel.settings.beatAccents.count
+                        ? viewModel.settings.beatAccents[pillar] : 1,
+                    isCurrent: viewModel.currentPillar == pillar,
+                    slot: slot, compact: compact,
+                    theme: theme, glassOpacity: store.glassOpacity,
+                    pulse: viewModel.pulseRender)
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
                     .onTapGesture { viewModel.cycleAccent(pillar: pillar) }
+                    // 【返修批7・E8】拍柱格 VoiceOver 化：
+                    // 此前純 onTapGesture、無 label/action，
+                    // VoiceOver 用戶無法操作；整格併為單一
+                    // 元素，標籤含拍序與重音等級，isButton
+                    // ＋預設 action 與點按同一行為。
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(dotAccessibilityLabel(pillar: pillar))
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction {
+                        viewModel.cycleAccent(pillar: pillar)
+                    }
             }
         }
-        .frame(height: 74)
+        .frame(height: compact ? 58 : 74)
     }
 
-    private func dotCell(pillar: Int, theme: TunerTheme, slot: CGFloat) -> some View {
+    /// 拍柱格無障礙標籤：「<拍序>，<重音等級>」（等級查表
+    /// 與 BeatDotCell 同源 MetronomeSettings.levelLabels）。
+    private func dotAccessibilityLabel(pillar: Int) -> String {
         let accents = viewModel.settings.beatAccents
         let lvl = pillar < accents.count ? accents[pillar] : 1
-        let base: CGFloat = lvl == 3 ? 44 : lvl == 2 ? 40 : lvl == 1 ? 35 : 31
-        let diameter = min(base, max(24, slot - 10))
-        let isCurrent = viewModel.currentPillar == pillar
-        let p = isCurrent ? viewModel.pulseValue : 0
-        let sb: Double = lvl == 3 ? 0.14 : lvl == 2 ? 0.10 : 0.07
-        // 亮起漸層走主題 token（補強段）：預備拍橙、強拍綠、
-        // 其餘藍；樂池暗紅主題下三者全收斂為紅譜（見 TunerTheme）。
-        let litColors: [Color] = viewModel.pulseIsCountIn && isCurrent
-            ? theme.countInGradient
-            : (lvl == 3 ? theme.beatStrongGradient : theme.beatNormalGradient)
-        return VStack(spacing: 3) {
-            ZStack {
-                // 光暈（母本 ::before 的徑向柔光）：正圓、
-                // accent 色徑向漸層至全透明、隨脈衝放大。
-                // 【返修批2】舊版以 60×102 實心橢圓＋強拍綠
-                // 呈現，實機成一團橢圓綠暈（Laurent 點名
-                // 「外圍那圈不對」）；母本原式即徑向漸層，
-                // 改回漸層本體，顏色恆走 accent（預備拍走
-                // sharp 琥珀），不再用 ok 綠。
-                Circle()
-                    .fill(RadialGradient(
-                        colors: [(viewModel.pulseIsCountIn
-                                    ? theme.sharp : theme.accent)
-                            .opacity(0.32 * p), Color.clear],
-                        center: .center,
-                        startRadius: 2,
-                        endRadius: 34))
-                    .frame(width: 68, height: 68)
-                    .scaleEffect(0.85 + p * 0.3)
-                    .allowsHitTesting(false)
-                // 本體（依等級的母本樣式）。
-                dotBody(lvl: lvl, theme: theme)
-                    .frame(width: diameter, height: diameter)
-                    .overlay {
-                        Circle()
-                            .fill(LinearGradient(colors: litColors,
-                                                 startPoint: .top, endPoint: .bottom))
-                            .opacity(lvl > 0 ? p : 0)
-                    }
-                    .scaleEffect(1 + sb * p)
-                Text("\(pillar + 1)")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(lvl == 3 ? .white : theme.textSecondary)
-            }
-            .frame(height: 46)
-            Text(L10n.t(MetronomeSettings.levelLabels[lvl]))
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(theme.textMuted)
-        }
+        return "\(pillar + 1)，\(L10n.t(MetronomeSettings.levelLabels[lvl]))"
     }
 
-    @ViewBuilder
-    private func dotBody(lvl: Int, theme: TunerTheme) -> some View {
-        switch lvl {
-        case 3:
-            Circle().fill(theme.accent)
-                .shadow(color: theme.accent.opacity(0.45), radius: 6, y: 2)
-        case 2:
-            Circle().fill(theme.accent.opacity(0.18))
-                .overlay { Circle().strokeBorder(theme.accent, lineWidth: 1.5) }
-        case 1:
-            // 純玻璃點：邊緣高光由 glassEffect 本體給出，
-            // 不再手繪描邊（液態玻璃全量替換原則）。
-            GlassSurface(shape: Circle(), theme: theme,
-                         glassOpacity: store.glassOpacity)
-        default:
-            Circle()
-                .strokeBorder(Color(red: 128 / 255, green: 128 / 255, blue: 140 / 255,
-                                    opacity: 0.5),
-                              style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+    /// 節拍圓點（返修批7・F1 抽出獨立 View）：原 dotCell
+    /// 為本頁本體函數、讀 VM 脈衝值，脈衝以 120 Hz 寫入
+    /// 時整頁 body 跟著重算。抽出後本 View 單獨觀察
+    /// PulseRenderState，脈衝幀只重繪圓點本身；lvl／
+    /// isCurrent／slot 等低頻輸入由 dotsRow 以值傳入。
+    /// 視覺參數與舊 dotCell 逐項一致（光暈漸層、本體
+    /// 樣式、縮放係數皆原樣搬移）。
+    struct BeatDotCell: View {
+        let pillar: Int
+        let lvl: Int
+        let isCurrent: Bool
+        let slot: CGFloat
+        let compact: Bool
+        let theme: TunerTheme
+        let glassOpacity: Int
+        @ObservedObject var pulse: PulseRenderState
+
+        var body: some View {
+            let base: CGFloat = lvl == 3 ? 44 : lvl == 2 ? 40 : lvl == 1 ? 35 : 31
+            let diameter = min(base, max(24, slot - 10))
+            let p = isCurrent ? pulse.value : 0
+            let sb: Double = lvl == 3 ? 0.14 : lvl == 2 ? 0.10 : 0.07
+            // 亮起漸層走主題 token（補強段）：預備拍橙、強拍綠、
+            // 其餘藍；樂池暗紅主題下三者全收斂為紅譜（見 TunerTheme）。
+            let litColors: [Color] = pulse.isCountIn && isCurrent
+                ? theme.countInGradient
+                : (lvl == 3 ? theme.beatStrongGradient : theme.beatNormalGradient)
+            return VStack(spacing: 3) {
+                ZStack {
+                    // 光暈（母本 ::before 的徑向柔光）：正圓、
+                    // accent 色徑向漸層至全透明、隨脈衝放大。
+                    // 【返修批2】舊版以 60×102 實心橢圓＋強拍綠
+                    // 呈現，實機成一團橢圓綠暈（Laurent 點名
+                    // 「外圍那圈不對」）；母本原式即徑向漸層，
+                    // 改回漸層本體，顏色恆走 accent（預備拍走
+                    // sharp 琥珀），不再用 ok 綠。
+                    Circle()
+                        .fill(RadialGradient(
+                            colors: [(pulse.isCountIn
+                                        ? theme.sharp : theme.accent)
+                                .opacity(0.32 * p), Color.clear],
+                            center: .center,
+                            startRadius: 2,
+                            endRadius: 34))
+                        .frame(width: 68, height: 68)
+                        .scaleEffect(0.85 + p * 0.3)
+                        .allowsHitTesting(false)
+                    // 本體（依等級的母本樣式）。
+                    dotBody
+                        .frame(width: diameter, height: diameter)
+                        .overlay {
+                            Circle()
+                                .fill(LinearGradient(colors: litColors,
+                                                     startPoint: .top, endPoint: .bottom))
+                                .opacity(lvl > 0 ? p : 0)
+                        }
+                        .scaleEffect(1 + sb * p)
+                    Text("\(pillar + 1)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(lvl == 3 ? .white : theme.textSecondary)
+                }
+                .frame(height: compact ? 40 : 46)
+                Text(L10n.t(MetronomeSettings.levelLabels[lvl]))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(theme.textMuted)
+            }
+        }
+
+        @ViewBuilder
+        private var dotBody: some View {
+            switch lvl {
+            case 3:
+                Circle().fill(theme.accent)
+                    .shadow(color: theme.accent.opacity(0.45), radius: 6, y: 2)
+            case 2:
+                Circle().fill(theme.accent.opacity(0.18))
+                    .overlay { Circle().strokeBorder(theme.accent, lineWidth: 1.5) }
+            case 1:
+                // 純玻璃點：邊緣高光由 glassEffect 本體給出，
+                // 不再手繪描邊（液態玻璃全量替換原則）。
+                GlassSurface(shape: Circle(), theme: theme,
+                             glassOpacity: glassOpacity)
+            default:
+                Circle()
+                    .strokeBorder(Color(red: 128 / 255, green: 128 / 255, blue: 140 / 255,
+                                        opacity: 0.5),
+                                  style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            }
         }
     }
 
@@ -327,7 +405,10 @@ struct MetronomeView: View {
         /// BPM 里程表（母本 .bpm-num/.bpm-col：條帶兩圈
         /// 0–9、逐柱 spring；柱位經 dial 發布，目標恆整數）。
         private var odometer: some View {
-            let fontSize = min(52, max(34, size * 0.30))
+            // 【返修批7・E2】字級下限 34→26：小錶盤（<113pt，
+            // 僅短屏擠壓時出現）三位數字寬 ≈50 仍塞得進
+            // 56pt 下限錶盤，不再溢出圓外。
+            let fontSize = min(52, max(26, size * 0.30))
             let digitH = fontSize
             let digitW = fontSize * 0.62
             return HStack(spacing: 1) {
@@ -449,7 +530,10 @@ struct MetronomeView: View {
         // 母本推子是 iOS 控制中心式膠囊（.bpm-fader-rail）：
         // 全圓膠囊軌（寬 57）、上下限籤在軌的上下同軸、亮
         // 填充自底升起＋深度內影、字形隨填充覆蓋變色。
-        let railH = max(76, height - 36)
+        // 【返修批7・E2】軌高下限 76→40：短屏小錶盤時
+        // 推子全高（railH＋上下籤 36）不再反超舞台高；
+        // height ≥112 時與舊式逐值相同、零回退。
+        let railH = max(40, height - 36)
         let fillH = max(14, railH * CGFloat(dial.faderRatio))
         let glyphCovered = fillH > 23
         let adjusting = faderStartBpm != nil
@@ -674,11 +758,11 @@ struct MetronomeView: View {
 
     // MARK: - Bento 選項格（母本 bento：拍號／細分／音色＋預設／漸速）
 
-    private func bentoGrid(theme: TunerTheme) -> some View {
+    private func bentoGrid(theme: TunerTheme, compact: Bool) -> some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                sigTile(theme: theme)
-                menuTile(theme: theme, title: L10n.t("细分"),
+                sigTile(theme: theme, compact: compact)
+                menuTile(theme: theme, compact: compact, title: L10n.t("细分"),
                          value: L10n.t(MetronomeSettings.subdivisionOptions
                             .first { $0.value == viewModel.settings.subdivision }?.label ?? "")) {
                     ForEach(Array(MetronomeSettings.subdivisionOptions.enumerated()),
@@ -691,7 +775,7 @@ struct MetronomeView: View {
                         }
                     }
                 }
-                menuTile(theme: theme, title: L10n.t("音色"),
+                menuTile(theme: theme, compact: compact, title: L10n.t("音色"),
                          value: viewModel.settings.timbre.displayName) {
                     ForEach(MetronomeTimbre.allCases, id: \.self) { timbre in
                         Button {
@@ -712,7 +796,7 @@ struct MetronomeView: View {
                     Button {
                         showGrouping = true
                     } label: {
-                        tileLabel(theme: theme, title: L10n.t("重音分组"),
+                        tileLabel(theme: theme, compact: compact, title: L10n.t("重音分组"),
                                   value: viewModel.currentGrouping
                                     .map(String.init).joined(separator: "+"))
                     }
@@ -720,7 +804,7 @@ struct MetronomeView: View {
                     Spacer(minLength: 0)
                 }
             }
-            wideMenuRow(theme: theme, title: L10n.t("预设"),
+            wideMenuRow(theme: theme, compact: compact, title: L10n.t("预设"),
                         value: viewModel.activePreset.map {
                             $0.builtin ? L10n.t($0.name) : $0.name
                         } ?? L10n.t("选择")) {
@@ -752,7 +836,7 @@ struct MetronomeView: View {
                     Button(L10n.t("删除当前预设"), role: .destructive) { showDeletePreset = true }
                 }
             }
-            wideMenuRow(theme: theme, title: L10n.t("渐速"),
+            wideMenuRow(theme: theme, compact: compact, title: L10n.t("渐速"),
                         value: viewModel.rampState.active
                             ? "\(viewModel.rampState.from) → \(viewModel.rampState.to)"
                             : L10n.t("关闭")) {
@@ -791,7 +875,7 @@ struct MetronomeView: View {
         }
     }
 
-    private func sigTile(theme: TunerTheme) -> some View {
+    private func sigTile(theme: TunerTheme, compact: Bool) -> some View {
         let s = viewModel.settings
         let value = "\(s.beatsPerBar)/\(s.beatUnit)" + (s.isDottedBeat ? " ♩." : "")
         return ZStack(alignment: .topTrailing) {
@@ -814,7 +898,7 @@ struct MetronomeView: View {
                                   checked: s.dottedBeat)
                 }
             } label: {
-                tileLabel(theme: theme, title: L10n.t("拍号"), value: value)
+                tileLabel(theme: theme, compact: compact, title: L10n.t("拍号"), value: value)
             }
             Button {
                 viewModel.resetAccents()
@@ -829,17 +913,19 @@ struct MetronomeView: View {
         }
     }
 
-    private func menuTile<Content: View>(theme: TunerTheme, title: String,
+    private func menuTile<Content: View>(theme: TunerTheme, compact: Bool,
+                                         title: String,
                                          value: String,
                                          @ViewBuilder content: () -> Content) -> some View {
         Menu {
             content()
         } label: {
-            tileLabel(theme: theme, title: title, value: value)
+            tileLabel(theme: theme, compact: compact, title: title, value: value)
         }
     }
 
-    private func wideMenuRow<Content: View>(theme: TunerTheme, title: String,
+    private func wideMenuRow<Content: View>(theme: TunerTheme, compact: Bool,
+                                            title: String,
                                             value: String,
                                             @ViewBuilder content: () -> Content) -> some View {
         Menu {
@@ -859,13 +945,14 @@ struct MetronomeView: View {
                     .foregroundStyle(theme.textMuted)
             }
             .padding(.horizontal, 14)
-            .frame(height: 42)
+            .frame(height: compact ? 38 : 42)
             .glassBackground(in: RoundedRectangle(cornerRadius: 14, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
 
-    private func tileLabel(theme: TunerTheme, title: String, value: String) -> some View {
+    private func tileLabel(theme: TunerTheme, compact: Bool,
+                           title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 11, weight: .medium))
@@ -882,7 +969,7 @@ struct MetronomeView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, compact ? 6 : 8)
         .glassBackground(in: RoundedRectangle(cornerRadius: 16, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
@@ -898,7 +985,7 @@ struct MetronomeView: View {
 
     // MARK: - START 主鈕（母本 btnToggleMetro：運行中 brightness 呼吸）
 
-    private func startButton(theme: TunerTheme) -> some View {
+    private func startButton(theme: TunerTheme, compact: Bool) -> some View {
         Button {
             viewModel.togglePlay()
         } label: {
@@ -917,7 +1004,7 @@ struct MetronomeView: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
             }
-            .frame(height: 52)
+            .frame(height: compact ? 46 : 52)
             .brightness(viewModel.isPlaying && breathing ? 0.09 : 0)
         }
         .buttonStyle(GlassPressButtonStyle())

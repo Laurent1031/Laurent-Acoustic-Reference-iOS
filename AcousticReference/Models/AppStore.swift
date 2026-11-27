@@ -83,7 +83,30 @@ enum FavoriteToggleOutcome: Sendable {
     case rejectedMinimum
 }
 
-/// 落盤快照（state-v1.json 的形狀）。逐欄 decodeIfPresent＋預設值：
+/// 逐欄容錯解碼（返修批7・C1／C2）：decodeIfPresent 在欄位
+/// 「存在但型別不符」或枚舉 rawValue 無法識別時是 throw 的，
+/// 舊版 AppStateFile／TunerSettings／MetronomeSettings 皆以
+/// try decodeIfPresent 逐欄解碼——單一壞欄即整份解碼失敗、
+/// 全設定靜默歸零。此 helper 把失敗收斂為 nil（呼叫端退該
+/// 欄預設），只有容器本身建不起來才 throw。
+extension KeyedDecodingContainer {
+    func tolerantDecodeIfPresent<T: Decodable>(
+        _ type: T.Type, forKey key: Key
+    ) -> T? {
+        (try? decodeIfPresent(type, forKey: key)) ?? nil
+    }
+}
+
+/// 逐筆容錯包裝（返修批7・C13）：陣列元素逐筆嘗試解碼，
+/// 壞一筆只丟該筆（value 為 nil），不拖垮整個陣列。
+private struct TolerantElement<T: Decodable>: Decodable {
+    let value: T?
+    init(from decoder: Decoder) throws {
+        value = try? T(from: decoder)
+    }
+}
+
+/// 落盤快照（state-v1.json 的形狀）。逐欄容錯解碼＋預設值：
 /// 任一欄缺失或型別漂移只退回該欄預設，不整份丟棄。
 private struct AppStateFile: Codable {
     var version: Int = 1
@@ -139,31 +162,40 @@ private struct AppStateFile: Codable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
-        tunerSettings = try c.decodeIfPresent(TunerSettings.self, forKey: .tunerSettings) ?? TunerSettings()
-        pitchMode = try c.decodeIfPresent(PitchMode.self, forKey: .pitchMode) ?? .written
-        selectedInstrumentId = try c.decodeIfPresent(String.self, forKey: .selectedInstrumentId) ?? "alto_sax"
-        favoriteInstrumentIds = try c.decodeIfPresent([String].self, forKey: .favoriteInstrumentIds)
+        // 【返修批7・C1】全欄改 tolerantDecodeIfPresent：舊版
+        // try decodeIfPresent 遇型別不符即 throw，單一壞欄拖
+        // 垮全檔（註解宣稱的逐欄回退此前並未成立）。巢狀設定
+        // （tunerSettings／metronomeSettings）各自內部亦已逐
+        // 欄容錯＋鉗制，整體只在容器建立失敗時才 throw。
+        version = c.tolerantDecodeIfPresent(Int.self, forKey: .version) ?? 1
+        tunerSettings = c.tolerantDecodeIfPresent(TunerSettings.self, forKey: .tunerSettings) ?? TunerSettings()
+        pitchMode = c.tolerantDecodeIfPresent(PitchMode.self, forKey: .pitchMode) ?? .written
+        selectedInstrumentId = c.tolerantDecodeIfPresent(String.self, forKey: .selectedInstrumentId) ?? "alto_sax"
+        favoriteInstrumentIds = c.tolerantDecodeIfPresent([String].self, forKey: .favoriteInstrumentIds)
             ?? ["alto_sax", "piano", "violin"]
-        customInstruments = try c.decodeIfPresent([Instrument].self, forKey: .customInstruments) ?? []
-        droneTimbre = try c.decodeIfPresent(DroneTimbre.self, forKey: .droneTimbre) ?? .oboe
-        droneFollow = try c.decodeIfPresent(Bool.self, forKey: .droneFollow) ?? false
-        metronomeSettings = try c.decodeIfPresent(MetronomeSettings.self, forKey: .metronomeSettings)
+        // 自訂樂器逐筆容錯（C13）：壞一筆只丟該筆，不整陣列
+        // 歸零；id 去重／音域健全化在 AppStore.init 統一做。
+        customInstruments = c.tolerantDecodeIfPresent(
+            [TolerantElement<Instrument>].self, forKey: .customInstruments
+        )?.compactMap(\.value) ?? []
+        droneTimbre = c.tolerantDecodeIfPresent(DroneTimbre.self, forKey: .droneTimbre) ?? .oboe
+        droneFollow = c.tolerantDecodeIfPresent(Bool.self, forKey: .droneFollow) ?? false
+        metronomeSettings = c.tolerantDecodeIfPresent(MetronomeSettings.self, forKey: .metronomeSettings)
             ?? MetronomeSettings()
-        metronomeUserPresets = try c.decodeIfPresent([MetronomePreset].self, forKey: .metronomeUserPresets) ?? []
-        appMode = try c.decodeIfPresent(String.self, forKey: .appMode) ?? AppMode.tuner.rawValue
-        guzhengFavMigrationDone = try c.decodeIfPresent(Bool.self, forKey: .guzhengFavMigrationDone) ?? false
-        tunerDisplayMode = try c.decodeIfPresent(TunerDisplayMode.self, forKey: .tunerDisplayMode) ?? .strobe
-        themePreference = try c.decodeIfPresent(AppTheme.self, forKey: .themePreference) ?? .system
-        language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .zhTW
-        glassOpacity = min(96, max(8, try c.decodeIfPresent(Int.self, forKey: .glassOpacity) ?? 50))
-        primaryInstrumentId = try c.decodeIfPresent(String.self, forKey: .primaryInstrumentId)
+        metronomeUserPresets = c.tolerantDecodeIfPresent([MetronomePreset].self, forKey: .metronomeUserPresets) ?? []
+        appMode = c.tolerantDecodeIfPresent(String.self, forKey: .appMode) ?? AppMode.tuner.rawValue
+        guzhengFavMigrationDone = c.tolerantDecodeIfPresent(Bool.self, forKey: .guzhengFavMigrationDone) ?? false
+        tunerDisplayMode = c.tolerantDecodeIfPresent(TunerDisplayMode.self, forKey: .tunerDisplayMode) ?? .strobe
+        themePreference = c.tolerantDecodeIfPresent(AppTheme.self, forKey: .themePreference) ?? .system
+        language = c.tolerantDecodeIfPresent(AppLanguage.self, forKey: .language) ?? .zhTW
+        glassOpacity = min(96, max(8, c.tolerantDecodeIfPresent(Int.self, forKey: .glassOpacity) ?? 50))
+        primaryInstrumentId = c.tolerantDecodeIfPresent(String.self, forKey: .primaryInstrumentId)
             ?? selectedInstrumentId
-        autoMicOnEnter = try c.decodeIfPresent(Bool.self, forKey: .autoMicOnEnter) ?? false
-        metronomeDefault = try c.decodeIfPresent(MetronomeSettings.self, forKey: .metronomeDefault)
-        bgKind = try c.decodeIfPresent(String.self, forKey: .bgKind) ?? ""
-        bgColor = try c.decodeIfPresent(String.self, forKey: .bgColor) ?? ""
-        customBgData = try c.decodeIfPresent(Data.self, forKey: .customBgData)
+        autoMicOnEnter = c.tolerantDecodeIfPresent(Bool.self, forKey: .autoMicOnEnter) ?? false
+        metronomeDefault = c.tolerantDecodeIfPresent(MetronomeSettings.self, forKey: .metronomeDefault)
+        bgKind = c.tolerantDecodeIfPresent(String.self, forKey: .bgKind) ?? ""
+        bgColor = c.tolerantDecodeIfPresent(String.self, forKey: .bgColor) ?? ""
+        customBgData = c.tolerantDecodeIfPresent(Data.self, forKey: .customBgData)
     }
 }
 
@@ -471,7 +503,7 @@ final class AppStore: ObservableObject {
         }
         tunerSettings = snapshot.tunerSettings
         pitchMode = snapshot.pitchMode
-        customInstruments = snapshot.customInstruments
+        customInstruments = Self.sanitizedCustomInstruments(snapshot.customInstruments)
         droneTimbre = snapshot.droneTimbre
         droneFollow = snapshot.droneFollow
         metronomeSettings = snapshot.metronomeSettings
@@ -524,17 +556,49 @@ final class AppStore: ObservableObject {
         persist()
     }
 
+    /// 【返修批7・C13】自訂樂器自 state 載入的健全化：解碼層
+    /// 已逐筆容錯（壞筆在 AppStateFile 解碼時丟棄），此處再
+    /// 擋語義壞筆——id 為空、音域反轉（maxF ≤ minF）整筆跳
+    /// 過；id 去重保留首筆（與 instrument(id:) 先到先得的
+    /// 解析序一致）。舊版零健全化，重複 id／反轉音域可直達
+    /// 目錄解析與引擎音域。
+    private static func sanitizedCustomInstruments(
+        _ list: [Instrument]
+    ) -> [Instrument] {
+        var seen = Set<String>()
+        return list.filter { inst in
+            !inst.id.isEmpty
+                && inst.maxFrequency > inst.minFrequency
+                && seen.insert(inst.id).inserted
+        }
+    }
+
     private static func loadStateFile() -> AppStateFile? {
-        guard let data = try? Data(contentsOf: stateFileURL),
-              let decoded = try? JSONDecoder().decode(AppStateFile.self, from: data)
-        else { return nil }
-        return decoded
+        let url = stateFileURL
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        if let decoded = try? JSONDecoder().decode(AppStateFile.self, from: data) {
+            return decoded
+        }
+        // 【返修批7・C1】檔案存在但整體解碼失敗（損壞／非本
+        // 格式）：先把原檔改名備份保留證據，再回 nil 走預設
+        // ／遷移路徑——舊版直接回 nil，init 末尾的 persist()
+        // 隨即以預設值覆寫原檔，損壞前的設定靜默歸零且不可
+        // 逆。備份名帶時間戳，多次損壞不互相覆蓋。
+        let backupURL = url.deletingLastPathComponent()
+            .appendingPathComponent(
+                "state-corrupt-\(Int(Date().timeIntervalSince1970)).json")
+        try? FileManager.default.moveItem(at: url, to: backupURL)
+        return nil
     }
 
     /// 階段 3 佔位鍵遷移：MetronomeStore 的兩個 UserDefaults 鍵與
-    /// ContentView 的 mode 鍵。遷移後刪除舊鍵，僅執行一次（state
-    /// 文件存在後不再走此路徑）。節拍器設定／自訂預置以原 Codable
-    /// 形狀直讀，內容零轉換、零遺失。
+    /// ContentView 的 mode 鍵。僅執行一次（state 文件存在後不再
+    /// 走此路徑）。節拍器設定／自訂預置以原 Codable 形狀直讀，
+    /// 內容零轉換、零遺失。【返修批7・C12】舊鍵改逐鍵「解碼／
+    /// 遷移成功才刪」：舊版末尾無條件刪三鍵，某鍵解碼失敗時
+    /// 資料既沒遷走、原鍵又被刪，永久遺失；失敗鍵現保留原鍵
+    /// 待下次啟動重試（state 檔一旦寫成，此路徑不再執行，
+    /// 保留僅為不刪證據）。
     private static func migratedSnapshot() -> AppStateFile {
         var snapshot = AppStateFile()
         let defaults = UserDefaults.standard
@@ -542,17 +606,17 @@ final class AppStore: ObservableObject {
         if let data = defaults.data(forKey: "laurent.metro.settings.v1"),
            let settings = try? decoder.decode(MetronomeSettings.self, from: data) {
             snapshot.metronomeSettings = settings
+            defaults.removeObject(forKey: "laurent.metro.settings.v1")
         }
         if let data = defaults.data(forKey: "laurent.metro.userPresets.v1"),
            let presets = try? decoder.decode([MetronomePreset].self, from: data) {
             snapshot.metronomeUserPresets = presets
+            defaults.removeObject(forKey: "laurent.metro.userPresets.v1")
         }
         if let mode = defaults.string(forKey: "laurent.app.mode") {
             snapshot.appMode = mode
+            defaults.removeObject(forKey: "laurent.app.mode")
         }
-        defaults.removeObject(forKey: "laurent.metro.settings.v1")
-        defaults.removeObject(forKey: "laurent.metro.userPresets.v1")
-        defaults.removeObject(forKey: "laurent.app.mode")
         return snapshot
     }
 
@@ -582,17 +646,26 @@ final class AppStore: ObservableObject {
         // 背景圖不內嵌（返修批 5）：快照恆寫 nil，圖檔走分檔。
         snapshot.customBgData = nil
         // 背景圖分檔：僅在圖檔本身變更時寫入／刪除。
+        // 【返修批7・C8】已寫值改「寫入成功才標記」：舊版
+        // try? 寫入後無條件標記，寫入失敗（磁碟滿／權限）
+        // 即靜默遺失且永不重試；現失敗時保留未標記，下次
+        // persist 以同值再試。刪除分支以「檔已不存在」為
+        // 成功判準（本就不存在時 removeItem 報錯屬已達標）。
         if customBgData != lastBgDataWritten {
             let bgURL = Self.customBgFileURL
             if let customBgData {
                 try? FileManager.default.createDirectory(
                     at: bgURL.deletingLastPathComponent(),
                     withIntermediateDirectories: true)
-                try? customBgData.write(to: bgURL, options: [.atomic])
+                if (try? customBgData.write(to: bgURL, options: [.atomic])) != nil {
+                    lastBgDataWritten = customBgData
+                }
             } else {
                 try? FileManager.default.removeItem(at: bgURL)
+                if !FileManager.default.fileExists(atPath: bgURL.path) {
+                    lastBgDataWritten = nil
+                }
             }
-            lastBgDataWritten = customBgData
         }
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         // 冪等守衛：內容未變不重寫盤（didSet 連發時的常見情形）。
@@ -600,10 +673,21 @@ final class AppStore: ObservableObject {
             let url = Self.stateFileURL
             try? FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? data.write(to: url, options: [.atomic])
-            lastPersistedData = data
+            // 【返修批7・C8】同上：寫入成功才標記已寫並發布
+            // 小組件快照；失敗保留 lastPersistedData 舊值，
+            // 下次 persist 自動重試同一內容。
+            if (try? data.write(to: url, options: [.atomic])) != nil {
+                lastPersistedData = data
+            // 【返修批7・F10】小組件快照組裝移入變更分支：
+            // 舊版每次 persist 都先組裝快照（多次 L10n 查表
+            // ＋樂器名本地化）才在 publish 內做相等守衛——
+            // 滑桿拖動 ~60 次/秒 persist 時全數白做。快照的
+            // 輸入（選中樂器／A4／收藏／節拍器值／語言）全
+            // 為 state 欄位子集且已編入上方 data，data 未變
+            // ⇒ 快照必未變，整段跳過與舊行為等價。
+                publishWidgetSnapshot()
+            }
         }
-        publishWidgetSnapshot()
     }
 
     // MARK: - 小組件快照（階段 6）

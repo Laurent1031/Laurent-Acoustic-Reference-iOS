@@ -142,6 +142,9 @@ struct InstrumentLibraryView: View {
                         .foregroundStyle(theme.textMuted)
                 }
                 .buttonStyle(GlassPressButtonStyle())
+                // 【返修批7・E14】清除鈕補無障礙標籤
+                // （此前 VoiceOver 只讀到圖標鈕、無名）。
+                .accessibilityLabel(L10n.t("清除搜索"))
             }
         }
         .padding(.horizontal, 12)
@@ -231,11 +234,22 @@ private struct InstrumentCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 4) {
-                Text(L10n.localizedName(instrument.name))
-                    .font(.system(size: 14.5, weight: .semibold))
-                    .foregroundStyle(theme.textPrimary)
-                    .lineLimit(1)
-                Spacer(minLength: 2)
+                // 【返修批7・E5】手勢分區（比照調音頁樂器卡
+                // 批 6 審計修復的已驗證修法）：舊版卡身整體
+                // .onTapGesture 與星／編輯／刪除子 Button 同時
+                // 觸發，點星可能連帶選樂器＋關 sheet。改：名稱
+                // 區（含 Spacer）與下行各自掛點按選樂器，三顆
+                // 子鈕獨立於任何父手勢之外，命中互不重疊。
+                HStack(spacing: 4) {
+                    Text(L10n.localizedName(instrument.name))
+                        .font(.system(size: 14.5, weight: .semibold))
+                        .foregroundStyle(theme.textPrimary)
+                        .lineLimit(1)
+                    Spacer(minLength: 2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { onSelect() }
                 if instrument.isCustom {
                     Button { onEdit() } label: {
                         Image(systemName: "pencil")
@@ -244,6 +258,8 @@ private struct InstrumentCard: View {
                             .frame(width: 24, height: 24)
                     }
                     .buttonStyle(GlassPressButtonStyle())
+                    // 【返修批7・E14】編輯鈕補無障礙標籤。
+                    .accessibilityLabel(L10n.t("编辑自订乐器"))
                     Button { tapDelete() } label: {
                         Text(confirmingDelete ? L10n.t("确认删除？") : "✕")
                             .font(.system(size: confirmingDelete ? 10.5 : 11,
@@ -252,6 +268,9 @@ private struct InstrumentCard: View {
                             .frame(height: 24)
                     }
                     .buttonStyle(GlassPressButtonStyle())
+                    // 【返修批7・E14】刪除鈕補無障礙標籤
+                    // （「✕」字形 VoiceOver 無法成名）。
+                    .accessibilityLabel(L10n.t("删除"))
                 }
                 FavoriteStarButton(store: store,
                                    instrumentId: instrument.id,
@@ -271,6 +290,8 @@ private struct InstrumentCard: View {
                     .foregroundStyle(theme.accent)
                     .lineLimit(1)
             }
+            .contentShape(Rectangle())
+            .onTapGesture { onSelect() }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -292,7 +313,9 @@ private struct InstrumentCard: View {
                               lineWidth: 1.2)
         }
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .onTapGesture { onSelect() }
+        // 【返修批7・E5】卡身整體 onTapGesture 已撤：選樂器
+        // 手勢改掛名稱區與下行兩區（見 body 內註解），子鈕
+        // 不再被父手勢連帶觸發。
     }
 
     // MARK: - 兩步刪除（母本行 8448：確認態 2.6 s）
@@ -364,7 +387,11 @@ private struct CustomInstrumentFormView: View {
         if !options.contains(where: { $0.value == transposition }) {
             options.append(TranspositionOption(
                 value: transposition,
-                label: "移调 \(transposition)（自定义）"))
+                // 【返修批7・A11】動態標籤改 format 鍵組裝期
+                // 本地化（整串按構造查不到鍵）；顯示端 Picker
+                // 的 L10n.t 對已組裝串查無鍵、原樣直出。
+                label: String(format: L10n.t("移调 %ld（自定义）"),
+                              transposition)))
         }
         return options
     }
@@ -573,6 +600,9 @@ struct FavoriteStarButton: View {
         }
         .buttonStyle(GlassPressButtonStyle())
         .accessibilityLabel(L10n.t("收藏至常用栏"))
+        // 【返修批7・E14】星鈕補收藏態 value：此前已收藏
+        // 與未收藏在 VoiceOver 下無從區分（標籤恆同）。
+        .accessibilityValue(isFavorite ? L10n.t("已收藏") : L10n.t("未收藏"))
     }
 
     @ViewBuilder

@@ -220,6 +220,8 @@ final class TunerViewModel: ObservableObject {
     private var lastTickTime: TimeInterval?
     /// 靜默幀連續標誌（返修批4・省電早退）。
     private var lastWasQuiescent = false
+    /// 徽章統計上次重算時刻（返修批7・F7 節流，見 ingest）。
+    private var lastBadgeRefreshTime: TimeInterval = -.infinity
     private var hadValidPitch = false
     private var lastStableCents: Double = 0
     private var ghostUntil: TimeInterval = 0
@@ -238,6 +240,8 @@ final class TunerViewModel: ObservableObject {
 
     private let linkProxy = DisplayLinkProxy()
     private var displayLink: CADisplayLink?
+    /// 頁面可見性（返修批7・F11 門控，見 setPageVisible）。
+    private var pageVisible = true
 
     /// 削波警示閾值（階段 7 驗收清單：−1 dBFS 入／−6 dBFS 釋放／保持 1.5 s；
     /// peak 為線性 0–1，dBFS = 20·log10(peak)）。
@@ -313,7 +317,9 @@ final class TunerViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        engine.$latestReading
+        // 【返修批7・F2】讀數訂閱改走 engine.readingBox
+        // （latestReading 已自 engine 本體拆出，見 ReadingBox）。
+        engine.readingBox.$latest
             .receive(on: DispatchQueue.main)
             .sink { [weak self] reading in
                 MainActor.assumeIsolated {
@@ -467,7 +473,17 @@ final class TunerViewModel: ObservableObject {
             stability.push(t: now, cents: nil)
         }
 
-        refreshBadgeText()
+        // 【返修批7・F7】徽章統計節流：refreshBadgeText 每
+        // 次都全量掃描 stability 樣本（~770 筆）＋3 次 L10n
+        // 查表，舊版隨 ingest 以 ≈94 Hz 空轉（寫入守衛只省
+        // 發布、不省建構）。徽章是文字標籤、統計窗長 8.2 s，
+        // 改節流 ≈120 ms 才重算，視覺無差異；其餘呼叫點
+        // （定格切換／語言／選樂器／重置／init）仍即時刷新、
+        // 不經此節流。
+        if now - lastBadgeRefreshTime >= 0.12 {
+            lastBadgeRefreshTime = now
+            refreshBadgeText()
+        }
         if needsMotion {
             ensureDisplayLink()
         }
@@ -693,6 +709,22 @@ final class TunerViewModel: ObservableObject {
         if abs(target - x) < 0.01 { x = target }
     }
 
+    /// 頁面可見性門控（返修批7・F11）：ContentView 雙頁
+    /// 保活（ZStack 疊放、僅切透明度），不可見頁的顯示
+    /// 時鐘不應續跑——舊版最壞 3 條 120 Hz driver 並存
+    /// （含不可見頁）。不可見時暫停 link（ingest 照常，
+    /// 切回時狀態已同步、針值由 tick 續推）；重見且仍需
+    /// 動態時恢復。接線在 ContentView（onAppear＋appMode
+    /// onChange）。
+    func setPageVisible(_ visible: Bool) {
+        pageVisible = visible
+        if visible {
+            if needsMotion { ensureDisplayLink() }
+        } else {
+            pauseDisplayLink()
+        }
+    }
+
     private func ensureDisplayLink() {
         if displayLink == nil {
             let link = CADisplayLink(
@@ -704,7 +736,8 @@ final class TunerViewModel: ObservableObject {
             link.add(to: .main, forMode: .common)
             displayLink = link
         }
-        displayLink?.isPaused = false
+        // 【F11】不可見頁不解暫停（setPageVisible 統一門控）。
+        displayLink?.isPaused = !pageVisible
     }
 
     private func pauseDisplayLink() {

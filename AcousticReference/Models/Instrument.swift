@@ -148,9 +148,9 @@ enum InstrumentCatalog {
         name: "中音薩克斯", englishName: "Alto Sax", keyName: "1 = E♭",
         transposition: -9, minFrequency: 130, maxFrequency: 1200,
         refTargets: [
-            InstrumentRefTarget(note: "A4", label: "樂團A4 (記F♯5)"),
-            InstrumentRefTarget(note: "B♭4", label: "管樂B♭4 (記G5)"),
-            InstrumentRefTarget(note: "E♭4", label: "本調Do (實E♭4)"),
+            InstrumentRefTarget(note: "A4", label: "樂團A4（記F♯5）"),
+            InstrumentRefTarget(note: "B♭4", label: "管樂B♭4（記G5）"),
+            InstrumentRefTarget(note: "E♭4", label: "本調Do（實E♭4）"),
         ],
         stringNotes: nil, isGuzheng: false, isCustom: false)
 }

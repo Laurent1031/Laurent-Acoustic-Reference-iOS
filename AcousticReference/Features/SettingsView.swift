@@ -228,6 +228,9 @@ struct PreferencesView: View {
                             .foregroundStyle(theme.textPrimary)
                             .frame(height: 32)
                     }
+                    // 【返修批7・E13】命中高 32→40（透明
+                    // padding，視覺不變）。
+                    .padding(.vertical, 4)
                     .buttonStyle(GlassPressButtonStyle())
                     HoldRepeatButton(action: { stepDraftA4(0.5) }, label: {
                         Text("+")
@@ -334,6 +337,9 @@ struct PreferencesView: View {
                 }
                 .font(.system(size: 13.5, weight: .semibold))
                 .foregroundStyle(theme.accent)
+                // 【返修批7・E13】純文字鈕命中高僅 ≈18，
+                // 上下透明 padding 擴至 ≈42（視覺不變）。
+                .padding(.vertical, 12)
                 .buttonStyle(GlassPressButtonStyle())
             }
         }
@@ -453,6 +459,8 @@ struct SystemSettingsView: View {
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(theme.accent)
             }
+            // 【返修批7・E13】命中高 ≈18→≈42（透明 padding）。
+            .padding(.vertical, 12)
             .buttonStyle(GlassPressButtonStyle())
             Divider()
             // 導出改單擊（審計修復）：此前兩段式——首次點按只
@@ -469,6 +477,8 @@ struct SystemSettingsView: View {
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(theme.accent)
             }
+            // 【返修批7・E13】命中高 ≈18→≈42（透明 padding）。
+            .padding(.vertical, 12)
             .buttonStyle(GlassPressButtonStyle())
             .sheet(isPresented: $showExportShare) {
                 if let backupExportURL {
@@ -605,6 +615,9 @@ struct SystemSettingsView: View {
                 Text(L10n.t("选择图片"))
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(theme.accent)
+                    // 【返修批7・E13】命中高 ≈18→≈42
+                    // （透明 padding，視覺不變）。
+                    .padding(.vertical, 12)
             }
             .onChange(of: backgroundPhotoItem) { _, item in
                 guard let item else { return }
@@ -633,6 +646,8 @@ struct SystemSettingsView: View {
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(theme.clipWarning)
             }
+            // 【返修批7・E13】命中高 ≈18→≈42（透明 padding）。
+            .padding(.vertical, 12)
             .buttonStyle(GlassPressButtonStyle())
         }
     }

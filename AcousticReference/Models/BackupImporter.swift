@@ -62,6 +62,9 @@ enum BackupImporter {
         /// defaultBpm／defaultBeats／defaultNoteUnit／dottedBeat／
         /// defaultTimbre 五欄組成的整份快照（任一欄出現即組成，
         /// 缺欄以出廠值補——母本 profile 恆五欄齊全，此為寬容路徑）。
+        /// 【返修批7・C4】原生導出的七個擴展鍵（defaultSubdivision／
+        /// defaultBeatAccents／defaultBluetoothCompMs／defaultGap*／
+        /// defaultGrouping）一併讀回，metronomeDefault 往返全欄不丟。
         var metronomeDefault: MetronomeSettings?
         var metronomeUserPresets: [MetronomePreset]?
 
@@ -110,12 +113,16 @@ enum BackupImporter {
         plan.hasProfile = profile != nil
         plan.hasSettings = settings != nil
         if (envelope["bgOmitted"] as? Bool) == true {
-            plan.warnings.append("備份未包含背景圖（母本導出時已省略）")
+            plan.warnings.append("备份未包含背景图（母本导出时已省略）")
         }
 
         // 自訂樂器先映射：收藏／主樂器的健全化要對匯入後目錄判定。
+        // 【返修批7・C3】缺 customInstruments 鍵時 plan 保持
+        // nil（applyImport 不觸碰自訂樂器）：舊版無條件寫入
+        // 映射結果，缺鍵即空陣列、套用時清空用戶全部自訂
+        // 樂器——同檔其他欄位缺鍵皆保留，唯此欄不對稱。
         var importedCustoms: [Instrument] = []
-        if let profile {
+        if let profile, profile["customInstruments"] != nil {
             importedCustoms = mapCustomInstruments(profile["customInstruments"], plan: &plan)
             plan.customInstruments = importedCustoms
         }
@@ -124,6 +131,37 @@ enum BackupImporter {
 
         if let profile { mapProfile(profile, catalogIds: catalogIds, plan: &plan) }
         if let settings { mapSettings(settings, plan: &plan) }
+
+        // 【返修批7・C9】未映射鍵實際填入：兩段中出現、但不
+        // 在已知映射鍵集合內的鍵名（去重、排序），確認 sheet
+        // 逐鍵顯示，不再靜默忽略。已知集合須與 mapProfile／
+        // mapSettings／mapBackground 實際讀取的鍵保持一致。
+        let knownProfileKeys: Set<String> = [
+            "defaultA4", "pitchMode", "damping", "tolerance",
+            "noiseGate", "droneTimbre", "droneFollow", "temperament",
+            "justTonicPc", "autoMicOnEnter",
+            "favoriteInstIds", "primaryInstId", "customInstruments",
+            "metroPresets",
+            "defaultBpm", "defaultBeats", "defaultNoteUnit",
+            "dottedBeat", "defaultTimbre",
+            "defaultSubdivision", "defaultBeatAccents",
+            "defaultBluetoothCompMs", "defaultGapEnabled",
+            "defaultGapSoundBars", "defaultGapSilentBars",
+            "defaultGrouping",
+            "bgKind", "bgColor", "customBgDataUrl",
+        ]
+        let knownSettingsKeys: Set<String> = [
+            "lang", "mode", "hapticsOn", "soundsOn", "themeMode",
+            "glassAlpha", "bgKind", "bgColor", "customBgDataUrl",
+        ]
+        var unmapped = Set<String>()
+        if let profile {
+            unmapped.formUnion(Set(profile.keys).subtracting(knownProfileKeys))
+        }
+        if let settings {
+            unmapped.formUnion(Set(settings.keys).subtracting(knownSettingsKeys))
+        }
+        plan.unmappedKeys = unmapped.sorted()
 
         plan.summaryLines = buildSummary(plan)
         return plan
@@ -139,27 +177,27 @@ enum BackupImporter {
         }
         if let s = profile["pitchMode"] as? String {
             plan.pitchMode = PitchMode(rawValue: s)
-            if plan.pitchMode == nil { plan.warnings.append("pitchMode 值無法識別，已跳過") }
+            if plan.pitchMode == nil { plan.warnings.append("pitchMode 值无法识别，已跳过") }
         }
         if let s = profile["damping"] as? String {
             plan.damping = DampingProfile(rawValue: s)
-            if plan.damping == nil { plan.warnings.append("damping 值無法識別，已跳過") }
+            if plan.damping == nil { plan.warnings.append("damping 值无法识别，已跳过") }
         }
         if let v = profile["tolerance"] as? NSNumber {
             plan.toleranceCents = min(10, max(0.5, v.doubleValue))
         }
         if let s = profile["noiseGate"] as? String {
             plan.noiseGate = NoiseGateProfile(rawValue: s)
-            if plan.noiseGate == nil { plan.warnings.append("noiseGate 值無法識別，已跳過") }
+            if plan.noiseGate == nil { plan.warnings.append("noiseGate 值无法识别，已跳过") }
         }
         if let s = profile["droneTimbre"] as? String {
             plan.droneTimbre = DroneTimbre(rawValue: s)
-            if plan.droneTimbre == nil { plan.warnings.append("droneTimbre 值無法識別，已跳過") }
+            if plan.droneTimbre == nil { plan.warnings.append("droneTimbre 值无法识别，已跳过") }
         }
         if let v = profile["droneFollow"] as? Bool { plan.droneFollow = v }
         if let s = profile["temperament"] as? String {
             plan.temperament = Temperament(rawValue: s)
-            if plan.temperament == nil { plan.warnings.append("temperament 值無法識別，已跳過") }
+            if plan.temperament == nil { plan.warnings.append("temperament 值无法识别，已跳过") }
         }
         if let v = profile["justTonicPc"] as? NSNumber {
             plan.justTonicPc = ((v.intValue % 12) + 12) % 12
@@ -180,7 +218,7 @@ enum BackupImporter {
             }
             if favs.isEmpty {
                 favs = ["alto_sax", "piano", "violin"].filter { catalogIds.contains($0) }
-                plan.warnings.append("備份收藏無法解析，已退回預設收藏")
+                plan.warnings.append("备份收藏无法解析，已退回预设收藏")
             }
             plan.favoriteInstrumentIds = favs
         }
@@ -191,13 +229,22 @@ enum BackupImporter {
             if catalogIds.contains(s) {
                 plan.primaryInstrumentId = s
             } else {
-                plan.warnings.append("primaryInstId 指向不存在的樂器，已跳過")
+                plan.warnings.append("primaryInstId 指向不存在的乐器，已跳过")
             }
         }
 
-        // 節拍器預設參數（五欄）：任一欄出現即組成整份快照。
+        // 節拍器預設參數：母本五欄（defaultBpm 等）任一欄出現
+        // 即組成整份快照。【返修批7・C4】原生導出另加七鍵
+        // （subdivision／自訂重音／藍牙補償／gap 三欄／
+        // grouping），匯入一併讀回，往返不再丟欄；舊備份
+        // （母本導出）無此七鍵時沿用原行為——重音以拍號預設
+        // 生成、其餘欄出廠值，向後相容不變。
         let metroKeys = ["defaultBpm", "defaultBeats", "defaultNoteUnit",
-                         "dottedBeat", "defaultTimbre"]
+                         "dottedBeat", "defaultTimbre",
+                         "defaultSubdivision", "defaultBeatAccents",
+                         "defaultBluetoothCompMs", "defaultGapEnabled",
+                         "defaultGapSoundBars", "defaultGapSilentBars",
+                         "defaultGrouping"]
         if metroKeys.contains(where: { profile[$0] != nil }) {
             var metro = MetronomeSettings()
             if let v = profile["defaultBeats"] as? NSNumber {
@@ -214,8 +261,49 @@ enum BackupImporter {
             if let v = profile["defaultBpm"] as? NSNumber {
                 metro.bpm = metro.clampedBpm(v.intValue)
             }
-            metro.beatAccents = MetronomeSettings.defaultAccents(
-                beats: metro.beatsPerBar, unit: metro.beatUnit)
+            if let v = profile["defaultSubdivision"] as? NSNumber {
+                metro.subdivision = min(5, max(1, v.intValue))
+            }
+            if let v = profile["defaultBluetoothCompMs"] as? NSNumber {
+                metro.bluetoothCompMs = min(300, max(0, v.intValue))
+            }
+            if let v = profile["defaultGapEnabled"] as? Bool {
+                metro.gapEnabled = v
+            }
+            if let v = profile["defaultGapSoundBars"] as? NSNumber {
+                metro.gapSoundBars = min(16, max(1, v.intValue))
+            }
+            if let v = profile["defaultGapSilentBars"] as? NSNumber {
+                metro.gapSilentBars = min(16, max(1, v.intValue))
+            }
+            if let rawGrouping = profile["defaultGrouping"] as? [String: Any] {
+                var grouping: [String: [Int]] = [:]
+                for (key, value) in rawGrouping {
+                    guard let arr = value as? [Any] else { continue }
+                    let groups = arr.compactMap { ($0 as? NSNumber)?.intValue }
+                    if groups.count == arr.count, !groups.isEmpty,
+                       groups.allSatisfy({ $0 >= 1 }) {
+                        grouping[key] = groups
+                    }
+                }
+                metro.groupingBySignature = grouping
+            }
+            // 重音：備份有自訂重音且長度合拍數才直用（等級鉗
+            // [0, 3]，與 MetronomeSettings 解碼正規化同口徑），
+            // 否則以拍號預設生成（舊備份路徑）。
+            if let rawAccents = profile["defaultBeatAccents"] as? [Any] {
+                let accents = rawAccents.compactMap { ($0 as? NSNumber)?.intValue }
+                if accents.count == rawAccents.count,
+                   accents.count == metro.beatsPerBar {
+                    metro.beatAccents = accents.map { min(3, max(0, $0)) }
+                } else {
+                    metro.beatAccents = MetronomeSettings.defaultAccents(
+                        beats: metro.beatsPerBar, unit: metro.beatUnit)
+                }
+            } else {
+                metro.beatAccents = MetronomeSettings.defaultAccents(
+                    beats: metro.beatsPerBar, unit: metro.beatUnit)
+            }
             plan.metronomeDefault = metro
         }
 
@@ -283,11 +371,14 @@ enum BackupImporter {
                 refTargets: nil, stringNotes: nil,
                 isGuzheng: false, isCustom: true))
             if InstrumentCatalog.builtin(id: id) != nil {
-                plan.warnings.append("自訂樂器 id 與內建樂器重複：\(id)（原生以自訂為先，與母本一致）")
+                // 【返修批7・A5】插值警告改 format 鍵組裝期本地化。
+                plan.warnings.append(String(format: L10n.t(
+                    "自订乐器 id 与内建乐器重复：%@（原生以自订为先，与母本一致）"), id))
             }
         }
         if skipped > 0 {
-            plan.warnings.append("自訂樂器有 \(skipped) 筆格式不完整，已跳過")
+            plan.warnings.append(String(format: L10n.t(
+                "自订乐器有 %ld 笔格式不完整，已跳过"), skipped))
         }
         return result
     }
@@ -298,11 +389,11 @@ enum BackupImporter {
                                     plan: inout ImportPlan) {
         if let s = settings["lang"] as? String {
             plan.language = AppLanguage(rawValue: s)
-            if plan.language == nil { plan.warnings.append("lang 值無法識別，已跳過") }
+            if plan.language == nil { plan.warnings.append("lang 值无法识别，已跳过") }
         }
         if let s = settings["mode"] as? String {
             plan.appMode = AppMode(rawValue: s)
-            if plan.appMode == nil { plan.warnings.append("mode 值無法識別，已跳過") }
+            if plan.appMode == nil { plan.warnings.append("mode 值无法识别，已跳过") }
         }
         if let v = settings["hapticsOn"] as? Bool { plan.hapticsOn = v }
         if let v = settings["soundsOn"] as? Bool { plan.soundsOn = v }
@@ -313,7 +404,7 @@ enum BackupImporter {
             case "dark": plan.themePreference = .dark
             case "custom": plan.themePreference = .custom
             default:
-                plan.warnings.append("themeMode 值無法識別，已跳過")
+                plan.warnings.append("themeMode 值无法识别，已跳过")
             }
         }
         if let v = settings["glassAlpha"] as? NSNumber {
@@ -333,14 +424,14 @@ enum BackupImporter {
             if ["", "color", "image"].contains(s) {
                 plan.bgKind = s
             } else {
-                plan.warnings.append("bgKind 值無法識別，已跳過")
+                plan.warnings.append("bgKind 值无法识别，已跳过")
             }
         }
         if let s = dict["bgColor"] as? String, !s.isEmpty {
             if AppStore.parseHexColor(s) != nil {
                 plan.bgColorHex = s
             } else {
-                plan.warnings.append("bgColor 值無法識別，已跳過")
+                plan.warnings.append("bgColor 值无法识别，已跳过")
             }
         }
         if let s = dict["customBgDataUrl"] as? String, !s.isEmpty {
@@ -348,10 +439,10 @@ enum BackupImporter {
                 if data.count <= 12 * 1024 * 1024 {
                     plan.customBgImageData = data
                 } else {
-                    plan.warnings.append("背景圖過大（>12 MB），已跳過")
+                    plan.warnings.append("背景图过大（>12 MB），已跳过")
                 }
             } else {
-                plan.warnings.append("customBgDataUrl 無法解析，已跳過")
+                plan.warnings.append("customBgDataUrl 无法解析，已跳过")
             }
         }
     }
@@ -372,20 +463,31 @@ enum BackupImporter {
     private static func buildSummary(_ plan: ImportPlan) -> [String] {
         var lines: [String] = []
         if plan.hasProfile {
+            // 【返修批7・A5】摘要改組裝期本地化：計數片段走
+            // format 鍵、固定片段與段首／分隔符走 L10n 查表。
             var parts: [String] = []
-            if let favs = plan.favoriteInstrumentIds { parts.append("收藏 \(favs.count) 件") }
-            if let customs = plan.customInstruments { parts.append("自訂樂器 \(customs.count) 件") }
-            if let presets = plan.metronomeUserPresets { parts.append("節拍器預置 \(presets.count) 組") }
-            if plan.metronomeDefault != nil { parts.append("節拍器預設參數") }
-            parts.append("調音偏好")
-            lines.append("個人資料段：" + parts.joined(separator: "、"))
+            if let favs = plan.favoriteInstrumentIds {
+                parts.append(String(format: L10n.t("收藏 %ld 件"), favs.count))
+            }
+            if let customs = plan.customInstruments {
+                parts.append(String(format: L10n.t("自订乐器 %ld 件"), customs.count))
+            }
+            if let presets = plan.metronomeUserPresets {
+                parts.append(String(format: L10n.t("节拍器预置 %ld 组"), presets.count))
+            }
+            if plan.metronomeDefault != nil { parts.append(L10n.t("节拍器预设参数")) }
+            parts.append(L10n.t("调音偏好"))
+            lines.append(L10n.t("个人资料段：")
+                + parts.joined(separator: L10n.t("、")))
         }
         if plan.hasSettings {
-            lines.append("系統設定段：語言／外觀／玻璃／回饋開關")
+            lines.append("系统设定段：语言／外观／玻璃／回馈开关")
         }
-        // 摘要／警告／未映射說明為診斷性文字：組裝期即以繁中
-        // 書寫、顯示端直顯不查表（與階段 5 的引擎錯誤原文豁免
-        // 同一口徑）；sheet 的固定 UI 文字則走 L10n＋supplement。
+        // 【返修批7・A5 裁決】摘要／警告不再直顯繁中：固定串
+        // 以 zh-CN 源串組裝、顯示端（BackupImportView）經
+        // L10n.t 查 supplement；含插值者於組裝期以 format 鍵
+        // 本地化（本函數與各 warnings.append）。未映射鍵名為
+        // 備份欄位識別字本身、非散文，不譯。
         return lines
     }
 }
@@ -497,6 +599,17 @@ enum BackupExporter {
             profile["defaultNoteUnit"] = metroDefault.beatUnit
             profile["dottedBeat"] = metroDefault.dottedBeat
             profile["defaultTimbre"] = metroDefault.timbre.rawValue
+            // 【返修批7・C4】擴展七鍵：舊版只導出母本五欄，
+            // subdivision／自訂重音／藍牙補償／gap／grouping
+            // 導出即丟。新增鍵為原生擴展（母本忽略未知鍵、
+            // 其匯入行為不變），匯入端一併讀回，全欄往返。
+            profile["defaultSubdivision"] = metroDefault.subdivision
+            profile["defaultBeatAccents"] = metroDefault.beatAccents
+            profile["defaultBluetoothCompMs"] = metroDefault.bluetoothCompMs
+            profile["defaultGapEnabled"] = metroDefault.gapEnabled
+            profile["defaultGapSoundBars"] = metroDefault.gapSoundBars
+            profile["defaultGapSilentBars"] = metroDefault.gapSilentBars
+            profile["defaultGrouping"] = metroDefault.groupingBySignature
         }
         profile["metroPresets"] = store.metronomeUserPresets.map { preset in
             [

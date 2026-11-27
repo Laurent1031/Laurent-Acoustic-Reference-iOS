@@ -6,6 +6,9 @@ import UIKit
 /// 同一個 AudioEngine 實例（外部注入），本視圖不再自建引擎。
 struct TunerDebugView: View {
     @ObservedObject var engine: AudioEngine
+    /// 逐幀讀數盒（返修批7・F2）：讀數顯示改觀察本盒，
+    /// 不再經 engine 本體（latestReading 已拆出）。
+    @ObservedObject var readingBox: ReadingBox
     /// 節拍器診斷（階段 3 起由 ContentView 殼注入；缺省時不顯示該段）。
     var metronomeEngine: MetronomeEngine?
     var metronomeViewModel: MetronomeViewModel?
@@ -20,6 +23,12 @@ struct TunerDebugView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
+            // 【返修批7・E12】內容包 ScrollView：舊定高
+            // VStack 在 SE 級高度溢出 ≈112、底部鈕被推出
+            // 螢幕；改可捲動後矮屏全內容可達。Spacer 在
+            // 捲動內容內收為 0、改頂對齊堆疊（診斷頁可接受，
+            // 高屏原靠 Spacer 撐開的分佈不再保留）。
+            ScrollView {
             VStack(spacing: 20) {
                 Text("LAURENT")
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
@@ -30,7 +39,7 @@ struct TunerDebugView: View {
                 Spacer(minLength: 0)
 
                 // 音名（實音）
-                Text(engine.latestReading?.noteName ?? "——")
+                Text(readingBox.latest?.noteName ?? "——")
                     .font(.system(size: 84, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
@@ -63,39 +72,41 @@ struct TunerDebugView: View {
 
                 controls
             }
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 24)
             .padding(.bottom, 20)
+            }
         }
     }
 
     // MARK: - 顯示文字
 
     private var centsText: String {
-        guard let reading = engine.latestReading else { return "— ¢" }
+        guard let reading = readingBox.latest else { return "— ¢" }
         return String(format: "%+.1f ¢", reading.cents)
     }
 
     private var centsColor: Color {
-        guard let reading = engine.latestReading, reading.hasPitch else {
+        guard let reading = readingBox.latest, reading.hasPitch else {
             return .white.opacity(0.5)
         }
         return reading.isInTune ? .green : .white
     }
 
     private var frequencyText: String {
-        guard let reading = engine.latestReading else { return "— Hz" }
+        guard let reading = readingBox.latest else { return "— Hz" }
         return String(format: "%.1f Hz", reading.smoothedFrequency)
     }
 
     private var rawFrequencyText: String {
-        guard let raw = engine.latestReading?.rawFrequency else {
+        guard let raw = readingBox.latest?.rawFrequency else {
             return L10n.t("原始") + " — Hz"
         }
         return String(format: "%@ %.1f Hz", L10n.t("原始"), raw)
     }
 
     private var diagnosticsText: Text {
-        let reading = engine.latestReading
+        let reading = readingBox.latest
         let clarity = reading.map { String(format: "%.3f", $0.clarity) } ?? "—"
         let rms = reading.map { String(format: "%.4f", $0.rms) } ?? "—"
         var line = L10n.t("清晰度") + " \(clarity) · RMS \(rms)"
@@ -128,7 +139,7 @@ struct TunerDebugView: View {
                     .foregroundStyle(.red)
             }
             if let error = engine.lastError {
-                Text(error)
+                Text(L10n.t(error))
                     .font(.footnote)
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
@@ -264,5 +275,5 @@ private struct MetronomeDebugSection: View {
 }
 
 #Preview {
-    TunerDebugView(engine: AudioEngine(), store: AppStore())
+    TunerDebugView(engine: AudioEngine(), readingBox: ReadingBox(), store: AppStore())
 }

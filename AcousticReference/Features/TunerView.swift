@@ -66,18 +66,49 @@ struct TunerView: View {
             // .pitch-octave：clamp(16px, 2.8vh, 26px)。
             // 演奏態（補強段）：音名 ×1.12、主顯示高度預算
             // 0.30 → 0.46（輔助列隱藏後釋出的高度歸主顯示）。
-            let noteSize = min(72, max(36, geo.size.height * 0.064)
+            let availH = geo.size.height
+            // 【返修批7・版面分級壓縮（深度檢查 E1/E3）】舊版面
+            // 固定列高直接堆疊：16 Pro 級（可用 689）總高約
+            // 741、溢出 ≈52（麥克風鈕壓進 Home Indicator 區）；
+            // SE 級（可用 555）溢出 ≈136（麥克風鈕整顆出界）。
+            // 改為：列間距／軌跡高按可用高分級收縮，主顯示高
+            // 改由「可用高 − 固定列總高 − 間距 − 頁邊距」的
+            // 餘量決定（下限 80），任何高度下總高恆 ≤ 可用高、
+            // 不溢出、不重疊；餘量充裕時主顯示取自然高（與
+            // 舊版的寬度／比例預算相同），視覺不變。
+            let compact = availH < 660
+            let rowSpacing: CGFloat = compact ? 5 : 6
+            let traceHeight: CGFloat = compact ? 34 : 44
+            let noteSize = min(72, max(36, availH * 0.064)
                                * (performance ? 1.12 : 1))
-            let octaveSize = min(26, max(16, geo.size.height * 0.028))
-            let gaugeHeight = min(
+            let octaveSize = min(26, max(16, availH * 0.028))
+            let naturalGauge = min(
                 (geo.size.width - 32) * 190.0 / 320.0 * (performance ? 1.3 : 1),
-                geo.size.height * (performance ? 0.46 : 0.30)
+                availH * (performance ? 0.46 : 0.30)
             )
+            // 固定列總高（不含主顯示與 Spacer），逐列對現行
+            // 版面實高：樂器卡 40／工具列 26／音名行 noteSize
+            // ×1.21／提示 18／麥克風鈕 45.5／數據卡（上下內距
+            // 20＋四格 47＋列距 8＋軌跡 traceHeight）。
+            var fixedExcl: CGFloat = 40 + 26 + noteSize * 1.21 + 18 + 45.5
+                + (20 + 47 + 8 + traceHeight)
+            var gaps = 7 // 演奏態：8 列 − 1
+            if !performance {
+                let dotsH: CGFloat = store.favoriteInstrumentIds.count >= 2 ? 8 : 0
+                fixedExcl += 34 /* 收藏列 */ + dotsH + 34 /* 目標列 */ + 44 /* Drone */
+                gaps = dotsH > 0 ? 11 : 10
+            }
+            if justStripExpanded && store.tunerSettings.temperament == .just {
+                fixedExcl += 38 // 純律主音快選列 30＋列距 8
+            }
+            let chrome = fixedExcl + CGFloat(gaps) * rowSpacing
+                + 6 + (compact ? 8 : 10)
+            let gaugeHeight = min(naturalGauge, max(80, availH - chrome))
 
             ZStack {
                 theme.background.ignoresSafeArea()
 
-                VStack(spacing: 8) {
+                VStack(spacing: rowSpacing) {
                     headerRow(theme: theme)
 
                     if !performance {
@@ -110,7 +141,7 @@ struct TunerView: View {
                         targetStrip(theme: theme)
                     }
 
-                    TunerDataCard(render: viewModel.render, viewModel: viewModel, engine: engine, store: store, theme: theme)
+                    TunerDataCard(render: viewModel.render, viewModel: viewModel, engine: engine, store: store, theme: theme, traceHeight: traceHeight, pageVisible: store.appMode == .tuner)
 
                     Spacer(minLength: 0)
 
@@ -122,7 +153,7 @@ struct TunerView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
-                .padding(.bottom, 10)
+                .padding(.bottom, compact ? 8 : 10)
             }
         }
         .sheet(isPresented: $showLibrary) {
@@ -136,8 +167,15 @@ struct TunerView: View {
         }
         // 沉浸中被切離調音模式（深連結／外部路徑）：立即關閉
         // cover，方向鎖隨 onDisappear 還原豎屏（防漏）。
+        // 【返修批7・F11】同掛調音 DisplayLink 可見性門控：
+        // 本頁在節拍器模式下不可見（雙頁保活），VM 的顯示
+        // 時鐘停驅動；初值由下方 onAppear 補齊。
         .onChange(of: store.appMode) { _, newMode in
             if newMode != .tuner { showImmersive = false }
+            viewModel.setPageVisible(newMode != .metronome)
+        }
+        .onAppear {
+            viewModel.setPageVisible(store.appMode != .metronome)
         }
         // 自動開啟麥克風（母本調音頁 pointerdown → ensureMicOn）：
         // autoMicOnEnter 開時點按頁面任意處即啟動；simultaneous
@@ -770,22 +808,37 @@ struct TunerView: View {
 
     // MARK: - 麥克風控制
 
+    @Environment(\.openURL) private var openURL
+
     private func micControls(theme: TunerTheme) -> some View {
         VStack(spacing: 8) {
+            // 【返修批7 D4】權限被拒時給出直達系統設定的按鈕
+            // （舊版只有一行文字、無任何恢復路徑）；字體改固定
+            // 字級（深度檢查 E9：.footnote 隨 Dynamic Type 放大
+            // 會在本頁定高版面外加溢出行高）。
             if engine.permissionDenied {
-                Text(L10n.t("麦克风权限被拒绝，请到系统设置开启"))
-                    .font(.footnote)
-                    .foregroundStyle(theme.clipWarning)
+                HStack(spacing: 10) {
+                    Text(L10n.t("麦克风权限被拒绝，请到系统设置开启"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(theme.clipWarning)
+                    Button(L10n.t("前往设置")) {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            openURL(url)
+                        }
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.accent)
+                }
             }
             if let error = engine.lastError {
-                Text(error)
-                    .font(.footnote)
+                Text(L10n.t(error))
+                    .font(.system(size: 13))
                     .foregroundStyle(theme.clipWarning)
                     .multilineTextAlignment(.center)
             }
             if let droneError = drone.lastError {
-                Text(droneError)
-                    .font(.footnote)
+                Text(L10n.t(droneError))
+                    .font(.system(size: 13))
                     .foregroundStyle(theme.clipWarning)
                     .multilineTextAlignment(.center)
             }
@@ -1066,27 +1119,67 @@ struct TunerNoteRow: View {
 }
 
 /// 數據卡（返修批4・渲染隔離）：四格讀數＋音高軌跡＋穩定度
-/// 徽章收進同一張卡（母本單一 .data-card）。觀察 render；
-/// 軌跡樣本取自 viewModel（每幀與 render 同步發布，見
-/// TunerViewModel.ingest 註解）。
+/// 徽章收進同一張卡（母本單一 .data-card）。
+/// 【返修批7・F6】靜態殼與動態內容分離（輕版）：本殼只
+/// 觀察 store（玻璃透明度，低頻），外層玻璃面＋描邊不隨
+/// render 的逐幀發布重建；動態內容收進 TunerDataCardContent
+/// 單獨觀察 render（軌跡樣本取自 viewModel，每幀與 render
+/// 同步發布，見 TunerViewModel.ingest 註解）。
 struct TunerDataCard: View {
     @ObservedObject var render: TunerRenderState
     let viewModel: TunerViewModel
     @ObservedObject var engine: AudioEngine
     @ObservedObject var store: AppStore
     let theme: TunerTheme
+    /// 軌跡高（返修批7 版面分級壓縮）：由 TunerView 按可用
+    /// 高度決定，取代舊 minHeight 52 的不確定落點。
+    var traceHeight: CGFloat = 44
+    /// 頁面可見性（返修批7 F5）：不可見時待機波動畫暫停。
+    var pageVisible: Bool = true
+
+    var body: some View {
+        TunerDataCardContent(
+            render: render, viewModel: viewModel, engine: engine,
+            store: store, theme: theme,
+            traceHeight: traceHeight, pageVisible: pageVisible)
+            .padding(10)
+            .glassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(
+                        theme.isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
+                        lineWidth: 1
+                    )
+            }
+    }
+}
+
+/// 數據卡動態內容（返修批7・F6 分離）：觀察 render／
+/// engine，四格讀數各為獨立 MetricBox，軌跡為 Canvas 本體。
+private struct TunerDataCardContent: View {
+    @ObservedObject var render: TunerRenderState
+    let viewModel: TunerViewModel
+    @ObservedObject var engine: AudioEngine
+    @ObservedObject var store: AppStore
+    let theme: TunerTheme
+    var traceHeight: CGFloat = 44
+    var pageVisible: Bool = true
 
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                metricBox(theme: theme, label: "WRITTEN " + L10n.t("记谱"), value: render.writtenText)
-                metricBox(theme: theme, label: "CONCERT " + L10n.t("实音"), value: render.concertText)
-                metricBox(
-                    theme: theme, label: "CENTS " + L10n.t("音分"),
+                MetricBox(theme: theme, glassOpacity: store.glassOpacity,
+                          label: "WRITTEN " + L10n.t("记谱"), value: render.writtenText)
+                MetricBox(theme: theme, glassOpacity: store.glassOpacity,
+                          label: "CONCERT " + L10n.t("实音"), value: render.concertText)
+                MetricBox(
+                    theme: theme, glassOpacity: store.glassOpacity,
+                    label: "CENTS " + L10n.t("音分"),
                     value: render.centsDisplayText,
                     valueColor: render.isInTune ? theme.ok : theme.textPrimary
                 )
-                metricBox(theme: theme, label: "FREQ " + L10n.t("频率"), value: render.frequencyText)
+                MetricBox(theme: theme, glassOpacity: store.glassOpacity,
+                          label: "FREQ " + L10n.t("频率"), value: render.frequencyText)
             }
 
             PitchTraceView(
@@ -1096,24 +1189,24 @@ struct TunerDataCard: View {
                 micActive: engine.isRunning,
                 badgeText: render.stabilityBadgeText,
                 theme: theme,
+                pageVisible: pageVisible,
                 onTap: { viewModel.toggleFreeze() })
-                .frame(minHeight: 52, maxHeight: 196)
-                .layoutPriority(1)
-        }
-        .padding(10)
-        .glassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(
-                    theme.isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
-                    lineWidth: 1
-                )
+                .frame(height: traceHeight)
         }
     }
+}
 
-    private func metricBox(
-        theme: TunerTheme, label: String, value: String, valueColor: Color? = nil
-    ) -> some View {
+/// 數據卡單格（返修批7・F6 抽出）：標籤恆靜態、值逐幀
+/// 變；獨立 View 後逐幀差分只落值文字，玻璃盒身不重建。
+/// 視覺參數與舊 metricBox 函數逐項一致。
+private struct MetricBox: View {
+    let theme: TunerTheme
+    let glassOpacity: Int
+    let label: String
+    let value: String
+    var valueColor: Color? = nil
+
+    var body: some View {
         VStack(spacing: 3) {
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
@@ -1129,7 +1222,7 @@ struct TunerDataCard: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 7)
         .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous),
-                         theme: theme, glassOpacity: store.glassOpacity)
+                         theme: theme, glassOpacity: glassOpacity)
     }
 }
 
@@ -1141,6 +1234,9 @@ struct PitchTraceView: View {
     let micActive: Bool
     let badgeText: String
     let theme: TunerTheme
+    /// 頁面可見性（返修批7 F5）：切到節拍器頁後本頁不可見，
+    /// 待機波 TimelineView 必須暫停，不再 25fps 空轉。
+    var pageVisible: Bool = true
     let onTap: () -> Void
 
     private static let span: TimeInterval = 8.0
@@ -1155,14 +1251,16 @@ struct PitchTraceView: View {
             if hasSignal {
                 Canvas { ctx, size in drawTrace(in: &ctx, size: size) }
             } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 25.0)) { context in
+                TimelineView(.animation(minimumInterval: 1.0 / 25.0, paused: !pageVisible)) { context in
                     Canvas { ctx, size in
                         drawIdle(in: &ctx, size: size,
                                  ts: context.date.timeIntervalSince1970)
                     }
                 }
             }
-            Text(L10n.t("音高轨迹") + " · PITCH TRACE")
+            // 【返修批7 A1】字典鍵為全串『音高轨迹 · PITCH TRACE』，
+            // 舊寫法查裸詞再手拼後綴永遠落空（zh-TW 亦顯示簡體）。
+            Text(L10n.t("音高轨迹 · PITCH TRACE"))
                 .font(.system(size: 8.5, weight: .bold))
                 .tracking(0.7)
                 .foregroundStyle(theme.textMuted)
@@ -1198,7 +1296,7 @@ struct PitchTraceView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .onTapGesture { onTap() }
-        .accessibilityLabel(L10n.t("音高轨迹"))
+        .accessibilityLabel(L10n.t("音高轨迹 · PITCH TRACE"))
     }
 
     private func yFor(_ c: Double, h: CGFloat) -> CGFloat {

@@ -9,5 +9,5 @@
 缺鍵（回退源串，母本既定行為）de: 47 條
 缺鍵（回退源串，母本既定行為）fr: 47 條
 缺鍵（回退源串，母本既定行為）ru: 47 條
-supplement 原生專屬字串: 99 條源串；逐語 zh-TW=99 en=99 ja=99 ko=99 de=99 fr=99 ru=99
+supplement 原生專屬字串: 103 條源串；逐語 zh-TW=103 en=103 ja=103 ko=103 de=103 fr=103 ru=103
 vm 求值 vs JSON.parse 深比對＋spot-check 不一致: 0

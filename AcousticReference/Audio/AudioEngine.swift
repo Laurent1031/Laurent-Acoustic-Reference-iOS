@@ -56,6 +56,19 @@ final class EngineCore: @unchecked Sendable {
     // 格式轉換器只在 tap 線程存取。
     private var converter: AVAudioConverter?
 
+    // 【返修批7・F8】tap 線程 scratch 復用（輕版，只動兩處
+    // 明顯安全的逐 buffer／逐窗拷貝）：
+    // - extractScratch：extractSamples 快路徑的通道拷貝；
+    //   與 converter 同紀律（只在 tap 線程存取），回傳值由
+    //   handleTapBuffer 同步餵 ingest 抄入 ring、不保留，
+    //   下一 buffer 覆寫無礙。
+    // - windowScratch：ingest 的分析窗快照；ingest 全程持
+    //   lock，且 analysisPending 閘門保證同一時刻至多一個
+    //   窗在分析佇列在途，覆寫不與讀取重疊（縱有 COW 拷貝
+    //   亦僅是退回分配、正確性不變）。
+    private var extractScratch: [Float] = []
+    private var windowScratch: [Float] = []
+
     init(settings: TunerSettings, range: InstrumentRange) {
         self.settings = settings
         self.range = range
@@ -105,7 +118,14 @@ final class EngineCore: @unchecked Sendable {
         if let channelData = buffer.floatChannelData {
             let count = Int(buffer.frameLength)
             guard count > 0 else { return nil }
-            return Array(UnsafeBufferPointer(start: channelData[0], count: count))
+            // 【F8】拷貝走 tap 線程 scratch（尺寸不符才重建）。
+            if extractScratch.count != count {
+                extractScratch = [Float](repeating: 0, count: count)
+            }
+            extractScratch.withUnsafeMutableBufferPointer { dst in
+                dst.baseAddress!.update(from: channelData[0], count: count)
+            }
+            return extractScratch
         }
         // 非 Float32 輸入格式（如藍牙 HFP 的 Int16）→ 轉換兜底。
         guard let target = AVAudioFormat(
@@ -171,14 +191,18 @@ final class EngineCore: @unchecked Sendable {
         sinceAnalysis = 0
         analysisPending = true
 
-        var window = [Float](repeating: 0, count: win)
+        // 【F8】窗快照走 scratch（尺寸不符才重建；安全性
+        // 論證見 extractScratch 宣告處註解）。
+        if windowScratch.count != win {
+            windowScratch = [Float](repeating: 0, count: win)
+        }
         var idx = (head - win) % cap
         if idx < 0 { idx += cap }
         for i in 0..<win {
-            window[i] = ring[idx]
+            windowScratch[i] = ring[idx]
             idx = (idx + 1) % cap
         }
-        return (window, hop)
+        return (windowScratch, hop)
     }
 
     // MARK: - 分析（串行分析佇列）
@@ -247,6 +271,24 @@ private final class SessionObserverBag {
     }
 }
 
+/// 【返修批7・F2】逐幀音高讀數的獨立發布盒：latestReading
+/// 原掛 AudioEngine 本體、隨分析幀以 ≈94 Hz 發布，凡觀察
+/// engine 的視圖（TunerView 本體／ContentView）都被穿透
+/// 重算（批 4 的渲染隔離被繞過）。拆出獨立對象後 engine
+/// 本體只剩低頻發布（isRunning／diagnostics／權限／錯誤／
+/// 設定／音域），讀數只流向真正消費者：TunerViewModel
+/// 訂閱 $latest、診斷頁觀察本盒。寫入端不變（主線程、
+/// wireReadingCallback 的 assumeIsolated 語境），發布
+/// 節律與舊版逐幀一致、數值零變更。
+@MainActor
+final class ReadingBox: ObservableObject {
+    @Published private(set) var latest: PitchReading?
+
+    func publish(_ reading: PitchReading?) {
+        latest = reading
+    }
+}
+
 /// 音訊引擎門面：AVAudioSession 測量模式＋AVAudioEngine 麥克風管線。
 ///
 /// 母本對應：getUserMedia {echoCancellation:false, autoGainControl:false,
@@ -255,7 +297,9 @@ private final class SessionObserverBag {
 /// （IS_ANDROID 分支）為平台特例，原生版不移植。
 @MainActor
 final class AudioEngine: ObservableObject {
-    @Published private(set) var latestReading: PitchReading?
+    /// 逐幀讀數發布盒（返修批7・F2，見 ReadingBox 註解；
+    /// 取代原掛本體的 latestReading）。
+    let readingBox = ReadingBox()
     @Published private(set) var isRunning = false
     @Published private(set) var diagnostics: EngineDiagnostics?
     @Published private(set) var permissionDenied = false
@@ -315,6 +359,24 @@ final class AudioEngine: ObservableObject {
         }
     }
 
+    /// 【返修批7・D4】回前台時對齊權限顯示狀態：用戶可能在
+    /// 系統設定改過麥克風權限（授予→撤銷或反之），引擎內的
+    /// permissionDenied 須跟上現況，調音頁提示才不失真。
+    /// 只同步旗標：不主動申請權限、不啟停引擎（自動啟動由
+    /// ContentView 沿 startMicIfAutoEnabled 另行裁決）。
+    func refreshPermissionState() {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
+            permissionDenied = false
+        case .denied:
+            permissionDenied = true
+        case .undetermined:
+            break
+        @unknown default:
+            break
+        }
+    }
+
     func stop() {
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
@@ -359,7 +421,11 @@ final class AudioEngine: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .invalidInputFormat(let sampleRate, let channels):
-                return "麥克風輸入格式未就緒（\(Int(sampleRate)) Hz／\(channels) ch），請重試"
+                // 【返修批7・A4】組裝期經 L10n format 鍵本地化
+                // （鍵登記於 supplement 八語）；顯示端再走
+                // L10n.t 時已組裝串查無鍵、原樣直出。
+                return String(format: L10n.t("麦克风输入格式未就绪（%ld Hz／%ld ch），请重试"),
+                              Int(sampleRate), channels)
             }
         }
     }
@@ -447,7 +513,7 @@ final class AudioEngine: ObservableObject {
         core.onReading = { [weak engine] reading in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    engine?.latestReading = reading
+                    engine?.readingBox.publish(reading)
                 }
             }
         }
@@ -481,9 +547,14 @@ final class AudioEngine: ObservableObject {
                         try AVAudioSession.sharedInstance().setActive(true)
                         try self.engine?.start()
                     } catch {
-                        self.lastError = "中斷後恢復失敗：\(error.localizedDescription)"
-                        self.engine = nil
-                        self.isRunning = false
+                        // 【返修批7・D7】舊版手寫收尾漏了協調器
+                        // 註銷：.tuner 登記殘留，型態裁決永遠以
+                        // 為調音在場。改走 stop() 統一收尾（拆
+                        // tap／停引擎／release 會計／落回未運行，
+                        // 與正常停止路徑對稱）；lastError 先寫，
+                        // stop() 不觸碰它。
+                        self.lastError = "中断后恢复失败：\(error.localizedDescription)"
+                        self.stop()
                     }
                 @unknown default:
                     break
@@ -509,7 +580,7 @@ final class AudioEngine: ObservableObject {
                 do {
                     try self.startEngine()
                 } catch {
-                    self.lastError = "音訊路由變更後重建失敗：\(error.localizedDescription)"
+                    self.lastError = "音频路由变更后重建失败：\(error.localizedDescription)"
                     self.isRunning = false
                 }
             }

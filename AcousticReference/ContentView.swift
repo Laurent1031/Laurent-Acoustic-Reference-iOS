@@ -31,6 +31,9 @@ struct ContentView: View {
     /// item 呈現，避免多個 .sheet 修飾器互相衝突）。
     @State private var activeSheet: TopSheet?
     @Environment(\.colorScheme) private var colorScheme
+    /// 【返修批7・C5】場景階段：離開 active 時 flush 節拍器
+    /// 防抖落盤（見下方 onChange）。
+    @Environment(\.scenePhase) private var scenePhase
     /// 開機動畫（返修批3 補回母本 .splash）：冷啟動覆蓋層，
     /// 徽章 FLIP 飛入頂欄品牌標記後退場；brandMarkFrame 為
     /// 頂欄標記的全局矩形（飛行落點），splashRevealed 控制
@@ -123,7 +126,12 @@ struct ContentView: View {
         .overlay(alignment: .bottom) {
             if mode == .tuner && metronomeViewModel.capsuleVisible {
                 capsule(theme: theme)
-                    .padding(.bottom, 18)
+                    // 【返修批7・E7】底距 18→76：舊值下膠囊
+                    // 與調音頁麥克風主鈕中央 144×36 區域重疊、
+                    // 該區點按被膠囊奪走；抬高至主鈕上方後
+                    // 兩者命中區完全分離（膠囊僅在調音頁
+                    // 出現，此分支即調音頁專屬）。
+                    .padding(.bottom, 76)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -155,6 +163,7 @@ struct ContentView: View {
                 switch sheet {
                 case .debug:
                     TunerDebugView(engine: engine,
+                                   readingBox: engine.readingBox,
                                    metronomeEngine: metronomeEngine,
                                    metronomeViewModel: metronomeViewModel,
                                    store: store)
@@ -177,6 +186,7 @@ struct ContentView: View {
             UISoundEngine.shared.isEnabled = engine.settings.soundsOn
             updateIdleTimer()
             startMicIfAutoEnabled()
+            refreshMetronomePageVisibility()
             // Live Activity 防殭屍（階段 6）：啟動時節拍器未
             // 播放卻有殘留活動（上一進程被殺等）→ 全數結束。
             if !metronomeViewModel.isPlaying {
@@ -215,6 +225,31 @@ struct ContentView: View {
         // 點按任意處由 TunerView 的手勢處理）。
         .onChange(of: store.appMode) { _, newMode in
             if newMode != .metronome { startMicIfAutoEnabled() }
+            refreshMetronomePageVisibility()
+        }
+        // 【返修批7・F11】膠囊顯隱（播放起停／暫停）改變
+        // 節拍器 DisplayLink 的可見條件，同需刷新門控。
+        .onChange(of: metronomeViewModel.isPlaying) { _, _ in
+            refreshMetronomePageVisibility()
+        }
+        .onChange(of: metronomeViewModel.capsulePaused) { _, _ in
+            refreshMetronomePageVisibility()
+        }
+        // 【返修批7・C5】離開前景（inactive／background）時
+        // flush 節拍器 VM 的防抖 persist：600ms 防抖期間被殺
+        // 會丟最後變更，進背景先即時落盤即無此窗。
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase != .active {
+                metronomeViewModel.flushPersist()
+            } else {
+                // 【返修批7・D4】回前台：先對齊麥克風權限狀態
+                // （用戶可能在系統設定改過，App 內提示須跟上），
+                // 再沿既有路徑補啟動自動麥克風（守衛：autoMic
+                // 開、非節拍頁、未運行；權限未授時 start 內自
+                // 落 permissionDenied）。
+                engine.refreshPermissionState()
+                startMicIfAutoEnabled()
+            }
         }
         // store → 引擎單向同步（store 為唯一真源）。
         .onChange(of: store.tunerSettings) { _, newSettings in
@@ -250,6 +285,7 @@ struct ContentView: View {
         }
         .onChange(of: engine.isRunning) { _, _ in updateIdleTimer() }
         .onChange(of: metronomeEngine.isPlaying) { _, _ in updateIdleTimer() }
+        .onChange(of: droneEngine.isPlaying) { _, _ in updateIdleTimer() }
     }
 
     // MARK: - 頂欄（母本 topBar：品牌＋分段＋偏好／设置＋鎖＋診斷）
@@ -280,6 +316,10 @@ struct ContentView: View {
                         brandMarkFrame = newFrame
                     }
                     .opacity(showSplash && !splashRevealed ? 0 : 1)
+                    // 【返修批7・開屏絲滑】落地交接時真標記
+                    // 0.2s 淡入，與飛行徽章淡出交叉（見
+                    // SplashView.startExit）。
+                    .animation(.easeOut(duration: 0.2), value: splashRevealed)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text("LAURENT")
@@ -348,49 +388,51 @@ struct ContentView: View {
                 .foregroundStyle(theme.textSecondary)
                 .frame(height: 32)
                 .contentShape(Rectangle())
+                // 【返修批7・E13】命中區 32→40 高：上下各
+                // 加 4pt 透明 padding（視覺尺寸不變；頂欄
+                // 列高固定 36，命中溢出列外對稱延伸）。
+                .padding(.vertical, 4)
         }
         .buttonStyle(GlassPressButtonStyle())
     }
 
     // MARK: - 背景膠囊（母本 #9 metroCapsule）
 
+    /// 【返修批7・F1】膠囊本體抽成 MetronomeCapsuleView
+    /// 單獨觀察脈衝：舊版 capsule 為 ContentView 本體函數
+    /// 直讀 VM 脈衝值，120 Hz 脈衝令 App 外殼整殼重算。
+    /// isPlaying／文字／主題為低頻值輸入、由外殼重算時
+    /// 帶入；脈衝幀只重繪膠囊本身。
     private func capsule(theme: TunerTheme) -> some View {
-        Button {
-            metronomeViewModel.capsuleTapped()
-        } label: {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(theme.accent)
-                    .frame(width: 8, height: 8)
-                    .opacity(metronomeViewModel.isPlaying
-                             ? 0.35 + 0.65 * metronomeViewModel.pulseValue
-                             : 0.5)
-                    .scaleEffect(metronomeViewModel.isPlaying
-                                 ? 1 + 0.3 * metronomeViewModel.pulseValue
-                                 : 1)
-                Text(metronomeViewModel.capsuleText)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.textPrimary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-            .overlay {
-                Capsule().strokeBorder(
-                    theme.isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.08),
-                    lineWidth: 1)
-            }
-            .opacity(metronomeViewModel.isPlaying ? 1 : 0.75)
-        }
-        .buttonStyle(GlassPressButtonStyle())
+        MetronomeCapsuleView(
+            isPlaying: metronomeViewModel.isPlaying,
+            text: metronomeViewModel.capsuleText,
+            theme: theme,
+            glassOpacity: store.glassOpacity,
+            pulse: metronomeViewModel.pulseRender,
+            onTap: { metronomeViewModel.capsuleTapped() })
+    }
+
+    // MARK: - 頁面可見性門控（返修批7・F11）
+
+    /// 節拍器 DisplayLink 的可見條件：節拍器頁在前台，
+    /// 或背景膠囊在調音頁上可見（膠囊脈衝由該 link 驅動，
+    /// 見 MetronomeViewModel.setPageVisible 註解）。調音
+    /// 側的門控在 TunerView 內接線（TunerViewModel 歸其
+    /// @StateObject 持有，本殼觸不到）。
+    private func refreshMetronomePageVisibility() {
+        metronomeViewModel.setPageVisible(
+            store.appMode == .metronome || metronomeViewModel.capsuleVisible)
     }
 
     // MARK: - 螢幕常亮（母本 Wake Lock 的原生等價）
 
-    /// want = 麥克風運行 || 節拍器播放（母本 updateWakeLock）。
+    /// want = 麥克風運行 || 節拍器播放 || Drone 播放（母本
+    /// updateWakeLock；【返修批7・D8】補 Drone：單獨放基準音
+    /// 時同需常亮，舊版漏列、播放中會熄屏）。
     private func updateIdleTimer() {
         UIApplication.shared.isIdleTimerDisabled =
-            engine.isRunning || metronomeEngine.isPlaying
+            engine.isRunning || metronomeEngine.isPlaying || droneEngine.isPlaying
     }
 
     // MARK: - 深連結（階段 6，小組件入口）
@@ -423,6 +465,48 @@ struct ContentView: View {
         guard store.autoMicOnEnter, store.appMode != .metronome,
               !engine.isRunning else { return }
         Task { await engine.start() }
+    }
+}
+
+/// 背景膠囊本體（返修批7・F1 抽出）：單獨觀察
+/// PulseRenderState，脈衝驅動的圓點透明度／縮放只重繪
+/// 本 View；外殼（ContentView）不再被 120 Hz 脈衝牽動。
+/// 視覺參數與舊 capsule 函數逐項一致。
+private struct MetronomeCapsuleView: View {
+    let isPlaying: Bool
+    let text: String
+    let theme: TunerTheme
+    let glassOpacity: Int
+    @ObservedObject var pulse: PulseRenderState
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(theme.accent)
+                    .frame(width: 8, height: 8)
+                    .opacity(isPlaying
+                             ? 0.35 + 0.65 * pulse.value
+                             : 0.5)
+                    .scaleEffect(isPlaying
+                                 ? 1 + 0.3 * pulse.value
+                                 : 1)
+                Text(text)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.textPrimary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .glassBackground(in: Capsule(), theme: theme, glassOpacity: glassOpacity)
+            .overlay {
+                Capsule().strokeBorder(
+                    theme.isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.08),
+                    lineWidth: 1)
+            }
+            .opacity(isPlaying ? 1 : 0.75)
+        }
+        .buttonStyle(GlassPressButtonStyle())
     }
 }
 
@@ -462,13 +546,17 @@ struct PageGlowView: View {
 }
 
 /// 開機動畫（返修批3 補回母本 .splash，規格見
-/// docs/2026-11-27_母本規格提取-返修批3.md 第 1 節）：
-/// 三團柔光底＋徽章淡入（scale 0.94→1、0.55s ease-out）
-/// ＋字標上浮（0.68s、延遲 0.08）＋副標上浮（0.62s、延遲
-/// 0.24）；總上屏 ≈1.25s 後徽章以 640ms FLIP 飛入頂欄
-/// 品牌標記（圓角 20→9、最後 150ms 交叉淡化為標記本色），
-/// 背景同帧淡出；點按任意處跳過。減動效或無落點矩形時
-/// 走淡出路徑（0.34s＋core 縮 0.97、停留 0.45s）。
+/// docs/2026-11-27_母本規格提取-返修批3.md 第 1 節）。
+/// 【返修批7・絲滑重做（Laurent 點名：好絲滑、不要卡頓）】
+/// 舊版卡頓三源：徽章飛行走 frame＋position 的版面動畫
+/// （逐幀 layout）、雙層陰影逐幀重繪、各元素混用三種曲線
+/// 家族分段進場（段落感）。改為蘋果式單一彈簧系統：
+/// 全部動效同一 spring 家族、相位重疊無死區；徽章飛行
+/// 改純 transform（scale＋offset，合成器路徑、零 layout）；
+/// 陰影收為單層隨 transform 走；落地最後 0.16s 與真標記
+/// 交叉淡化交接。視覺內容（柔光底、字標、副標、落點、
+/// 總時長 ≈2.0s）與母本規格不變。點按任意處跳過；減
+/// 動效或無落點矩形時走淡出路徑。
 struct SplashView: View {
     let theme: TunerTheme
     let targetFrame: CGRect
@@ -476,12 +564,21 @@ struct SplashView: View {
     let onFinished: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var played = false
+    @State private var exitStarted = false
     @State private var flying = false
     @State private var crossfaded = false
+    @State private var landingFade = false
     @State private var faded = false
     @State private var finished = false
 
     private var dark: Bool { theme.isDark }
+
+    // 單一彈簧家族：入場微彈、飛行近臨界阻尼（落點不彈跳、
+    // 只輕輕收住），全體元素共用同一物理語言。
+    private static let entrySpring = Animation.spring(response: 0.5, dampingFraction: 0.8)
+    private static let wordSpring = Animation.spring(response: 0.55, dampingFraction: 0.85)
+    private static let subSpring = Animation.spring(response: 0.6, dampingFraction: 0.85)
+    private static let flightSpring = Animation.spring(response: 0.62, dampingFraction: 0.88)
 
     var body: some View {
         GeometryReader { geo in
@@ -490,16 +587,25 @@ struct SplashView: View {
             // core 居中、底部 padding 8.5vh → 整體上移 4.25%h；
             // core 高 ≈ 74＋12＋14＋30＋14＋12 = 156。
             let coreCY = h / 2 - h * 0.0425
-            let badgeStart = CGRect(x: w / 2 - 37, y: coreCY - 78, width: 74, height: 74)
-            let badgeFrame = flying && targetFrame != .zero ? targetFrame : badgeStart
+            // 徽章飛行改純 transform：版面恆為 74×74 居中於
+            // 起點，飛行＝scale（74→落點邊長）＋offset（起點
+            // 中心→落點中心）；圓角與字形隨 scale 同步縮放
+            // （20 × 34/74 ≈ 9.2，與真標記圓角 9 幾乎一致）。
+            let badgeCenter = CGPoint(x: w / 2, y: coreCY - 41)
+            let canFly = targetFrame != .zero
+            let flyScale = canFly ? targetFrame.width / 74 : 1
+            let flyOffset = canFly
+                ? CGSize(width: targetFrame.midX - badgeCenter.x,
+                         height: targetFrame.midY - badgeCenter.y)
+                : .zero
             ZStack {
                 backdrop(w: w, h: h)
                     .opacity(flying || faded ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.5).delay(0.08), value: flying)
+                    .animation(Self.flightSpring.delay(0.05), value: flying)
                     .animation(.easeInOut(duration: 0.34), value: faded)
 
                 Group {
-                    // 字標與副標（入場上浮；飛行時淡出上移）
+                    // 字標與副標（彈簧上浮入場；飛行時同彈簧淡出）
                     Text("LAURENT")
                         .font(.system(size: 25, weight: .heavy))
                         .tracking(8.5)
@@ -508,9 +614,8 @@ struct SplashView: View {
                         .position(x: w / 2 + 4.25, y: coreCY + 28)
                         .opacity(flying || faded ? 0 : (played ? 1 : 0))
                         .offset(y: flying ? -5 : (played ? 0 : 7))
-                        .animation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.68).delay(0.08),
-                                   value: played)
-                        .animation(.easeInOut(duration: 0.22), value: flying)
+                        .animation(Self.wordSpring.delay(0.06), value: played)
+                        .animation(Self.flightSpring, value: flying)
                     Text("STUDIO EDITION")
                         .font(.system(size: 10, weight: .bold))
                         .tracking(4.2)
@@ -519,19 +624,24 @@ struct SplashView: View {
                         .position(x: w / 2 + 2.1, y: coreCY + 56)
                         .opacity(flying || faded ? 0 : (played ? 1 : 0))
                         .offset(y: flying ? -5 : (played ? 0 : 5))
-                        .animation(.easeInOut(duration: 0.62).delay(0.24),
-                                   value: played)
-                        .animation(.easeInOut(duration: 0.22), value: flying)
+                        .animation(Self.subSpring.delay(0.16), value: played)
+                        .animation(Self.flightSpring, value: flying)
 
-                    // 徽章本體（入場淡入；飛行時整框飛向落點）
+                    // 徽章本體：版面固定 74×74，入場彈簧縮放
+                    // 淡入、飛行 transform 直達落點、落地交叉
+                    // 淡化交接給真標記；單層陰影隨 transform。
                     badgeFace
-                        .frame(width: badgeFrame.width, height: badgeFrame.height)
-                        .position(x: badgeFrame.midX, y: badgeFrame.midY)
-                        .opacity(faded ? 0 : (played ? 1 : 0))
-                        .scaleEffect(faded ? 0.97 : (played ? 1 : 0.94))
-                        .animation(.easeOut(duration: 0.55), value: played)
-                        .animation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.64),
-                                   value: flying)
+                        .frame(width: 74, height: 74)
+                        .shadow(color: Color(red: 31 / 255, green: 107 / 255, blue: 255 / 255).opacity(0.38),
+                                radius: 24, x: 0, y: 8)
+                        .position(x: badgeCenter.x, y: badgeCenter.y)
+                        .scaleEffect(faded ? 0.97 : (flying ? flyScale : (played ? 1 : 0.94)))
+                        .offset(flying ? flyOffset : .zero)
+                        .opacity(faded || landingFade ? 0 : (played ? 1 : 0))
+                        .animation(Self.entrySpring, value: played)
+                        .animation(Self.flightSpring, value: flying)
+                        .animation(.easeOut(duration: 0.18), value: landingFade)
+                        .animation(.easeInOut(duration: 0.3), value: faded)
                 }
                 .opacity(faded ? 0 : 1)
                 .animation(.easeInOut(duration: 0.34), value: faded)
@@ -543,28 +653,25 @@ struct SplashView: View {
     }
 
     /// 徽章面：splash 漸變面與品牌標記面疊放，飛行末段
-    /// （crossfaded）交叉淡化；圓角隨飛行 20→9。
+    /// （crossfaded）交叉淡化為標記本色。圓角恆 20——飛行
+    /// 靠父層 transform 縮放，渲染圓角隨之縮至 ≈9.2，與
+    /// 真標記 9 幾乎一致，不再逐幀改版面圓角。
     private var badgeFace: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: flying ? 9 : 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(LinearGradient(
                     colors: [Color(red: 47 / 255, green: 123 / 255, blue: 255 / 255),
                              Color(red: 10 / 255, green: 92 / 255, blue: 255 / 255)],
                     startPoint: .topLeading, endPoint: .bottomTrailing))
                 .opacity(crossfaded ? 0 : 1)
-            RoundedRectangle(cornerRadius: flying ? 9 : 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(theme.accent)
                 .opacity(crossfaded ? 1 : 0)
             Text("L")
-                .font(.system(size: crossfaded ? 19 : 34, weight: .heavy, design: .rounded))
+                .font(.system(size: 34, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
         }
-        .shadow(color: Color(red: 47 / 255, green: 123 / 255, blue: 255 / 255).opacity(0.38),
-                radius: 30, x: 0, y: 0)
-        .shadow(color: Color(red: 10 / 255, green: 92 / 255, blue: 255 / 255).opacity(0.42),
-                radius: 16, x: 0, y: 10)
-        .animation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.64), value: flying)
-        .animation(.easeIn(duration: 0.15), value: crossfaded)
+        .animation(.easeInOut(duration: 0.22), value: crossfaded)
     }
 
     /// 三團柔光＋基底（母本 .splash 背景四層 radial）。
@@ -605,39 +712,53 @@ struct SplashView: View {
                 try? await Task.sleep(nanoseconds: 380_000_000)
                 finish()
             } else {
-                try? await Task.sleep(nanoseconds: 1_250_000_000)
-                guard !finished else { return }
+                try? await Task.sleep(nanoseconds: 1_100_000_000)
+                guard !finished, !exitStarted else { return }
                 startExit()
-                try? await Task.sleep(nanoseconds: 760_000_000)
-                finish()
             }
         }
     }
 
     private func startExit() {
+        guard !exitStarted else { return }
+        exitStarted = true
         if targetFrame == .zero {
             revealed = true
             withAnimation(.easeInOut(duration: 0.34)) { faded = true }
-        } else {
-            withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.64)) {
-                flying = true
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 380_000_000)
+                finish()
             }
-            withAnimation(.easeIn(duration: 0.15).delay(0.49)) {
+        } else {
+            withAnimation(Self.flightSpring) { flying = true }
+            withAnimation(.easeInOut(duration: 0.22).delay(0.5)) {
                 crossfaded = true
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 680_000_000)
+                guard !finished else { return }
+                // 落地交接：真標記同帧恢復（ContentView 側
+                // 0.2s 淡入）、飛行徽章 0.18s 淡出——位置
+                // 重合，讀作無縫落地而非硬切。
+                revealed = true
+                withAnimation(.easeOut(duration: 0.18)) { landingFade = true }
+                try? await Task.sleep(nanoseconds: 220_000_000)
+                finish()
             }
         }
     }
 
-    /// 點按跳過：飛行中立即落地；停留中直接進退場。
+    /// 點按跳過：飛行中立即交接淡出；停留中直接進退場。
     private func skip() {
         if flying {
-            finish()
-        } else if !faded {
-            startExit()
+            revealed = true
+            withAnimation(.easeOut(duration: 0.2)) { landingFade = true }
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 700_000_000)
+                try? await Task.sleep(nanoseconds: 240_000_000)
                 finish()
             }
+        } else if !faded {
+            startExit()
         }
     }
 

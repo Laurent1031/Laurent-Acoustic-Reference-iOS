@@ -397,6 +397,9 @@ final class DroneEngine: ObservableObject {
     private var generation = 0
     private let observerBag = DroneObserverBag()
     private var observersRegistered = false
+    /// 最近一次引擎啟動的 uptime（配置變更自愈去抖，同
+    /// AudioEngine 形制：重建自身觸發的變更 0.75 s 內忽略）。
+    private var lastEngineStartUptime: TimeInterval = 0
     /// 中斷前正在播放（階段 6 自愈）：中斷結束時據此恢復；
     /// stop() 的用戶路徑不經此旗標（中斷處理直接拆引擎）。
     private var resumeAfterInterruption = false
@@ -452,7 +455,7 @@ final class DroneEngine: ObservableObject {
             AudioSessionCoordinator.shared.applyProfile()
             try session.setActive(true)
         } catch {
-            lastError = "音訊工作階段啟動失敗：\(error.localizedDescription)"
+            lastError = "音频工作阶段启动失败：\(error.localizedDescription)"
             releaseSessionIfUnused()
             return
         }
@@ -470,7 +473,7 @@ final class DroneEngine: ObservableObject {
         guard let format = AVAudioFormat(
             standardFormatWithSampleRate: sampleRate, channels: 2)
         else {
-            lastError = "音訊格式建立失敗"
+            lastError = "音频格式建立失败"
             releaseSessionIfUnused()
             return
         }
@@ -493,12 +496,12 @@ final class DroneEngine: ObservableObject {
         do {
             try engine.start()
         } catch {
-            lastError = "Drone 引擎啟動失敗：\(error.localizedDescription)"
+            lastError = "Drone 引擎启动失败：\(error.localizedDescription)"
             releaseSessionIfUnused()
             return
         }
         guard engine.isRunning else {
-            lastError = "Drone 引擎啟動後未運行"
+            lastError = "Drone 引擎启动后未运行"
             releaseSessionIfUnused()
             return
         }
@@ -506,6 +509,7 @@ final class DroneEngine: ObservableObject {
         sourceNode = node
         gainEQ = eq
         isPlaying = true
+        lastEngineStartUptime = ProcessInfo.processInfo.systemUptime
         registerObservers()
         HapticsEngine.shared.warmUp()
     }
@@ -525,8 +529,12 @@ final class DroneEngine: ObservableObject {
     /// 用戶路徑呼叫同時清中斷恢復旗標（見中斷 .began 的順序
     /// 註解）；中斷處理在呼叫本方法後自行重新立旗標。
     func stop() {
-        guard isPlaying else { return }
+        // 【返修批7・D5】旗標清除置於 guard 之前：中斷期間
+        // isPlaying 已為 false（.began 路徑先 stop 再立旗標），
+        // 用戶此時手動停止若被 guard 擋回，旗標殘留、中斷
+        // 結束會擅自重啟。清除冪等，先行無副作用。
         resumeAfterInterruption = false
+        guard isPlaying else { return }
         generation += 1
         let gen = generation
         core.state.withLock {
@@ -687,7 +695,7 @@ final class DroneEngine: ObservableObject {
                         // 由 start 路徑寫入，調音頁可見。
                         self.start(targetMidi: self.targetMidi, timbre: self.timbre)
                     } else {
-                        self.lastError = "基準音因中斷停止，未自動恢復"
+                        self.lastError = "基准音因中断停止，未自动恢复"
                     }
                 @unknown default:
                     break
@@ -707,7 +715,7 @@ final class DroneEngine: ObservableObject {
                 // lastError 在調音頁可見。
                 self.resumeAfterInterruption = false
                 self.stop()
-                self.lastError = "耳機已拔出，基準音已自動暫停"
+                self.lastError = "耳机已拔出，基准音已自动暂停"
             }
         })
         observerBag.add(center.addObserver(
@@ -719,6 +727,30 @@ final class DroneEngine: ObservableObject {
                 // 媒體服務重置：舊引擎對象全數失效——同步拆卸
                 // 後以同一目標音／音色重啟（自愈而非靜默死亡）；
                 // 重啟失敗時 start 路徑寫 lastError 可見報錯。
+                let midi = self.targetMidi
+                let currentTimbre = self.timbre
+                self.resumeAfterInterruption = false
+                self.generation += 1
+                self.isPlaying = false
+                self.teardownEngine()
+                self.start(targetMidi: midi, timbre: currentTimbre)
+            }
+        })
+        // 配置變更自愈（返修批7・D2，比照 AudioEngine 形制）：
+        // 播放中裝置切換致取樣率改變時，本引擎的圖以啟動時
+        // session 取樣率的固定格式建成、格式可能失效——同步
+        // 拆卸後以同一目標音／音色重建（形制同上媒體服務重置
+        // 路徑；start 內以當下 session 取樣率重新建格式）。
+        // 與 routeChange 的分工：裝置被拔（.oldDeviceUnavailable）
+        // 走 stop 防外放突響；本路徑只處理仍有裝置而格式改變。
+        observerBag.add(center.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: nil, queue: nil
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.isPlaying,
+                      ProcessInfo.processInfo.systemUptime - self.lastEngineStartUptime >= 0.75
+                else { return }
                 let midi = self.targetMidi
                 let currentTimbre = self.timbre
                 self.resumeAfterInterruption = false

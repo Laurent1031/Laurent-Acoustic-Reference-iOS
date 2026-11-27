@@ -106,20 +106,27 @@ extension TunerSettings {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = TunerSettings()
-        a4 = try c.decodeIfPresent(Double.self, forKey: .a4) ?? defaults.a4
-        toleranceCents = try c.decodeIfPresent(Double.self, forKey: .toleranceCents)
-            ?? defaults.toleranceCents
-        damping = try c.decodeIfPresent(DampingProfile.self, forKey: .damping)
+        // 【返修批7・C1／C6】逐欄容錯（型別不符只退該欄預設，
+        // 不再 throw 拖垮整份）＋數值鉗制：a4 沿母本 setA4 的
+        // [430, 450]、容差沿匯入端的 [0.5, 10]、主音 pc 正規
+        // 化至 0–11——手改 JSON 的越界值不直進引擎。
+        a4 = min(450, max(430,
+            c.tolerantDecodeIfPresent(Double.self, forKey: .a4) ?? defaults.a4))
+        toleranceCents = min(10, max(0.5,
+            c.tolerantDecodeIfPresent(Double.self, forKey: .toleranceCents)
+                ?? defaults.toleranceCents))
+        damping = c.tolerantDecodeIfPresent(DampingProfile.self, forKey: .damping)
             ?? defaults.damping
-        noiseGate = try c.decodeIfPresent(NoiseGateProfile.self, forKey: .noiseGate)
+        noiseGate = c.tolerantDecodeIfPresent(NoiseGateProfile.self, forKey: .noiseGate)
             ?? defaults.noiseGate
-        temperament = try c.decodeIfPresent(Temperament.self, forKey: .temperament)
+        temperament = c.tolerantDecodeIfPresent(Temperament.self, forKey: .temperament)
             ?? defaults.temperament
-        justTonicPc = try c.decodeIfPresent(Int.self, forKey: .justTonicPc)
+        let rawPc = c.tolerantDecodeIfPresent(Int.self, forKey: .justTonicPc)
             ?? defaults.justTonicPc
-        hapticsOn = try c.decodeIfPresent(Bool.self, forKey: .hapticsOn)
+        justTonicPc = ((rawPc % 12) + 12) % 12
+        hapticsOn = c.tolerantDecodeIfPresent(Bool.self, forKey: .hapticsOn)
             ?? defaults.hapticsOn
-        soundsOn = try c.decodeIfPresent(Bool.self, forKey: .soundsOn)
+        soundsOn = c.tolerantDecodeIfPresent(Bool.self, forKey: .soundsOn)
             ?? defaults.soundsOn
     }
 
