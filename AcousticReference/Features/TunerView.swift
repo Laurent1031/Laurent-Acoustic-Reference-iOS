@@ -635,6 +635,115 @@ struct TunerView: View {
         .buttonStyle(GlassPressButtonStyle())
     }
 
+    // MARK: - 全屏入口與 Drone 膠囊（母本行 10217）
+
+    // 【審計修復・返修批6】批 4 抽子視圖重構時 immersiveButton 與
+    // droneCapsule 兩函數遺失（呼叫點在、定義不在，當前樹無法
+    // 編譯）；此處由批 3 版本（commit 559bed3）原樣恢復——VM 側
+    // toggleDrone／toggleDroneFollow／droneButtonText 與 drone
+    // 觀察物件接線一直都在，只缺 View 函數本體。
+   private func immersiveButton(theme: TunerTheme) -> some View {
+        Button {
+            showImmersive = true
+            HapticsEngine.shared.tap(milliseconds: 6)
+        } label: {
+            Text(L10n.t("全屏"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(theme.textSecondary)
+                .padding(.horizontal, 9)
+                .frame(height: 26)
+                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+        }
+        .buttonStyle(GlassPressButtonStyle())
+        .accessibilityLabel(L10n.t("进入极简全屏调音"))
+    }
+
+   private func droneCapsule(theme: TunerTheme) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                viewModel.toggleDrone()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: drone.isPlaying ? "stop.fill" : "play.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(L10n.t(viewModel.droneButtonText))
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(drone.isPlaying ? theme.ok : theme.textPrimary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(GlassPressButtonStyle())
+
+            Rectangle()
+                .fill(theme.textMuted.opacity(0.25))
+                .frame(width: 1, height: 22)
+
+            Menu {
+                ForEach(DroneTimbre.allCases, id: \.self) { timbre in
+                    Button {
+                        store.droneTimbre = timbre
+                        // 母本 setDroneTimbre：uiSound("tick")（行 10241）。
+                        UISoundEngine.shared.play(.tick)
+                    } label: {
+                        if timbre == store.droneTimbre {
+                            Label(timbre.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(timbre.displayName)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text("\(L10n.t("音色")) \(store.droneTimbre.displayName)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(theme.textPrimary)
+                .padding(.horizontal, 12)
+                .frame(height: 44)
+                .contentShape(Rectangle())
+            }
+
+            Rectangle()
+                .fill(theme.textMuted.opacity(0.25))
+                .frame(width: 1, height: 22)
+
+            Button {
+                viewModel.toggleDroneFollow()
+            } label: {
+                Text(L10n.t("音高跟随"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(store.droneFollow ? theme.textPrimary : theme.textSecondary)
+                    .padding(.horizontal, 11)
+                    .frame(height: 30)
+                    .background {
+                        if store.droneFollow {
+                            Capsule()
+                                .fill(.clear)
+                                .glassEffect(
+                                    .regular.tint(theme.accent.opacity(0.38)).interactive(),
+                                    in: Capsule())
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(GlassPressButtonStyle())
+        }
+        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+        .overlay {
+            Capsule().strokeBorder(
+                theme.isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08),
+                lineWidth: 1)
+        }
+    }
+
     // MARK: - 麥克風控制
 
     private func micControls(theme: TunerTheme) -> some View {
