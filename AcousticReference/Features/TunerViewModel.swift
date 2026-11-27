@@ -224,6 +224,8 @@ final class TunerViewModel: ObservableObject {
     private var lastStableCents: Double = 0
     private var ghostUntil: TimeInterval = 0
     private var inTuneSince: TimeInterval?
+    /// 上次峰值高於釋放閾值的時刻（單調時鐘）；初始 −∞ 表示從未高於。
+    private var clipLastAboveRelease: TimeInterval = -.infinity
     private var centsRoll = CentsDisplayRoll()
     private var stability = StabilityTracker()
 
@@ -236,6 +238,12 @@ final class TunerViewModel: ObservableObject {
 
     private let linkProxy = DisplayLinkProxy()
     private var displayLink: CADisplayLink?
+
+    /// 削波警示閾值（階段 7 驗收清單：−1 dBFS 入／−6 dBFS 釋放／保持 1.5 s；
+    /// peak 為線性 0–1，dBFS = 20·log10(peak)）。
+    private static let clipEnterPeak = pow(10.0, -1.0 / 20.0)    // ≈ 0.8913
+    private static let clipReleasePeak = pow(10.0, -6.0 / 20.0)  // ≈ 0.5012
+    private static let clipHoldSeconds: TimeInterval = 1.5
 
     /// 母本 SOLFEGE_MAP（行 6187），索引為記譜音 pitch class。
     private static let solfegeMap = [
