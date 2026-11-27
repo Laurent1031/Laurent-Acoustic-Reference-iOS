@@ -51,8 +51,13 @@ enum AppLanguage: String, Codable, CaseIterable, Sendable {
 ///   未中走 I18N_PREFIXES 前綴匹配（且字典須含該前綴鍵）、
 ///   再未中回源串；zh-CN 恆回源串（母本 translateTree 對
 ///   zh-CN 直接跳過、tStr 的 dict 即源串本身）。
-/// - 查表順序：母本字典 → supplement → 源串。supplement 鍵與
-///   字典鍵不重疊（抽取腳本已機械核查）。
+/// - 查表順序：supplement → 母本字典 → 源串。【五維審
+///   計・排版項2】supplement 原為純補缺層（與字典鍵零
+///   重疊，2026-11-27 機械核查 overlap=0）；改置字典之
+///   前成為覆寫層，供個別過長譯文以短形覆寫（如俄語
+///   平均律、德語記譜音——分段/晶片在等寬格位下被縮至
+///   不可讀）。覆寫項同步登記於 tools/i18n-supplement
+///   .json，重抽取時不丟失。
 /// - 選型不用 .xcstrings：母本模型即運行期「源串為鍵」字典，
 ///   JSON 可 1:1 複刻（含前綴回退與即時切換）；App 內覆寫語言
 ///   下 .xcstrings 需逐呼叫點 locale 管道、動態組裝字串
@@ -100,6 +105,15 @@ enum L10n {
         lock.withLock { $0.language = language }
     }
 
+    /// CJK 語言旗標（五維審計・排版項16）：方塊字加字距
+    /// （tracking）會破壞字面，CJK 介面下字距恆應為 0。
+    static var isCJK: Bool {
+        switch currentLanguage {
+        case .zhTW, .zhCN, .ja, .ko: return true
+        default: return false
+        }
+    }
+
     private static func loadTables() {
         guard let url = Bundle.main.url(forResource: "localization", withExtension: "json"),
               let raw = try? Data(contentsOf: url),
@@ -137,16 +151,42 @@ enum L10n {
         return src
     }
 
+    /// 命中才回值（含與源串恆等的命中），未命中回 nil：
+    /// translate 的 Optional 核心，供覆寫層區分「覆寫為
+    /// 恆等譯文」與「無覆寫條目」。
+    private static func translateHit(_ source: String, dict: [String: String],
+                                     prefixes: [String]) -> String? {
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let hit = dict[trimmed], let range = source.range(of: trimmed) {
+            return source.replacingCharacters(in: range, with: hit)
+        }
+        for prefix in prefixes where trimmed.hasPrefix(prefix) {
+            if let hit = dict[prefix], let range = source.range(of: prefix) {
+                return source.replacingCharacters(in: range, with: hit)
+            }
+        }
+        return nil
+    }
+
     /// 主查表：源串（zh-CN）→ 目前語言渲染。zh-CN 恆回源串。
     static func t(_ source: String) -> String {
         _ = didLoad
         return lock.withLock { tables in
             let lang = tables.language
             guard lang != .zhCN, let key = langKey(lang) else { return source }
-            let fromDict = translate(source, dict: tables.dict[key] ?? [:],
-                                     prefixes: tables.prefixes)
-            if fromDict != source { return fromDict }
-            return translate(source, dict: tables.supplement[key] ?? [:],
+            // supplement 先行（覆寫層，見檔頭查表順序註）。
+            // 【全邏輯複查・低】判準改「有命中」而非「結果
+            // ≠ 源串」：舊版以值比較判覆寫，譯文恰與源串
+            // 恆等的覆寫條目（現存 34 條、與 dict 零衝突
+            // 故當時輸出正確）會穿透到 dict——機制上覆寫
+            // 失效。改以命中與否為準，恆等覆寫亦生效。
+            if let fromSupplement = translateHit(
+                source, dict: tables.supplement[key] ?? [:],
+                prefixes: tables.prefixes) {
+                return fromSupplement
+            }
+            return translate(source, dict: tables.dict[key] ?? [:],
                              prefixes: tables.prefixes)
         }
     }

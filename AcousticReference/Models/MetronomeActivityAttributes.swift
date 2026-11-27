@@ -19,6 +19,14 @@ struct MetronomeActivityAttributes: ActivityAttributes {
         var beatsInBar: Int
         /// 預備拍期間（靈動島／鎖屏以琥珀語義區分，渲染側處理）。
         var isCountIn: Bool
+        /// 【邏輯補查】標籤字串由 App 側以 L10n 組裝（擴展
+        /// 無查表能力）：舊版擴展側寫死簡體中文，非中文
+        /// 語言下鎖屏/靈動島恆顯示中文。預設值＝源串，
+        /// App 側組裝時恆覆寫。
+        var titleText: String = "节拍器"
+        var countInText: String = "预备拍"
+        /// 「第 N 拍」整串（App 側按語言格式組裝）。
+        var beatText: String = ""
     }
 
     /// 音色顯示名（建立時定格；運行中改音色不重建活動——

@@ -135,6 +135,15 @@ final class StrobePhaseTracker {
         }
         lastValidTime = now
 
+        // 【全邏輯複查・低】取樣率守衛：demodulate 內部有
+        // 守衛，但其後的 advTgt/expected 直接除以
+        // sampleRate——為 0 時 NaN 寫入 patternPhase 且永
+        // 久不自愈。現行由 facade 守衛格式速率 >0 而不可
+        // 達，此為核心自身防禦縱深：無速率即按無訊號回。
+        guard sampleRate > 0 else {
+            return snapshot(now: now, hasSignal: false)
+        }
+
         // 校正後目標頻率（與錶盤 cents 判準同源，見類註解 3）。
         let offset = PitchMath.temperamentOffsetCents(
             targetMidi: targetMidi,

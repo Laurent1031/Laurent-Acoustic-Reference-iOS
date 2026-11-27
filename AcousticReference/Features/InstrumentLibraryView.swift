@@ -140,6 +140,10 @@ struct InstrumentLibraryView: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(theme.textMuted)
+                        // 【五維審計 F9】命中 ≈17→32（全表最
+                        // 差項）：字形不變、框擴大可點。
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(GlassPressButtonStyle())
                 // 【返修批7・E14】清除鈕補無障礙標籤
@@ -255,7 +259,9 @@ private struct InstrumentCard: View {
                         Image(systemName: "pencil")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(theme.textSecondary)
-                            .frame(width: 24, height: 24)
+                            // 【五維審計 F9】命中 24→32。
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(GlassPressButtonStyle())
                     // 【返修批7・E14】編輯鈕補無障礙標籤。
@@ -265,7 +271,11 @@ private struct InstrumentCard: View {
                             .font(.system(size: confirmingDelete ? 10.5 : 11,
                                         weight: .semibold))
                             .foregroundStyle(confirmingDelete ? theme.clipWarning : theme.textSecondary)
-                            .frame(height: 24)
+                            // 【五維審計 F9】命中高 24→32（寬隨
+                            // 字：✕ 態以最小寬 32 兜底）。
+                            .frame(minWidth: 32)
+                            .frame(height: 32)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(GlassPressButtonStyle())
                     // 【返修批7・E14】刪除鈕補無障礙標籤
@@ -435,7 +445,15 @@ private struct CustomInstrumentFormView: View {
             VStack(alignment: .leading, spacing: 12) {
                 field(theme: theme) {
                     TextField(L10n.t("乐器名称（如：降E调高音萨克斯）"), text: $name)
-                        .onChange(of: name) { _, _ in nameError = false }
+                        .onChange(of: name) { _, newValue in
+                            nameError = false
+                            // 【專屬規範・排版項3】名稱長度上
+                            // 限 24 字：無上限時長名在樂器卡/
+                            // 頂欄被截斷至不可讀；輸入即截。
+                            if newValue.count > 24 {
+                                name = String(newValue.prefix(24))
+                            }
+                        }
                 }
                 if nameError {
                     Text(L10n.t("请填写乐器名称"))
@@ -595,7 +613,11 @@ struct FavoriteStarButton: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(isFavorite ? theme.favoriteStar : theme.textMuted)
                 .scaleEffect(starScale)
-                .frame(width: 26, height: 26)
+                // 【五維審計 F9／專屬規範 §E.3】命中 26→32
+                // （圖標類下限）：星形字形 15pt 不變、框擴
+                // 大＋contentShape 使全框可點。
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
                 .overlay { burstDots }
         }
         .buttonStyle(GlassPressButtonStyle())

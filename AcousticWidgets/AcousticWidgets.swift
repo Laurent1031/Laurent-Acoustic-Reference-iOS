@@ -92,7 +92,12 @@ struct TunerWidgetView: View {
 
             if family == .systemMedium, !entry.snapshot.favoriteNames.isEmpty {
                 HStack(spacing: 5) {
-                    ForEach(entry.snapshot.favoriteNames, id: \.self) { name in
+                    // 【邏輯補查】身分改序號：顯示名可重複
+                    // （兩件同名自訂樂器同入收藏），以字串
+                    // 本身為 id 時 ForEach 身分碰撞、行為未
+                    // 定義；序號身分與寫入順序穩定對應。
+                    ForEach(Array(entry.snapshot.favoriteNames.enumerated()),
+                            id: \.offset) { _, name in
                         Text(name)
                             .font(.system(size: 10.5, weight: .semibold))
                             .lineLimit(1)
@@ -202,7 +207,7 @@ struct MetronomeLiveActivityWidget: Widget {
             // 鎖屏／橫幅面：BPM 大字＋拍號＋拍點列。
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(context.state.isCountIn ? "預備拍" : "節拍器")
+                    Text(context.state.isCountIn ? context.state.countInText : context.state.titleText)
                         .font(.system(size: 11, weight: .bold))
                         .tracking(1.2)
                         .foregroundStyle(Color(red: 0.04, green: 0.52, blue: 1.0))
@@ -237,7 +242,7 @@ struct MetronomeLiveActivityWidget: Widget {
                     VStack(alignment: .trailing, spacing: 1) {
                         Text(context.state.timeSignature)
                             .font(.system(size: 17, weight: .bold, design: .rounded))
-                        Text(context.state.isCountIn ? "預備拍" : "第 \(context.state.beat) 拍")
+                        Text(context.state.isCountIn ? context.state.countInText : context.state.beatText)
                             .font(.system(size: 10, weight: .semibold))
                             .opacity(0.6)
                     }

@@ -392,8 +392,17 @@ enum BackupImporter {
             if plan.language == nil { plan.warnings.append("lang 值无法识别，已跳过") }
         }
         if let s = settings["mode"] as? String {
-            plan.appMode = AppMode(rawValue: s)
-            if plan.appMode == nil { plan.warnings.append("mode 值无法识别，已跳过") }
+            // 【五維審計 F-1／專屬規範 S-4】映射層禁止枚舉
+            // 直通：母本 dual（同屏）原生已取消，直通 .dual
+            // 令運行中匯入後兩頁皆透明、內容區全空白至冷
+            // 啟動。dual 在源頭收斂為 tuner 並於摘要警告。
+            if s == "dual" {
+                plan.appMode = .tuner
+                plan.warnings.append("网页版同屏模式在原生版已取消，已切换为调音模式")
+            } else {
+                plan.appMode = AppMode(rawValue: s)
+                if plan.appMode == nil { plan.warnings.append("mode 值无法识别，已跳过") }
+            }
         }
         if let v = settings["hapticsOn"] as? Bool { plan.hapticsOn = v }
         if let v = settings["soundsOn"] as? Bool { plan.soundsOn = v }
@@ -499,6 +508,9 @@ extension AppStore {
     /// 為一次完整狀態替換；套用前不做任何寫入，故確認前取消即
     /// 零副作用。順序：自訂樂器先行（收藏／主樂器解析依賴它）。
     func applyImport(_ plan: BackupImporter.ImportPlan) {
+        // 【專屬規範 S-4】套用前先存匯入前快照（恆留 1
+        // 份），匯入結果不如預期時有回復底本。
+        savePreImportSnapshot()
         // 調音偏好欄位級合成（跨段：profile 給 a4／阻尼／容差／
         // 噪聲門／律制／主音，settings 給震動／音效開關）：以現行
         // 值為底，只覆寫 plan 有值的欄；plan 欄位僅由其來源段
@@ -532,8 +544,25 @@ extension AppStore {
                 metronomeDefault = metroDefault
             }
             if let primary = plan.primaryInstrumentId {
-                primaryInstrumentId = primary
-                selectInstrument(id: primary)
+                // 【五維審計 F-5】改走 setPrimaryInstrument
+                // 統一不變量（primary 同步入收藏首位）：舊版
+                // 直寫欄位，匯入後 primary 可能不在收藏列，
+                // 與偏好頁路徑行為不一致。
+                setPrimaryInstrument(id: primary)
+            }
+            // 【全邏輯複查・中】整段替換自訂樂器後重驗選
+            // 中／主樂器指向：plan 無可解析 primary 時，
+            // 現行選中/主樂器若是被換掉的自訂樂器，id 懸
+            // 空會被 persist 寫回（引擎音域靜默改用兜底
+            // 樂器、偏好頁主樂器指向不存在 id，要等冷啟
+            // 動 init 健全化才修正）。與 init 同式即時收
+            // 斂；已走 setPrimaryInstrument 者其指向必可
+            // 解析、兩條守衛不觸發。
+            if instrument(id: selectedInstrumentId) == nil {
+                selectInstrument(id: InstrumentCatalog.builtins[0].id)
+            }
+            if instrument(id: primaryInstrumentId) == nil {
+                primaryInstrumentId = selectedInstrumentId
             }
         }
         if plan.hasSettings {
@@ -550,7 +579,13 @@ extension AppStore {
         // 原生現有背景（不清空用戶已設的圖／色）。
         if let kind = plan.bgKind { bgKind = kind }
         if let color = plan.bgColorHex { bgColorHex = color }
-        if let image = plan.customBgImageData { customBgData = image }
+        // 【全邏輯複查・低】圖須與 kind 同步才套：備份只
+        // 有圖無 kind（從未宣告背景種類）時舊版照樣覆寫
+        // 現行圖片背景，與反向「有 kind 無圖保留舊圖」
+        // 的保留哲學不對稱；kind 缺席時不動圖。
+        if let image = plan.customBgImageData, plan.bgKind != nil {
+            customBgData = image
+        }
         pendingImportPlan = nil
     }
 }

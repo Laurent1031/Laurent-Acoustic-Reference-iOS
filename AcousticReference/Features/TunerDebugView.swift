@@ -135,12 +135,12 @@ struct TunerDebugView: View {
         VStack(spacing: 14) {
             if engine.permissionDenied {
                 Text(L10n.t("麦克风权限被拒绝，请到系统设置开启"))
-                    .font(.footnote)
+                    .font(.system(size: 12.5))
                     .foregroundStyle(.red)
             }
             if let error = engine.lastError {
                 Text(L10n.t(error))
-                    .font(.footnote)
+                    .font(.system(size: 12.5))
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
             }
@@ -166,11 +166,16 @@ struct TunerDebugView: View {
             // 第二路徑）。
             HStack {
                 Text("A4")
+                    // 【五維審計・排版項9】本列原缺 .font：
+                    // 標籤與值繼承預設 17，與全頁 13 級不
+                    // 齊。補齊（值 15 medium 等寬）。
+                    .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer()
                 Button("−") { store.tunerSettings.stepA4(by: -0.5) }
                     .font(.system(size: 20, weight: .semibold))
                 Text(String(format: "%.1f Hz", store.tunerSettings.a4))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .frame(minWidth: 86)

@@ -24,6 +24,11 @@ struct BackupImportSheet: View {
     @ObservedObject var store: AppStore
     let plan: BackupImporter.ImportPlan
     @Environment(\.colorScheme) private var colorScheme
+    /// 【邏輯補查】關閉改走環境 dismiss：呈現綁定已改為
+    /// ContentView 的 presentedImportPlan 副本（與
+    /// activeSheet 串行），只清 store 真源不再能關閉本
+    /// sheet——兩按鈕均須清真源＋dismiss 雙路並行。
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let theme = store.resolvedTheme(system: colorScheme)
@@ -66,11 +71,17 @@ struct BackupImportSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.t("取消")) { store.pendingImportPlan = nil }
+                    Button(L10n.t("取消")) {
+                        store.pendingImportPlan = nil
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.t("确认导入")) { store.applyImport(plan) }
-                        .fontWeight(.semibold)
+                    Button(L10n.t("确认导入")) {
+                        store.applyImport(plan)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
                 }
             }
         }

@@ -278,6 +278,15 @@ private final class DroneRenderCore: @unchecked Sendable {
             return noErr
         }
         let sr = sampleRate
+        // 【全邏輯複查・低】未 configure 防禦：delay 陣列
+        // 為空時 delaySamples 計算出 -1、其後取模除以
+        // cap=0 即崩潰。現行 facade 恆先 configure 後
+        // start 而不可達，渲染核心自設防線：未配置即
+        // 靜默回覆，不觸碰任何緩衝。
+        guard sr > 0, !delayL.isEmpty, !delayR.isEmpty else {
+            isSilence.pointee = true
+            return noErr
+        }
         let frames = Int(frameCount)
         let freqAlpha = 1 - exp(-1 / (sr * snap.glideTau))
         let gainAlpha = 1 - exp(-1 / (sr * snap.gainTau))

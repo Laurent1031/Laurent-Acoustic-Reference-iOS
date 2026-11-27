@@ -22,6 +22,11 @@ final class HoldRepeatController: ObservableObject {
         task = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(nanoseconds: 340_000_000)
+                // 【全邏輯複查・低】340 ms 邊界競態：sleep
+                // 剛完成、續行未跑時 pressEnded 先行（已補
+                // 發一次並 cancel），續行若不查取消狀態會
+                // 再發一次（同按壓雙發一步）。睡醒先驗取消。
+                guard !Task.isCancelled else { return }
                 self?.fired = true
                 action()
                 // 【返修批2・按鍵審計】連調上限 500 發
@@ -29,6 +34,7 @@ final class HoldRepeatController: ObservableObject {
                 // 未送達，連調不致無限持續。
                 for _ in 0..<500 {
                     try await Task.sleep(nanoseconds: 62_000_000)
+                    guard !Task.isCancelled else { return }
                     action()
                 }
             } catch {

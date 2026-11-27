@@ -48,6 +48,10 @@ struct TunerView: View {
     @State private var glideBlocked = false
     @State private var glideStartMinX: CGFloat = 0
     @State private var lastGlideChipId: String?
+    /// 本次滑奏手勢的起點（全邏輯複查）：DragGesture 的
+    /// startLocation 在單次手勢內恆定，作「新手指」判別
+    /// ——glideActive 殘留時以起點變化偵測並重初始化。
+    @State private var glideStartLocation: CGPoint?
 
     init(engine: AudioEngine, store: AppStore, drone: DroneEngine) {
         self.engine = engine
@@ -73,34 +77,51 @@ struct TunerView: View {
             // SE 級（可用 555）溢出 ≈136（麥克風鈕整顆出界）。
             // 改為：列間距／軌跡高按可用高分級收縮，主顯示高
             // 改由「可用高 − 固定列總高 − 間距 − 頁邊距」的
-            // 餘量決定（下限 80），任何高度下總高恆 ≤ 可用高、
+            // 餘量決定（下限 48，見 gaugeHeight 註），任何高度下總高恆 ≤ 可用高、
             // 不溢出、不重疊；餘量充裕時主顯示取自然高（與
             // 舊版的寬度／比例預算相同），視覺不變。
             let compact = availH < 660
             let rowSpacing: CGFloat = compact ? 5 : 6
-            let traceHeight: CGFloat = compact ? 34 : 44
-            let noteSize = min(72, max(36, availH * 0.064)
-                               * (performance ? 1.12 : 1))
+            let traceHeight: CGFloat = compact ? 30 : 44
+            // 【專屬規範 §A.6】音名尺寸 clamp(36, availH
+            // ×0.064, 上限)：上限 72→56（寬裕級防過大）、
+            // compact 級封頂 40（回收高度給主顯示）。
+            let noteSize = min(compact ? 40 : 56,
+                               max(36, availH * 0.064))
+                * (performance ? 1.12 : 1)
             let octaveSize = min(26, max(16, availH * 0.028))
             let naturalGauge = min(
                 (geo.size.width - 32) * 190.0 / 320.0 * (performance ? 1.3 : 1),
-                availH * (performance ? 0.46 : 0.30)
+                availH * (performance ? 0.46
+                          : (availH >= 740 ? 0.34 : 0.30))
             )
             // 固定列總高（不含主顯示與 Spacer），逐列對現行
-            // 版面實高：樂器卡 40／工具列 26／音名行 noteSize
-            // ×1.21／提示 18／麥克風鈕 45.5／數據卡（上下內距
-            // 20＋四格 47＋列距 8＋軌跡 traceHeight）。
+            // 版面實高：樂器卡 40／工具列 32（五維審計 F5：
+            // 分段控件實高＝傳入 26＋6，預算改按實高）／音
+            // 名行 noteSize ×1.21／提示槽 18（訊息單槽輪替，
+            // 恆高，見 statusHint）／麥克風鈕 45.5／數據卡
+            // （上下內距 cardPad＋四格 47＋列距 8＋軌跡）。
             // 【返修批7 CI修復】ViewBuilder 閉包內不得出現賦值陳述
             // （其值 () 無法 conform to View）：以立即執行閉包
             // 算出固定列總高與列距數，數值與舊版逐列實高完全一致。
             let (fixedExcl, gaps): (CGFloat, Int) = {
-                var fixedExcl: CGFloat = 40 + 26 + noteSize * 1.21 + 18 + 45.5
-                    + (20 + 47 + 8 + traceHeight)
+                // 【專屬規範 §A.9】compact 瘦身打包：數據
+                // 卡內距 20→16、收藏/目標列 34→32、軌跡
+                // 30（見 traceHeight），合計回收 12pt 還
+                // 主顯示（F5 工具列 +6 後 SE 主顯示曾被
+                // 壓至 80 下限邊緣，本打包後 ≈90）。
+                let cardPad: CGFloat = compact ? 16 : 20
+                let stripH: CGFloat = compact ? 32 : 34
+                var fixedExcl: CGFloat = 40 + 32 + noteSize * 1.21 + 18 + 45.5
+                    + (cardPad + 47 + 8 + traceHeight)
                 var gaps = 7 // 演奏態：8 列 − 1
                 if !performance {
-                    let dotsH: CGFloat = store.favoriteInstrumentIds.count >= 2 ? 8 : 0
-                    fixedExcl += 34 /* 收藏列 */ + dotsH + 34 /* 目標列 */ + 44 /* Drone */
-                    gaps = dotsH > 0 ? 11 : 10
+                    // 【專屬規範 §A.3】圓點列恆保留 8pt
+                    // （收藏 <2 時為空位）：幾何恆定、預算
+                    // 在任何間距解讀下精確（消 F6 歧義）。
+                    fixedExcl += stripH /* 收藏列 */ + 8 /* 圓點列 */
+                        + stripH /* 目標列 */ + 44 /* Drone */
+                    gaps = 11
                 }
                 if justStripExpanded && store.tunerSettings.temperament == .just {
                     fixedExcl += 38 // 純律主音快選列 30＋列距 8
@@ -109,7 +130,14 @@ struct TunerView: View {
             }()
             let chrome = fixedExcl + CGFloat(gaps) * rowSpacing
                 + 6 + (compact ? 8 : 10)
-            let gaugeHeight = min(naturalGauge, max(80, availH - chrome))
+            // 【全邏輯複查・中】主顯示下限 80 在「compact＋
+            // 純律快選列展開」時反致溢出：該組合 chrome ≈
+            // 503、SE 可用高 555，餘量僅 ≈52，80 下限把總
+            // 高頂到 583（溢出 ≈28、麥克風鈕被推出頁底）。
+            // 下限改 48：鐵律「絕不溢出」優先於下限偏好；
+            // 常規組合餘量 ≥ 80 時行為與舊版全等（SE 常規
+            // ≈89.9、展開純律時 = 餘量 52 恰入頁）。
+            let gaugeHeight = min(naturalGauge, max(48, availH - chrome))
 
             ZStack {
                 theme.background.ignoresSafeArea()
@@ -118,7 +146,7 @@ struct TunerView: View {
                     headerRow(theme: theme)
 
                     if !performance {
-                        favoritesRow(theme: theme)
+                        favoritesRow(theme: theme, compact: compact)
 
                         favoritesDots(theme: theme)
                     }
@@ -135,7 +163,7 @@ struct TunerView: View {
                         Spacer(minLength: 0)
                         displayModeToggle(theme: theme)
                     }
-                    .frame(height: 26)
+                    .frame(height: 32)
 
                     TunerLiveDisplay(render: viewModel.render, engine: engine, store: store, theme: theme, gaugeHeight: gaugeHeight)
 
@@ -144,10 +172,10 @@ struct TunerView: View {
                     statusHint(theme: theme)
 
                     if !performance {
-                        targetStrip(theme: theme)
+                        targetStrip(theme: theme, compact: compact)
                     }
 
-                    TunerDataCard(render: viewModel.render, viewModel: viewModel, engine: engine, store: store, theme: theme, traceHeight: traceHeight, pageVisible: store.appMode == .tuner)
+                    TunerDataCard(render: viewModel.render, viewModel: viewModel, engine: engine, store: store, theme: theme, traceHeight: traceHeight, pageVisible: store.appMode == .tuner, compact: compact)
 
                     Spacer(minLength: 0)
 
@@ -206,6 +234,8 @@ struct TunerView: View {
             glideActive = false
             glideEngaged = false
             glideBlocked = false
+            glideStartLocation = nil
+            lastGlideChipId = nil
             viewModel.setGliding(false)
         }
     }
@@ -230,7 +260,8 @@ struct TunerView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(L10n.localizedName(store.selectedInstrument.categoryLabel))
                             .font(.system(size: 10, weight: .bold))
-                            .tracking(0.8)
+                            // 【五維審計・排版項16】CJK 不施字距。
+                            .tracking(L10n.isCJK ? 0 : 0.8)
                             .foregroundStyle(theme.accent)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
@@ -305,7 +336,7 @@ struct TunerView: View {
 
     // MARK: - Row 2：收藏晶片列＋A4 步進器（母本行 5252）
 
-    private func favoritesRow(theme: TunerTheme) -> some View {
+    private func favoritesRow(theme: TunerTheme, compact: Bool) -> some View {
         HStack(spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -326,7 +357,11 @@ struct TunerView: View {
                     }
                     .buttonStyle(GlassPressButtonStyle())
                 }
-                .padding(.vertical, 1)
+                // 【全邏輯複查・低】compact 列框 32：內容
+                // 垂直 padding 歸零，內容實高 = 晶片 32 恰
+                // 入列（舊版 +1 上下令實高 34、玻璃面被裁
+                // 或溢入列距）；常規級維持 1（實高 34 = 列框）。
+                .padding(.vertical, compact ? 0 : 1)
                 .onPreferenceChange(FavChipFrameKey.self) { frames in
                     favChipFrames = frames
                 }
@@ -338,7 +373,9 @@ struct TunerView: View {
 
             a4Stepper(theme: theme)
         }
-        .frame(height: 34)
+        // 【專屬規範 §A.9】compact 級列高 34→32（晶片本體
+        // 32 不變、恰入列），與預算 stripH 同步。
+        .frame(height: compact ? 32 : 34)
     }
 
     /// 收藏晶片：點按選樂器（母本 selectInstrument 連重選也走
@@ -379,10 +416,16 @@ struct TunerView: View {
             .zIndex(isDragged ? 2 : 0)
             .onTapGesture {
                 // 【返修批8】防殭屍拖曳態：若拖曳狀態異常殘
-                // 留在別顆晶片上（手勢被系統取消等），先清
+                // 留（手勢被系統取消、onEnded 未送達），先清
                 // 態再處理本次點按——scrollDisabled 隨之解
                 // 除，收藏列不被永久鎖死。
-                if let dragId = favDragId, dragId != inst.id {
+                // 【全邏輯複查・中】清態改無條件：舊版只清
+                // 「殘留在別顆晶片」的情形，殘留在同一顆時
+                // 點按不清、鎖死持續到離頁。點按能送達即
+                // 證明該晶片當下無進行中的拖曳（拖曳中觸
+                // 碰由 sequenced 手勢獨佔、點按不觸發），
+                // favDragId 非空必為殘留，清之恆安全。
+                if favDragId != nil {
                     favDragId = nil
                     favDragTranslation = 0
                     favShifted = [:]
@@ -534,33 +577,83 @@ struct TunerView: View {
     /// 則無 active；1 個收藏顯示 0 圓點）。
     @ViewBuilder
     private func favoritesDots(theme: TunerTheme) -> some View {
-        if store.favoriteInstrumentIds.count >= 2 {
-            HStack(spacing: 5) {
-                ForEach(store.favoriteInstrumentIds, id: \.self) { id in
-                    Circle()
-                        .fill(id == store.selectedInstrumentId
-                              ? theme.accent : theme.textMuted.opacity(0.45))
-                        .frame(width: 6, height: 6)
+        // 【專屬規範 §A.3】恆佔 8pt：收藏 <2 時渲染空位，
+        // 幾何恆定（預算不再隨收藏數變動）。
+        Group {
+            if store.favoriteInstrumentIds.count >= 2 {
+                HStack(spacing: 5) {
+                    ForEach(store.favoriteInstrumentIds, id: \.self) { id in
+                        Circle()
+                            .fill(id == store.selectedInstrumentId
+                                  ? theme.accent : theme.textMuted.opacity(0.45))
+                            .frame(width: 6, height: 6)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 8)
         }
+        .frame(height: 8)
     }
 
     // MARK: - 狀態提示（固定高度，防重排）
 
     private func statusHint(theme: TunerTheme) -> some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(theme.accent)
-                .frame(width: 7, height: 7)
-            Text(L10n.t("轻点任意处开始校音"))
-                .font(.system(size: 12.5))
-                .foregroundStyle(theme.textSecondary)
+        // 【五維審計 F1／專屬規範 §A.7】訊息單槽輪替：
+        // 權限被拒 ＞ 引擎錯誤 ＞ Drone 錯誤 ＞ 操作提示，
+        // 恆高 18。舊版三條訊息列掛在麥克風區內且未入
+        // 頁面預算——權限被拒/錯誤態下每列令總高 +25，
+        // 把控制座推出頁底（首次拒權限即觸發）。單槽後
+        // 任何狀態下頁面總高不變、控制座永不位移。
+        let slotError = engine.permissionDenied
+            ? nil : (engine.lastError ?? drone.lastError)
+        return HStack(spacing: 7) {
+            if engine.permissionDenied {
+                Circle()
+                    .fill(theme.clipWarning)
+                    .frame(width: 7, height: 7)
+                Text(L10n.t("麦克风权限被拒绝，请到系统设置开启"))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(theme.clipWarning)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Button(L10n.t("前往设置")) {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        openURL(url)
+                    }
+                }
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(theme.accent)
+            } else if let error = slotError {
+                Circle()
+                    .fill(theme.clipWarning)
+                    .frame(width: 7, height: 7)
+                Text(L10n.t(error))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(theme.clipWarning)
+                    .lineLimit(1)
+            } else if viewModel.noSignal {
+                // 【專屬規範 S-1】無訊號自報：不留「校音中」
+                // 假運行態（數據卡頻率格同步顯示「—」）。
+                Circle()
+                    .fill(theme.clipWarning)
+                    .frame(width: 7, height: 7)
+                Text(L10n.t("未收到讯号 · 检查麦克风"))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(theme.clipWarning)
+                    .lineLimit(1)
+            } else {
+                Circle()
+                    .fill(theme.accent)
+                    .frame(width: 7, height: 7)
+                Text(L10n.t("轻点任意处开始校音"))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(theme.textSecondary)
+            }
         }
         .frame(height: 18)
-        .opacity(engine.isRunning ? 0 : 1)
+        .opacity(!engine.permissionDenied && slotError == nil
+                 && !viewModel.noSignal
+                 && engine.isRunning ? 0 : 1)
     }
 
     // MARK: - Row 4：目標音列（母本行 5282）
@@ -573,7 +666,7 @@ struct TunerView: View {
     /// glideBlock 語義）。晶片 frames 與拖動 location 同在
     /// "targetStrip" 視口座標（捲動時兩者同步移動，命中判定
     /// 恆以手指當下位置為準——母本 elementFromPoint 等價）。
-    private func targetStrip(theme: TunerTheme) -> some View {
+    private func targetStrip(theme: TunerTheme, compact: Bool) -> some View {
         HStack(spacing: 6) {
             if store.selectedInstrument.isGuzheng {
                 guzhengKeyMenu(theme: theme)
@@ -588,7 +681,9 @@ struct TunerView: View {
                                    theme: theme)
                     }
                 }
-                .padding(.vertical, 1)
+                // 【全邏輯複查・低】同收藏列：compact 時
+                // 垂直 padding 歸零，內容實高 32 恰入列框。
+                .padding(.vertical, compact ? 0 : 1)
                 .background(GeometryReader { proxy in
                     Color.clear.preference(
                         key: TargetContentFrameKey.self,
@@ -604,7 +699,8 @@ struct TunerView: View {
             .coordinateSpace(.named("targetStrip"))
             .simultaneousGesture(targetGlideGesture)
         }
-        .frame(height: 34)
+        // 【專屬規範 §A.9】compact 級列高 34→32（同收藏列）。
+        .frame(height: compact ? 32 : 34)
     }
 
     /// 命中晶片 id（frames 為視口座標；自動識別晶片回 "__auto__"）。
@@ -615,11 +711,23 @@ struct TunerView: View {
     private var targetGlideGesture: some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named("targetStrip"))
             .onChanged { value in
+                // 【全邏輯複查・中】殘留自癒：手勢被系統取
+                // 消時 onEnded 不送達，glideActive 等狀態殘
+                // 留會污染下一次手勢（跳過初始化、起點基準
+                // 錯位、首顆接管被吞）。startLocation 在單
+                // 次手勢內恆定：已 active 而起點不同 = 新
+                // 手指、舊態必為殘留，強制重初始化（VM 的
+                // isGliding 一併落下，下方流程按新態重建）。
+                if glideActive, glideStartLocation != value.startLocation {
+                    glideActive = false
+                    viewModel.setGliding(false)
+                }
                 if !glideActive {
                     glideActive = true
                     glideBlocked = false
                     glideEngaged = false
                     glideStartMinX = targetContentMinX
+                    glideStartLocation = value.startLocation
                     lastGlideChipId = glideChipId(at: value.startLocation)
                 }
                 // 【返修批2・按鍵審計】滑奏旗標改「真移動才
@@ -662,6 +770,7 @@ struct TunerView: View {
                 glideActive = false
                 glideBlocked = false
                 glideEngaged = false
+                glideStartLocation = nil
                 lastGlideChipId = nil
                 viewModel.setGliding(false)
             }
@@ -695,6 +804,15 @@ struct TunerView: View {
             ? viewModel.lockedTargetNote == nil
             : viewModel.lockedTargetNote == note
         return Button {
+            // 【全邏輯複查・中】滑奏殘留自癒：VM 的
+            // isGliding 若因手勢被系統取消而殘留 true，
+            // 「再點已鎖定晶片取消鎖定」會被 !isGliding
+            // 條件恆擋。點按能送達即證明當下無進行中的
+            // 滑奏（glideActive 為 false），殘留旗標先落
+            // 下再走正常點按語義。
+            if !glideActive, viewModel.isGliding {
+                viewModel.setGliding(false)
+            }
             viewModel.tapTargetChip(note: note)
         } label: {
             Text(label)
@@ -782,6 +900,8 @@ struct TunerView: View {
                     Text("\(L10n.t("音色")) \(store.droneTimbre.displayName)")
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
+                        // 【五維審計・排版項13】長譯文縮放兜底。
+                        .minimumScaleFactor(0.85)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 9, weight: .bold))
                 }
@@ -800,6 +920,8 @@ struct TunerView: View {
             } label: {
                 Text(L10n.t("音高跟随"))
                     .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .foregroundStyle(store.droneFollow ? theme.textPrimary : theme.textSecondary)
                     .padding(.horizontal, 11)
                     .frame(height: 30)
@@ -819,11 +941,8 @@ struct TunerView: View {
             .buttonStyle(GlassPressButtonStyle())
         }
         .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-        .overlay {
-            Capsule().strokeBorder(
-                theme.isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08),
-                lineWidth: 1)
-        }
+        // 【五維審計・設計項5】手繪平色描邊刪除（同麥克風
+        // 鈕理由）：批9 漸變描邊為唯一真源。
     }
 
     // MARK: - 麥克風控制
@@ -831,65 +950,37 @@ struct TunerView: View {
     @Environment(\.openURL) private var openURL
 
     private func micControls(theme: TunerTheme) -> some View {
-        VStack(spacing: 8) {
-            // 【返修批7 D4】權限被拒時給出直達系統設定的按鈕
-            // （舊版只有一行文字、無任何恢復路徑）；字體改固定
-            // 字級（深度檢查 E9：.footnote 隨 Dynamic Type 放大
-            // 會在本頁定高版面外加溢出行高）。
-            if engine.permissionDenied {
-                HStack(spacing: 10) {
-                    Text(L10n.t("麦克风权限被拒绝，请到系统设置开启"))
-                        .font(.system(size: 13))
-                        .foregroundStyle(theme.clipWarning)
-                    Button(L10n.t("前往设置")) {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            openURL(url)
-                        }
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.accent)
-                }
+        // 訊息已移入 statusHint 單槽（五維審計 F1）：本區
+        // 恆為按鈕本體 45.5，控制座在任何狀態下不位移。
+        Button {
+            if engine.isRunning {
+                engine.stop()
+            } else {
+                Task { await engine.start() }
             }
-            if let error = engine.lastError {
-                Text(L10n.t(error))
-                    .font(.system(size: 13))
-                    .foregroundStyle(theme.clipWarning)
-                    .multilineTextAlignment(.center)
+        } label: {
+            HStack(spacing: 9) {
+                Circle()
+                    .fill(engine.isRunning ? theme.ok : theme.textMuted)
+                    .frame(width: 9, height: 9)
+                Text(engine.isRunning ? L10n.t("校音中 · 点击停止") : L10n.t("开启麦克风校音"))
+                    // 【五維審計・排版項7】兩頁主 CTA 字重
+                    // 統一 16 bold（本鈕原 semibold、節拍器
+                    // START 為 bold）；長譯文（俄語 37 字）
+                    // 單行＋縮放下限，防換行撐高按鈕。
+                    .font(.system(size: 16, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
-            if let droneError = drone.lastError {
-                Text(L10n.t(droneError))
-                    .font(.system(size: 13))
-                    .foregroundStyle(theme.clipWarning)
-                    .multilineTextAlignment(.center)
-            }
-
-            Button {
-                if engine.isRunning {
-                    engine.stop()
-                } else {
-                    Task { await engine.start() }
-                }
-            } label: {
-                HStack(spacing: 9) {
-                    Circle()
-                        .fill(engine.isRunning ? theme.ok : theme.textMuted)
-                        .frame(width: 9, height: 9)
-                    Text(engine.isRunning ? L10n.t("校音中 · 点击停止") : L10n.t("开启麦克风校音"))
-                        .font(.system(size: 16, weight: .semibold))
-                }
-                .foregroundStyle(theme.textPrimary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
-                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-                .overlay {
-                    Capsule().strokeBorder(
-                        theme.isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08),
-                        lineWidth: 1
-                    )
-                }
-            }
-            .buttonStyle(GlassPressButtonStyle())
+            .foregroundStyle(theme.textPrimary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+            // 【五維審計・設計項5】原手繪平色描邊疊在
+            // glassBackground 的批9 漸變描邊之上、整圈蓋
+            // 住漸變——刪除，描邊以令牌漸變為唯一真源。
         }
+        .buttonStyle(GlassPressButtonStyle())
     }
 }
 
@@ -1156,21 +1247,19 @@ struct TunerDataCard: View {
     var traceHeight: CGFloat = 44
     /// 頁面可見性（返修批7 F5）：不可見時待機波動畫暫停。
     var pageVisible: Bool = true
+    /// compact 級（專屬規範 §A.9）：內距 10→8（預算
+    /// cardPad 16 與此同步）。
+    var compact: Bool = false
 
     var body: some View {
         TunerDataCardContent(
             render: render, viewModel: viewModel, engine: engine,
             store: store, theme: theme,
             traceHeight: traceHeight, pageVisible: pageVisible)
-            .padding(10)
+            .padding(compact ? 8 : 10)
             .glassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(
-                        theme.isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
-                        lineWidth: 1
-                    )
-            }
+            // 【五維審計・設計項5】手繪平色描邊刪除（同麥
+            // 克風鈕理由）：批9 漸變描邊為唯一真源。
     }
 }
 
@@ -1178,28 +1267,49 @@ struct TunerDataCard: View {
 /// engine，四格讀數各為獨立 MetricBox，軌跡為 Canvas 本體。
 private struct TunerDataCardContent: View {
     @ObservedObject var render: TunerRenderState
-    let viewModel: TunerViewModel
+    // 【全邏輯複查・中】VM 改觀察持有：舊版以 let 持有，
+    // S-1 的 noSignal 翻轉只觸發 TunerView 本體重繪，
+    // 本結構（輸入未變的子視圖）可被 SwiftUI 跳過重
+    // 算——靜默場景下 render/engine/store 皆無新發布，
+    // 頻率格的「—」不保證出現。VM 為低頻對象（鎖定
+    // 目標/noSignal 等），觀察它不破壞返修批 4 隔離。
+    @ObservedObject var viewModel: TunerViewModel
     @ObservedObject var engine: AudioEngine
     @ObservedObject var store: AppStore
     let theme: TunerTheme
     var traceHeight: CGFloat = 44
     var pageVisible: Bool = true
 
+    /// 數據卡標籤組裝（排版項1）：英文介面＝前綴＋譯文，
+    /// 其餘語言＝純譯文（格寬不足以容納雙語）。
+    private func metricLabel(_ prefix: String, _ key: String) -> String {
+        store.language == .en ? prefix + " " + L10n.t(key) : L10n.t(key)
+    }
+
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
+                // 【五維審計・排版項1】標籤原為「英文前綴＋
+                // 譯文」雙語拼接：格寬 ≈74pt 下德語
+                // 「WRITTEN Notiert」≈84pt、俄語 ≈96pt 必
+                // 被截斷。改：英文介面保留雙語（其母本
+                // 觀感），其餘語言只顯示譯文＋縮放下限
+                // 0.75 兜底。
                 MetricBox(theme: theme, glassOpacity: store.glassOpacity,
-                          label: "WRITTEN " + L10n.t("记谱"), value: render.writtenText)
+                          label: metricLabel("WRITTEN", "记谱"), value: render.writtenText)
                 MetricBox(theme: theme, glassOpacity: store.glassOpacity,
-                          label: "CONCERT " + L10n.t("实音"), value: render.concertText)
+                          label: metricLabel("CONCERT", "实音"), value: render.concertText)
                 MetricBox(
                     theme: theme, glassOpacity: store.glassOpacity,
-                    label: "CENTS " + L10n.t("音分"),
+                    label: metricLabel("CENTS", "音分"),
                     value: render.centsDisplayText,
                     valueColor: render.isInTune ? theme.ok : theme.textPrimary
                 )
                 MetricBox(theme: theme, glassOpacity: store.glassOpacity,
-                          label: "FREQ " + L10n.t("频率"), value: render.frequencyText)
+                          label: metricLabel("FREQ", "频率"),
+                          // 【專屬規範 S-1】無訊號時頻率格
+                          // 顯示「—」，不留 0.0 Hz 假讀數。
+                          value: viewModel.noSignal ? "—" : render.frequencyText)
             }
 
             PitchTraceView(
@@ -1232,6 +1342,7 @@ private struct MetricBox: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(theme.textMuted)
                 .lineLimit(1)
+                .minimumScaleFactor(0.75)
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
                 .monospacedDigit()
@@ -1282,7 +1393,8 @@ struct PitchTraceView: View {
             // 舊寫法查裸詞再手拼後綴永遠落空（zh-TW 亦顯示簡體）。
             Text(L10n.t("音高轨迹 · PITCH TRACE"))
                 .font(.system(size: 8.5, weight: .bold))
-                .tracking(0.7)
+                // 【五維審計・排版項16】CJK 段不施字距。
+                .tracking(L10n.isCJK ? 0 : 0.7)
                 .foregroundStyle(theme.textMuted)
                 .padding(.top, 5)
                 .padding(.leading, 9)
@@ -1294,7 +1406,12 @@ struct PitchTraceView: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1.5)
                     .background(frozen ? theme.accent.opacity(0.78)
-                                       : Color.white.opacity(theme.isDark ? 0.06 : 0.05),
+                                       : (theme.isDark
+                                          ? Color.white.opacity(0.06)
+                                          // 【五維審計・設計項11】淺色
+                                          // 原為白 0.05（白底上近乎不
+                                          // 可見）：改黑 0.05。
+                                          : Color.black.opacity(0.05)),
                                 in: Capsule())
                     .padding(.top, 4)
                     .padding(.trailing, 8)

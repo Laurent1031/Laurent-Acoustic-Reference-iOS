@@ -30,6 +30,18 @@ struct ContentView: View {
     /// 頂欄喚出的 sheet（診斷／偏好／系統設定，階段 5 統一以
     /// item 呈現，避免多個 .sheet 修飾器互相衝突）。
     @State private var activeSheet: TopSheet?
+    /// 【邏輯補查・低】匯入確認 sheet 的呈現副本：store
+    /// 的 pendingImportPlan 為數據真源，呈現須與
+    /// activeSheet 串行（兩個 item-sheet 同帧非 nil 時
+    /// SwiftUI 只呈現其一、另一張可能被吞）。plan 到達
+    /// 而正有 sheet 開著時先候著，該 sheet 關閉後補呈現
+    /// （見下方兩條 onChange 的晉升邏輯）。
+    @State private var presentedImportPlan: BackupImporter.ImportPlan?
+    /// 呈現中 plan 的 id 副本：sheet(item:) 關閉時綁定
+    /// 先歸 nil，onDismiss 內須靠此副本分辨「被關的就
+    /// 是真源那份（滑動取消→清）」與「呈現期間有新
+    /// plan 到達（→晉升呈現）」。
+    @State private var presentedImportPlanID: UUID?
     @Environment(\.colorScheme) private var colorScheme
     /// 【返修批7・C5】場景階段：離開 active 時 flush 節拍器
     /// 防抖落盤（見下方 onChange）。
@@ -41,11 +53,10 @@ struct ContentView: View {
     @State private var showSplash = true
     @State private var splashRevealed = false
     @State private var brandMarkFrame: CGRect = .zero
-    /// 背景按壓亮斑（返修批3 補回母本 #pageGlow）：指尖
-    /// 位置（全局座標）與亮起狀態；手勢以 simultaneous
-    /// 掛根層，不攔截任何控件。
-    @State private var glowCenter: CGPoint?
-    @State private var glowOn = false
+    /// 背景按壓亮斑（返修批3 補回母本 #pageGlow；返修
+    /// 批9 多指化）：逐指一個亮斑，狀態由窗口級被動觸
+    /// 控追蹤維護（GlowTouchTracker），多指互不干擾。
+    @State private var glowSpots: [GlowSpot] = []
 
     init() {
         let store = AppStore()
@@ -81,6 +92,19 @@ struct ContentView: View {
 
     private var mode: AppMode { store.appMode }
 
+    /// 浮動膠囊底距（五維審計 F8）：compact 級（availH
+    /// <660）70、常規 76；availH 以主窗口實測（螢幕高 −
+    /// 安全區上下 − 頂欄 92）。
+    private var capsuleBottomPadding: CGFloat {
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }.first
+        let bounds = scene?.screen.bounds ?? .zero
+        let insets = scene?.windows.first { $0.isKeyWindow }?
+            .safeAreaInsets ?? .zero
+        let availH = bounds.height - insets.top - insets.bottom - 92
+        return availH < 660 ? 70 : 76
+    }
+
     var body: some View {
         let theme = store.resolvedTheme(system: colorScheme)
         VStack(spacing: 0) {
@@ -98,6 +122,9 @@ struct ContentView: View {
                     .allowsHitTesting(mode == .metronome)
                     .accessibilityHidden(mode != .metronome)
             }
+            // 【專屬系統・動效】模式切換交叉淡化（AppMotion
+            // 令牌）：舊版 opacity 硬切無過渡。
+            .animation(AppMotion.pageFade, value: mode)
         }
         // 【裝機返修】根層背景：頂欄區與狀態欄區一律鋪當前
         // 主題背景（延伸至全部安全區）。此前根 VStack 無背景，
@@ -112,17 +139,18 @@ struct ContentView: View {
         // screen 混合呈現「光」而非遮擋（母本在內容之下，
         // 原生頁面背景不透明、置下不可見，故改置上＋混合
         // 模式，視覺等價）；不參與命中測試。
+        // 【返修批9】觸控改窗口級被動追蹤（多指）：舊版根
+        // 層單一 DragGesture 只跟一根手指、第一指抬起即
+        // 整體熄光，多指必卡（Laurent 點名）；且全域拖動
+        // 手勢與頁內一切拖動競爭，一併撤除。
         .overlay {
-            PageGlowView(center: glowCenter, on: glowOn, theme: theme)
+            PageGlowView(spots: glowSpots, theme: theme)
         }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                .onChanged { value in
-                    glowCenter = value.location
-                    glowOn = true
-                }
-                .onEnded { _ in glowOn = false }
-        )
+        .background {
+            GlowTouchTracker { touches in
+                updateGlowSpots(touches)
+            }
+        }
         .overlay(alignment: .bottom) {
             if mode == .tuner && metronomeViewModel.capsuleVisible {
                 capsule(theme: theme)
@@ -131,11 +159,15 @@ struct ContentView: View {
                     // 該區點按被膠囊奪走；抬高至主鈕上方後
                     // 兩者命中區完全分離（膠囊僅在調音頁
                     // 出現，此分支即調音頁專屬）。
-                    .padding(.bottom, 76)
+                    // 【五維審計 F8】compact 級（availH<660，
+                    // SE/mini/X）底距改 70：76 下膠囊頂緣壓
+                    // 數據卡底緣 ≈2.5pt；70 時膠囊帶 70–104、
+                    // 距卡底 3.5、距麥克風鈕頂 16.5，兩側皆清。
+                    .padding(.bottom, capsuleBottomPadding)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.9),
+        .animation(AppMotion.capsule,
                    value: metronomeViewModel.capsuleVisible)
         // 開機動畫覆蓋層（返修批3）：最上層，退場後移除。
         .overlay {
@@ -209,10 +241,47 @@ struct ContentView: View {
         }
         // 備份匯入確認（階段 8）：兩個入口（設定頁選檔／分享入）
         // 共用此 sheet；確認才套用、取消零副作用。
-        .sheet(item: $store.pendingImportPlan) { plan in
+        // 【邏輯補查・低】呈現改走 presentedImportPlan 副本
+        // 與 activeSheet 串行（見其宣告註）：plan 在另一
+        // sheet 開著時到達不再同帧相撞被吞。
+        .sheet(item: $presentedImportPlan, onDismiss: {
+            // 關閉收尾（二次驗證・低改進）：真源仍是剛關
+            // 掉的那份（滑動關閉＝取消）才清；呈現期間有
+            // 新 plan 到達（連續分享入）時不清、直接晉升
+            // 呈現新份——舊版無條件清真源會把新 plan 一併
+            // 靜默丟棄。按鈕路徑已先清真源者，此處比對不
+            // 中、為冪等空操作。
+            if store.pendingImportPlan?.id == presentedImportPlanID {
+                store.pendingImportPlan = nil
+            }
+            presentedImportPlanID = nil
+            if let waiting = store.pendingImportPlan {
+                presentedImportPlan = waiting
+                presentedImportPlanID = waiting.id
+            }
+        }) { plan in
             BackupImportSheet(store: store, plan: plan)
                 .preferredColorScheme(store.effectiveForcedColorScheme)
                 .presentationBackground { theme.background }
+        }
+        // 【二次驗證・高】觀察值改 plan 的 id：ImportPlan
+        // 僅 Identifiable、未 conform Equatable，
+        // Optional<ImportPlan> 不滿足 onChange 的型別約
+        // 束（原寫法無法編譯）；UUID 觀察＋閉包內讀真源。
+        .onChange(of: store.pendingImportPlan?.id) { _, id in
+            if id != nil, activeSheet == nil,
+               presentedImportPlan == nil,
+               let plan = store.pendingImportPlan {
+                presentedImportPlan = plan
+                presentedImportPlanID = plan.id
+            }
+        }
+        .onChange(of: activeSheet) { _, sheet in
+            if sheet == nil, let plan = store.pendingImportPlan,
+               presentedImportPlan == nil {
+                presentedImportPlan = plan
+                presentedImportPlanID = plan.id
+            }
         }
         // 語言唯一真源在 store；變更單向同步進 L10n（所有
         // @ObservedObject store 的視圖隨 @Published 變更重繪，
@@ -224,6 +293,10 @@ struct ContentView: View {
         // 模式時啟動（啟動落在調音由 onAppear 處理；調音頁
         // 點按任意處由 TunerView 的手勢處理）。
         .onChange(of: store.appMode) { _, newMode in
+            // 【五維審計 F-1 雙保險】.dual 恆收斂（源頭已在
+            // BackupImporter 映射層處理，此處防其他路徑直
+            // 寫）：.dual 下兩頁皆透明、內容區全空白。
+            if newMode == .dual { store.appMode = .tuner }
             if newMode != .metronome { startMicIfAutoEnabled() }
             refreshMetronomePageVisibility()
         }
@@ -254,6 +327,9 @@ struct ContentView: View {
                 // （仍播但調度已死 → 恢復；恢復失敗走引擎
                 // 內 stop＋lastError，不留無聲假播放）。
                 metronomeEngine.reconcileAfterForeground()
+                // 【全邏輯複查／S-2】調音引擎同型對帳：
+                // 中斷 .ended 未達的 pause 凍結在此收斂。
+                engine.reconcileAfterForeground()
             }
         }
         // store → 引擎單向同步（store 為唯一真源）。
@@ -408,6 +484,32 @@ struct ContentView: View {
     /// 直讀 VM 脈衝值，120 Hz 脈衝令 App 外殼整殼重算。
     /// isPlaying／文字／主題為低頻值輸入、由外殼重算時
     /// 帶入；脈衝幀只重繪膠囊本身。
+    /// 多指亮斑狀態維護（返修批9）：按著的指逐幀更新位
+    /// 置；剛離開的指轉衰減態、0.35 s 後移除，其餘指完
+    /// 全不受影響。
+    private func updateGlowSpots(_ touches: [(id: Int, point: CGPoint)]) {
+        var next = glowSpots
+        for touch in touches {
+            if let i = next.firstIndex(where: { $0.id == touch.id }) {
+                next[i].point = touch.point
+                next[i].fading = false
+            } else {
+                next.append(GlowSpot(id: touch.id, point: touch.point,
+                                     fading: false))
+            }
+        }
+        let activeIds = Set(touches.map { $0.id })
+        for i in next.indices
+        where !next[i].fading && !activeIds.contains(next[i].id) {
+            next[i].fading = true
+            let id = next[i].id
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                glowSpots.removeAll { $0.id == id && $0.fading }
+            }
+        }
+        glowSpots = next
+    }
+
     private func capsule(theme: TunerTheme) -> some View {
         MetronomeCapsuleView(
             isPlaying: metronomeViewModel.isPlaying,
@@ -499,54 +601,177 @@ private struct MetronomeCapsuleView: View {
                                  : 1)
                 Text(text)
                     .font(.system(size: 13, weight: .semibold))
+                    // 【五維審計・排版項11】膠囊含 BPM 數字：
+                    // 補等寬數字，播放中數字跳動不改字寬。
+                    .monospacedDigit()
                     .foregroundStyle(theme.textPrimary)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .glassBackground(in: Capsule(), theme: theme, glassOpacity: glassOpacity)
-            .overlay {
-                Capsule().strokeBorder(
-                    theme.isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.08),
-                    lineWidth: 1)
-            }
+            // 【五維審計・設計項5】手繪平色描邊刪除（同
+            // 麥克風鈕理由）：批9 漸變描邊為唯一真源。
             .opacity(isPlaying ? 1 : 0.75)
         }
         .buttonStyle(GlassPressButtonStyle())
     }
 }
 
+/// 亮斑一指份（返修批9 多指化）：id 為 UITouch 物件身
+/// 份、同指存續期間穩定；fading 為離手衰減態。
+struct GlowSpot: Identifiable {
+    let id: Int
+    var point: CGPoint
+    var fading: Bool
+}
+
 /// 背景按壓亮斑（母本 #pageGlow，行 1960–1980／12352–12398）：
-/// 340×340 徑向光，指尖為心、1:1 跟隨（手勢在 ContentView
-/// 根層），亮起 0.12s、熄滅 0.3s。深色 screen 混合（中心
-/// rgba(130,175,255,0.15) → 白 0.05 @42% → 透明 @70%）；
-/// 淺色 normal（白 0.55 → 0.12 → 透明）。
+/// 每指一團 340×340 徑向光、1:1 跟隨。深色 screen 混合
+/// （中心 rgba(130,175,255,0.15) → 白 0.05 @42% → 透
+/// 明 @70%）；淺色 normal（白 0.55 → 0.12 → 透明）。
+/// 亮起 0.12 s、熄滅 0.3 s（單指視圖 onAppear 淡入、
+/// fading 淡出，位置永不動畫——跟隨必須 1:1）。
 struct PageGlowView: View {
-    let center: CGPoint?
-    let on: Bool
+    let spots: [GlowSpot]
     let theme: TunerTheme
 
     var body: some View {
         ZStack {
-            if let center {
-                Circle()
-                    .fill(RadialGradient(
-                        stops: theme.isDark
-                            ? [.init(color: Color(red: 130 / 255, green: 175 / 255, blue: 255 / 255).opacity(0.15), location: 0),
-                               .init(color: Color.white.opacity(0.05), location: 0.42),
-                               .init(color: .clear, location: 0.70)]
-                            : [.init(color: Color.white.opacity(0.55), location: 0),
-                               .init(color: Color.white.opacity(0.12), location: 0.42),
-                               .init(color: .clear, location: 0.70)],
-                        center: .center, startRadius: 0, endRadius: 170))
-                    .frame(width: 340, height: 340)
-                    .blendMode(theme.isDark ? .screen : .normal)
-                    .position(center)
-                    .opacity(on ? 1 : 0)
-                    .animation(.easeOut(duration: on ? 0.12 : 0.3), value: on)
+            ForEach(spots) { spot in
+                GlowSpotView(spot: spot, theme: theme)
             }
         }
         .allowsHitTesting(false)
         .ignoresSafeArea()
+    }
+}
+
+private struct GlowSpotView: View {
+    let spot: GlowSpot
+    let theme: TunerTheme
+    @State private var shown = false
+
+    var body: some View {
+        Circle()
+            .fill(RadialGradient(
+                stops: theme.isDark
+                    ? [.init(color: Color(red: 130 / 255, green: 175 / 255, blue: 255 / 255).opacity(0.15), location: 0),
+                       .init(color: Color.white.opacity(0.05), location: 0.42),
+                       .init(color: .clear, location: 0.70)]
+                    : [.init(color: Color.white.opacity(0.55), location: 0),
+                       .init(color: Color.white.opacity(0.12), location: 0.42),
+                       .init(color: .clear, location: 0.70)],
+                center: .center, startRadius: 0, endRadius: 170))
+            .frame(width: 340, height: 340)
+            .blendMode(theme.isDark ? .screen : .normal)
+            .position(spot.point)
+            .opacity(spot.fading ? 0 : (shown ? 1 : 0))
+            .animation(spot.fading ? AppMotion.glowOut : AppMotion.glowIn,
+                       value: spot.fading)
+            .animation(AppMotion.glowIn, value: shown)
+            .onAppear { shown = true }
+    }
+}
+
+/// 多指觸控追蹤（返修批9）：被動觀察全窗觸控——自訂手
+/// 勢識別器掛在窗口上、永不進入 recognized 狀態、不取
+/// 消不延遲任何既有手勢，逐指回報當前落點（窗口座標，
+/// 與根層全局座標一致）。
+private struct GlowTouchTracker: UIViewRepresentable {
+    var onUpdate: ([(id: Int, point: CGPoint)]) -> Void
+
+    func makeUIView(context: Context) -> GlowAnchorView {
+        let view = GlowAnchorView()
+        view.isUserInteractionEnabled = false
+        view.onMoveToWindow = { [weak coordinator = context.coordinator] window in
+            coordinator?.attach(window: window)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: GlowAnchorView, context: Context) {
+        context.coordinator.onUpdate = onUpdate
+        context.coordinator.attach(window: uiView.window)
+    }
+
+    static func dismantleUIView(_ uiView: GlowAnchorView,
+                                coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class Coordinator {
+        var onUpdate: ([(id: Int, point: CGPoint)]) -> Void = { _ in }
+        private var recognizer: GlowTouchRecognizer?
+        private weak var window: UIWindow?
+
+        func attach(window: UIWindow?) {
+            guard let window else { return }
+            if recognizer != nil {
+                if self.window === window { return }
+                detach()
+            }
+            let recognizer = GlowTouchRecognizer()
+            recognizer.cancelsTouchesInView = false
+            recognizer.delaysTouchesBegan = false
+            recognizer.delaysTouchesEnded = false
+            recognizer.onUpdate = { [weak self] touches in
+                self?.onUpdate(touches)
+            }
+            window.addGestureRecognizer(recognizer)
+            self.recognizer = recognizer
+            self.window = window
+        }
+
+        func detach() {
+            if let recognizer, let window {
+                window.removeGestureRecognizer(recognizer)
+            }
+            recognizer = nil
+            window = nil
+        }
+    }
+}
+
+private final class GlowAnchorView: UIView {
+    var onMoveToWindow: ((UIWindow?) -> Void)?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        onMoveToWindow?(window)
+    }
+}
+
+private final class GlowTouchRecognizer: UIGestureRecognizer {
+    var onUpdate: (([(id: Int, point: CGPoint)]) -> Void)?
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesBegan(touches, with: event)
+        report(event)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        report(event)
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesEnded(touches, with: event)
+        report(event)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesCancelled(touches, with: event)
+        report(event)
+    }
+
+    private func report(_ event: UIEvent) {
+        guard let view else { return }
+        let active = (event.allTouches ?? []).filter {
+            $0.phase == .began || $0.phase == .moved || $0.phase == .stationary
+        }
+        onUpdate?(active.map {
+            (id: ObjectIdentifier($0).hashValue, point: $0.location(in: view))
+        })
     }
 }
 
@@ -711,7 +936,11 @@ struct SplashView: View {
         Task { @MainActor in
             if reduceMotion {
                 try? await Task.sleep(nanoseconds: 450_000_000)
-                guard !finished else { return }
+                // 【邏輯補查・低】守衛補 !exitStarted 與
+                // 非 RM 分支齊平：RM 下點按 skip 已走淡出
+                // 退場時，本 Task 醒來不得再疊一條淡出。
+                guard !finished, !exitStarted else { return }
+                exitStarted = true
                 revealed = true
                 withAnimation(.easeInOut(duration: 0.34)) { faded = true }
                 try? await Task.sleep(nanoseconds: 380_000_000)
@@ -727,7 +956,11 @@ struct SplashView: View {
     private func startExit() {
         guard !exitStarted else { return }
         exitStarted = true
-        if targetFrame == .zero {
+        // 【邏輯補查・低】Reduce Motion 下一律走淡出路徑：
+        // 舊版 skip() 不判 RM、停留期點按直入飛行退場，
+        // 與 RM 意圖相違且與 run() 的 450ms 淡出路徑疊加
+        // 截斷。RM 與無落點同路（淡出），飛行僅留常規路徑。
+        if reduceMotion || targetFrame == .zero {
             revealed = true
             withAnimation(.easeInOut(duration: 0.34)) { faded = true }
             Task { @MainActor in

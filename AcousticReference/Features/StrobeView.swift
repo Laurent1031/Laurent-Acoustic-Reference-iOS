@@ -42,7 +42,11 @@ struct StrobeView: View {
     private static let rotationSign: Double = 1
 
     // 盤面幾何（設計坐標 320×190）：中心 (160, 100)、外環
-    // 半徑 84（頂 16、底 184，冠標佔 7–13，不重疊）。
+    // 中心半徑 84、厚 14（外緣 91、頂 y=9，底 184）。冠標
+    // 佔 y 7–13、繪於環之後——頂段與外環帶域重疊 ≈4pt
+    // 為有意的覆蓋式靜止參照（亮段轉至頂部時被冠標局
+    // 部遮蓋，即其標記功能；舊註「不重疊」與實現不符，
+    // 全邏輯複查更正）。
     private static let cx: Double = 160
     private static let cy: Double = 100
     private static let rings: [(radius: Double, thickness: Double, segments: Int)] = [

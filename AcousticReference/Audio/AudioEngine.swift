@@ -318,6 +318,11 @@ final class AudioEngine: ObservableObject {
     private var engine: AVAudioEngine?
     /// 最近一次 startEngine 的 uptime（配置變更自愈的去抖基準）。
     private var lastEngineStartUptime: TimeInterval = 0
+    /// start() 重入守衛（見 start 註解）。
+    private var startInFlight = false
+    /// 中斷凍結旗標（.began 已 pause、.ended 未達）：前台
+    /// 對帳 reconcileAfterForeground 據此判定殭屍凍結。
+    private var interruptionPaused = false
     /// 是否已向 AudioSessionCoordinator 登記（與節拍器共用 session
     /// 時，setActive(false) 由協調器裁決，避免誤殺對方播放）。
     private var sessionAcquired = false
@@ -332,7 +337,15 @@ final class AudioEngine: ObservableObject {
     // MARK: - 啟停
 
     func start() async {
-        guard !isRunning else { return }
+        // 【全邏輯複查・高】重入守衛：權限請求 await 懸掛期
+        // 間 isRunning 尚未置位，第二個 start()（自動開麥與
+        // 手動點按/媒體服務重置重疊）可穿過舊守衛、兩台引
+        // 擎各裝一個 tap 餵同一核心，第一台永不停止（殭屍
+        // 採樣＋隱私指示燈失真）。startInFlight 在 await 前
+        // 同步置位、defer 落下，MainActor 串行下原子。
+        guard !isRunning, !startInFlight else { return }
+        startInFlight = true
+        defer { startInFlight = false }
         let granted = await AVAudioApplication.requestRecordPermission()
         guard granted else {
             permissionDenied = true
@@ -374,6 +387,25 @@ final class AudioEngine: ObservableObject {
             break
         @unknown default:
             break
+        }
+    }
+
+    /// 【全邏輯複查・中／專屬規範 S-2 調音側】前台對帳：
+    /// 中斷 .began 後 .ended 未送達（中斷在背景結束等已知
+    /// iOS 情形）時引擎停在 pause、isRunning 恆 true、無
+    /// 讀數不報錯的殭屍凍結——節拍器側批 8 已有等價對
+    /// 帳，調音側補齊。回前台時若仍凍結：重新啟動引擎
+    /// 恢復採樣；失敗走 stop() 統一收尾並留 lastError。
+    /// 未凍結時恆為 no-op。
+    func reconcileAfterForeground() {
+        guard isRunning, interruptionPaused else { return }
+        interruptionPaused = false
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+            try engine?.start()
+        } catch {
+            lastError = "中断后恢复失败：\(error.localizedDescription)"
+            stop()
         }
     }
 
@@ -547,8 +579,10 @@ final class AudioEngine: ObservableObject {
                 guard let self, self.isRunning else { return }
                 switch type {
                 case .began:
+                    self.interruptionPaused = true
                     self.engine?.pause()
                 case .ended:
+                    self.interruptionPaused = false
                     // 中斷自愈（階段 6，藍圖 Pass 標準）：調音
                     // 是用戶主動開啟的監測而非媒體播放，中斷
                     // 結束即嘗試恢復，不以 shouldResume 為門
@@ -592,8 +626,13 @@ final class AudioEngine: ObservableObject {
                 do {
                     try self.startEngine()
                 } catch {
+                    // 【全邏輯複查・中】舊版手寫收尾漏拆 tap
+                    // 與協調器註銷（sessionAcquired 殘留、
+                    // 型態永遠 .record）——與 D7 同型漏改。
+                    // 改走 stop() 統一收尾（引擎已 nil 時其
+                    // 拆卸步為 no-op、會計照常結清）。
                     self.lastError = "音频路由变更后重建失败：\(error.localizedDescription)"
-                    self.isRunning = false
+                    self.stop()
                 }
             }
         })

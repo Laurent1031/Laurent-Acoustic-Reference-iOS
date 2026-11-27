@@ -189,6 +189,16 @@ final class TunerViewModel: ObservableObject {
     /// （音分判準）與 Drone 目標音（母本目標晶片處理，行 8562）。
     @Published private(set) var lockedTargetNote: String?
 
+    /// 無訊號自報（專屬規範 S-1）：開麥後 1.5 s 內無任一
+    /// 幀 rms 達噪聲門 → true（輸入增益殘值/通道異常的典
+    /// 型症狀，批8「調音無讀數」遺留）；見過訊號即清、
+    /// 本會話不再觸發。置於 VM（低頻對象）而非 render，
+    /// 提示槽與數據卡經 TunerView 重繪讀取，不破壞返修
+    /// 批4 的高頻隔離。
+    @Published var noSignal = false
+    private var micStartedAt: TimeInterval?
+    private var sawSignal = false
+
     var lockedTargetMidi: Int? {
         lockedTargetNote.map { PitchMath.midi(noteString: $0) }
     }
@@ -335,8 +345,13 @@ final class TunerViewModel: ObservableObject {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     if running {
+                        self.micStartedAt = ProcessInfo.processInfo.systemUptime
+                        self.sawSignal = false
+                        self.noSignal = false
                         self.ensureDisplayLink()
                     } else {
+                        self.micStartedAt = nil
+                        self.noSignal = false
                         self.resetReadout()
                         self.pauseDisplayLink()
                     }
@@ -353,6 +368,25 @@ final class TunerViewModel: ObservableObject {
     private func ingest(_ reading: PitchReading) {
         lastReading = reading
         let now = ProcessInfo.processInfo.systemUptime
+        // 【專屬規範 S-1】無訊號自報（置於靜默早退之前：
+        // 靜默幀正是要判定的對象）：開麥後持續無幀達噪
+        // 聲門逾 1.5 s → noSignal；任一幀達門即 sawSignal
+        // （本會話不再觸發，安靜環境不誤報）。
+        // 【全邏輯複查・低】錨點補強：isRunning sink 經
+        // receive(on: main) 送達有幀級延遲，sink 前到達
+        // 的幀原被跳過（不計 sawSignal）；改以首幀到達
+        // 時刻補錨，判定窗貼近引擎實際啟動。
+        if engine.isRunning, micStartedAt == nil {
+            micStartedAt = now
+        }
+        if let started = micStartedAt, !sawSignal {
+            if reading.rms >= engine.settings.noiseGate.rmsThreshold {
+                sawSignal = true
+                if noSignal { noSignal = false }
+            } else if now - started > 1.5, !noSignal {
+                noSignal = true
+            }
+        }
         // 【返修批4・靜默幀早退】麥克風開著、無音高、無定格
         // 針、頻閃可信度已落底、針已回正、無削波警示時，本幀
         // 與上一幀都沒有任何可顯示的變化：跳過全部寫入（否則
@@ -397,6 +431,15 @@ final class TunerViewModel: ObservableObject {
         if reading.hasPitch, let targetMidi = reading.targetMidi {
             hadValidPitch = true
             lastStableCents = reading.cents
+            // 【全邏輯複查・低】新音高到達即清定格針：舊
+            // 版 ghost 只能靠 ghostUntil（1.5 s）自然到
+            // 期，新音的活針與前音定格針最長共存 1.5 s。
+            // 定格針的職責是停頓期標記前音位置，新音既
+            // 至即由活針接管，清之無資訊損失。
+            if render.ghostCents != nil {
+                render.ghostCents = nil
+                render.ghostOpacity = 0
+            }
 
             updateNoteDisplay(targetMidi: targetMidi)
 

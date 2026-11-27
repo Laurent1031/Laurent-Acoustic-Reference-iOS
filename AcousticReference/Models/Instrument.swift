@@ -93,6 +93,12 @@ enum InstrumentCatalog {
         return decoded
     }
 
+    /// 目錄是否處於保險絲降級態（資源載入失敗、僅剩兜底
+    /// 樂器）。AppStore.init 據此跳過收藏健全化，避免一
+    /// 次性資源故障把用戶收藏永久修剪寫回（全邏輯複查
+    /// ・低的破壞鏈防線）。
+    static var isDegraded: Bool { data == nil }
+
     /// 母本 allInstruments() 的內建部分，順序與母本 INSTRUMENTS 一致。
     static var builtins: [Instrument] {
         data?.instruments ?? [fallbackAltoSax]

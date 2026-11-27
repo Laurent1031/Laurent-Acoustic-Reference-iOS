@@ -121,6 +121,11 @@ final class MetronomeCore: @unchecked Sendable {
     func resetBeatIndex() {
         lock.lock()
         beatIndex = 0
+        // 【全邏輯複查・低】subIndex 同步歸零：舊版只清主
+        // 拍位，播放中改拍號/分組時殘留 subIndex > 0 令新
+        // 小節首拍被細分 tick 頂替（強拍丟失一次、一拍自
+        // 癒）。startScheduling 本有歸零，此處補齊同義。
+        subIndex = 0
         lock.unlock()
     }
 
@@ -141,8 +146,13 @@ final class MetronomeCore: @unchecked Sendable {
 
     func startRamp(from: Int, to: Int, step: Int, barsPerStep: Int) {
         lock.lock()
-        ramp = RampState(active: true, from: from, to: to, step: step,
-                         barsPerStep: barsPerStep, barsDone: 0)
+        // 【全邏輯複查・低】核心邊界鉗制：barsPerStep 進
+        // barCompleted 的取模分母、step 為步進量，任一為
+        // 0 即除零崩潰/漸速永不結束；舊版僅靠 UI 層保證
+        // ≥1，核心自身補防禦（UI 值域不變、行為不變）。
+        ramp = RampState(active: true, from: from, to: to,
+                         step: max(1, step),
+                         barsPerStep: max(1, barsPerStep), barsDone: 0)
         settings.bpm = settings.clampedBpm(from)
         let bpm = settings.bpm
         let snapshot = ramp
@@ -284,16 +294,22 @@ final class MetronomeCore: @unchecked Sendable {
         let isSub = subIndex > 0
         let rawPillar = dotted ? beatIndex * 3 : beatIndex
         let pillarIdx = min(rawPillar, max(0, s.beatAccents.count - 1))
+        // 【全邏輯複查・低】重音表空陣列防禦：現行由設定
+        // 解碼不變量（count == beatsPerBar ≥ 1）保證不發
+        // 生，但調度熱路徑不自設防、日後設定模型改版即
+        // 成越界崩潰點；缺值以等級 1 兜底。
+        let accentLevel = s.beatAccents.indices.contains(pillarIdx)
+            ? s.beatAccents[pillarIdx] : 1
         // 母本 lvl：預備拍覆蓋（首拍 3、其餘 2），否則讀拍柱重音。
         let lvl = isSub ? 0
-            : (countInActive ? (beatIndex == 0 ? 3 : 2) : s.beatAccents[pillarIdx])
+            : (countInActive ? (beatIndex == 0 ? 3 : 2) : accentLevel)
 
         // —— 點音（母本 triggerMetroSound；accentLevel==0 不發聲；
         // Gap 靜音小節整節不發聲，含細分拍）——
         // 預備拍期間母本把覆蓋等級（首拍 3、其餘 2）一併傳給細分拍，
         // 不讀拍柱重音；正式小節細分拍才讀 beatAccents。
         let keyLevel = isSub
-            ? (countInActive ? (beatIndex == 0 ? 3 : 2) : s.beatAccents[pillarIdx])
+            ? (countInActive ? (beatIndex == 0 ? 3 : 2) : accentLevel)
             : lvl
         if keyLevel > 0, !currentBarSilent,
            let buffer = buffers[ClickKey(timbre: s.timbre, level: keyLevel, isSub: isSub)] {
@@ -522,6 +538,18 @@ final class MetronomeEngine: ObservableObject {
     }
 
     func audition(timbre: MetronomeTimbre, level: Int) {
+        // 【全邏輯複查・中】先拆上一次試聽：舊版直接覆寫
+        // auditionEngine，舊引擎的完成回調因 ID 不符直接
+        // 返回、不停自己也不結清自己的 session 所有權——
+        // 快速連切音色時舊引擎閒置殘留、其 setActive(true)
+        // 永不回收。先停舊台後，其完成回調照常觸發並被
+        // ID 守衛吞掉；session 由本次試聽的 ownsSession
+        // 重新裁決（條件同源、結論恆同），不閃斷。
+        if let old = auditionEngine {
+            old.stop()
+            auditionEngine = nil
+            auditionPlayer = nil
+        }
         let key = ClickKey(timbre: timbre, level: max(1, level), isSub: false)
         let session = AVAudioSession.sharedInstance()
         let coordinatorBusy = AudioSessionCoordinator.shared.isActive(.tuner)
@@ -537,7 +565,10 @@ final class MetronomeEngine: ObservableObject {
         engine.connect(playerNode, to: engine.mainMixerNode, format: nil)
         engine.prepare()
         let rate = playerNode.outputFormat(forBus: 0).sampleRate
-        guard let buffer = buffers(for: rate)[key] else {
+        // 【全邏輯複查・低】速率守衛與 start()/重建路徑同
+        // 式：rate 0 時舊版以鍵 0 快取空緩衝字典、靜默無
+        // 聲；改走同一失敗出口（結清 session 所有權）。
+        guard rate > 0, let buffer = buffers(for: rate)[key] else {
             if ownsSession { try? session.setActive(false) }
             return
         }

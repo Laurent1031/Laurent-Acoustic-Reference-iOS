@@ -34,14 +34,15 @@ struct MetronomeView: View {
             // 「推桿中途數字卡在中間」正是捲動取消 onEnded、
             // 里程表凍結在小數位置；VM 另有看門狗雙保險。
             let contentWidth = geo.size.width - 32
-            // 【返修批7・E2/E4】短屏緊湊級：頁面可用高
-            // < 640（SE 級）時各列定高收縮、間距收窄，把
-            // 高度還給舞台；緊湊級下同開 BPM 編輯列時再
-            // 隱藏圓點列與預置列，編輯列不被鍵盤整列遮住
-            // （E4）。16 Pro 級（≈695）不進緊湊級，其編輯
-            // ＋分組同開的 17pt 溢出由下方錶盤隨高收縮
-            // 吸收（E2 修法），各列不再相撞。
-            let compact = geo.size.height < 640
+            // 【返修批7・E2/E4】短屏緊湊級：各列定高收縮、
+            // 間距收窄，把高度還給舞台；緊湊級下同開 BPM
+            // 編輯列時再隱藏圓點列與預置列（E4）。
+            // 【五維審計 F2／專屬規範 §0.2】門檻 640→660 與
+            // 調音頁統一：舊制下 availH 642（X 級）不進緊湊
+            // 級、編輯＋分組同開時舞台僅 57 而推子最小全高
+            // 76，上下限籤溢出舞台壓鄰列；統一門檻後 X 級
+            // 走緊湊軌、舞台 237，夾縫消失。
+            let compact = geo.size.height < 660
 
             ZStack {
                 theme.background.ignoresSafeArea()
@@ -49,6 +50,14 @@ struct MetronomeView: View {
                 VStack(spacing: compact ? 5 : 9) {
                     hintRow(theme: theme, compact: compact)
                     controlRow(theme: theme, compact: compact)
+                    // 【五維審計 F7／專屬規範 §B.7】compact 級
+                    // 編輯列移至控制列之下：原位（舞台之下）
+                    // 在 SE 上底緣落入數字鍵盤區 ≈14pt；移位
+                    // 後底緣螢幕 y ≈210、距鍵盤頂 >240pt，
+                    // 結構性免疫。常規級維持舞台下原位。
+                    if compact && showEditor {
+                        editorRow(theme: theme)
+                    }
                     if !(compact && showEditor) {
                         dotsRow(theme: theme, width: contentWidth,
                                 compact: compact)
@@ -56,10 +65,16 @@ struct MetronomeView: View {
                     GeometryReader { stageGeo in
                         // 【返修批7・E2】錶盤下限改隨舞台可用
                         // 高：舊下限 120 在 SE 舞台僅 74pt 時
-                        // 上下各溢出 ≈23pt 壓圓點／步進列；改
-                        // 下限 56、尺寸由舞台高直接決定，擠壓
-                        // 由錶盤吸收。
-                        let dialSize = min(208, max(56, min(stageGeo.size.height,
+                        // 上下各溢出 ≈23pt 壓圓點／步進列。
+                        // 【五維審計 F2／專屬規範 §B.4】下限
+                        // 56→72，與推子最小全高（railH 下限
+                        // 36＋上下籤 36）對齊——舊制兩下限間
+                        // 的 56–76 夾區令推子繪出舞台框。
+                        // 【專屬規範 §B.4/G3】寬裕級（availH
+                        // ≥740）錶盤帽 208→248：大屏舞台原空
+                        // 置 28% 環帶，帽隨級放寬。
+                        let dialCap: CGFloat = geo.size.height >= 740 ? 248 : 208
+                        let dialSize = min(dialCap, max(72, min(stageGeo.size.height,
                                                             contentWidth * 0.56)))
                         stageRow(theme: theme, dialSize: dialSize,
                                  railHeight: dialSize)
@@ -68,7 +83,7 @@ struct MetronomeView: View {
                     }
                     .frame(maxHeight: .infinity)
                     steppersRow(theme: theme)
-                    if showEditor { editorRow(theme: theme) }
+                    if showEditor && !compact { editorRow(theme: theme) }
                     if !(compact && showEditor) {
                         tempoPresetRow(theme: theme)
                     }
@@ -355,7 +370,8 @@ struct MetronomeView: View {
             // 邊緣返回手勢熱區（約 20pt）；視覺上推子僅左移
             // 8pt，刻度數字列隨之內移，其餘版面不動。
             BpmFaderView(viewModel: viewModel, dial: viewModel.dial,
-                         theme: theme, height: railHeight)
+                         theme: theme, height: railHeight,
+                         glassOpacity: store.glassOpacity)
                 .padding(.trailing, 8)
         }
     }
@@ -524,6 +540,9 @@ struct MetronomeView: View {
         @ObservedObject var dial: DialRenderState
         let theme: TunerTheme
         let height: CGFloat
+        /// 玻璃不透明度（五維審計・設計項7）：軌道玻璃改走
+        /// theme.glass() 令牌公式，與全 App 同步受設定驅動。
+        let glassOpacity: Int
         @State private var faderRubber: Double = 0
 
         var body: some View {
@@ -531,9 +550,11 @@ struct MetronomeView: View {
         // 全圓膠囊軌（寬 57）、上下限籤在軌的上下同軸、亮
         // 填充自底升起＋深度內影、字形隨填充覆蓋變色。
         // 【返修批7・E2】軌高下限 76→40：短屏小錶盤時
-        // 推子全高（railH＋上下籤 36）不再反超舞台高；
-        // height ≥112 時與舊式逐值相同、零回退。
-        let railH = max(40, height - 36)
+        // 推子全高（railH＋上下籤 36）不再反超舞台高。
+        // 【五維審計 F2】下限再 40→36：推子最小全高 72
+        // 與錶盤下限 72 對齊（專屬規範 §B.4/B.5）；全高
+        // ＝max(72, height)，height ≥76 時與舊式逐值相同。
+        let railH = max(36, height - 36)
         let fillH = max(14, railH * CGFloat(dial.faderRatio))
         let glyphCovered = fillH > 23
         let adjusting = faderStartBpm != nil
@@ -549,18 +570,21 @@ struct MetronomeView: View {
                 .frame(height: 14)
 
             ZStack(alignment: .bottom) {
-                // 【液態玻璃全量替換】軌道改系統真玻璃單層
-                // （原 Material＋漸層 tint 的仿製疊層撤除）：
-                // 母本軌 tint 近白——深色以白 0.14 染、淺色
-                // 以中灰 0.16 染，折射與邊緣高光由本體給出。
+                // 【液態玻璃全量替換】軌道改系統真玻璃：
+                // 【五維審計・設計項7】tint 改走 theme.glass()
+                // 令牌公式（原自帶白 0.14／灰 0.16 常數、不
+                // 吃「玻璃不透明度」設定，是全 App 唯一脫離
+                // 令牌的玻璃面）；折射與邊緣高光由本體給出。
                 Capsule()
                     .fill(.clear)
-                    .glassEffect(
-                        .regular.tint(dark
-                            ? Color.white.opacity(0.14)
-                            : Color(red: 120 / 255, green: 120 / 255,
-                                    blue: 128 / 255).opacity(0.16)),
-                        in: Capsule())
+                    .glassEffect(theme.glass(glassOpacity),
+                                 in: Capsule())
+                    // 【返修批9】與組件系統同款漸變高光描邊
+                    // （規範一），推子軌的鏡面邊。
+                    .overlay {
+                        Capsule().strokeBorder(theme.glassStrokeGradient,
+                                               lineWidth: 1)
+                    }
 
                 // 亮填充（母本 .bpm-fader-fill）：頂邊平直、
                 // 底部隨膠囊裁切；漸層白為主、底緣淡藍灰，
@@ -600,14 +624,10 @@ struct MetronomeView: View {
             }
             .frame(width: 57, height: railH)
             .clipShape(Capsule())
-            .overlay {
-                // 母本軌邊 1px（深 白 0.26／淺 黑 0.06）：
-                // 控制中心膠囊在亮背景上的輪廓線，保留。
-                Capsule()
-                    .strokeBorder(dark ? Color.white.opacity(0.26)
-                                       : Color.black.opacity(0.06),
-                                  lineWidth: 1)
-            }
+            // 【五維審計・設計項5】外層手繪平色描邊（白
+            // 0.26／黑 0.06）刪除：與軌內批9 漸變描邊構成
+            // 雙重描邊、平色圈蓋住漸變；描邊以漸變為唯一
+            // 真源（軌的 .clipShape 後漸變描邊在軌緣內側）。
             .shadow(color: .black.opacity(adjusting ? 0.42 : (dark ? 0.28 : 0.10)),
                     radius: adjusting ? 22 : 15, x: 0, y: adjusting ? 20 : 12)
             .brightness(adjusting ? 0.05 : 0)
@@ -906,7 +926,10 @@ struct MetronomeView: View {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(theme.textMuted)
-                    .frame(width: 24, height: 24)
+                    // 【五維審計 F9／專屬規範 §E.3】命中
+                    // 24→32：字形不變、框擴大可點。
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(GlassPressButtonStyle())
             .accessibilityLabel(L10n.t("重置重音"))
@@ -1046,6 +1069,10 @@ private final class HoldRepeater: ObservableObject {
         task = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(nanoseconds: 340_000_000)
+                // 【全邏輯複查・低】同 Features/HoldRepeater
+                // 的 340 ms 邊界競態修復：睡醒先驗取消，防
+                // pressEnded 先行補發後續行再發（雙發一步）。
+                guard !Task.isCancelled else { return }
                 self?.fired = true
                 action()
                 // 【返修批2・按鍵審計】連調上限 500 發
@@ -1053,6 +1080,7 @@ private final class HoldRepeater: ObservableObject {
                 // 未送達，連調不致無限持續。
                 for _ in 0..<500 {
                     try await Task.sleep(nanoseconds: 62_000_000)
+                    guard !Task.isCancelled else { return }
                     action()
                 }
             } catch {
@@ -1247,7 +1275,7 @@ private struct GroupingSheet: View {
                                     .map(String.init).joined(separator: " + "))
                     if !viewModel.accentsMatchGrouping {
                         Text(L10n.t("目前重音含手动调整（点按拍柱改过），与分组推导不完全一致；套用任一分组将重写重音。"))
-                            .font(.footnote)
+                            .font(.system(size: 12.5))
                             .foregroundStyle(.secondary)
                     }
                     Button(L10n.t("清除分组 · 回默认重音")) {

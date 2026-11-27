@@ -161,8 +161,16 @@ final class AudioSessionCoordinator: @unchecked Sendable {
 /// 合成峰值餘量（程式碼內的振幅表），待階段 7 以 SPL 實測
 /// 校準（量測 .measurement 與 .default 兩態的外放電平差，
 /// 若實測差異與此不符以實測為準回調本表）：
-/// - Drone：DroneSynthSpec.targetAmplitude ≤ 0.32，疊合唱與
-///   Haas wet 後峰值 ≲ 0.5 → +6 dB（×2.0）後 ≲ 1.0。
+/// - Drone：【全邏輯複查・中更正】舊註寫 targetAmplitude
+///   ≤ 0.32、峰值 ≲ 0.5，與定版振幅表不符（實際 0.33–
+///   0.48，fork 0.48／sine 0.45 最高；波形經峰值歸一後
+///   乘 targetAmplitude，再疊 chorus wet 與 Haas）。按
+///   實值推導：fork／sine 於 .record 組成態疊 +6 dB 的
+///   理論峰值可越過 1.0，舊註宣稱的餘量不存在。本值
+///   （6.0 dB）為返修批 2 裝機裁決（當時病灶是音量過
+///   小、Laurent 實機接受），不在無量測下回調；最終以
+///   G9 SPL 實測校準為準（量測兩態電平差與失真），
+///   在此之前本推導不得再被引用為「有餘量」的依據。
 /// - 節拍器：ClickSynth.amp 強拍 0.78 × 包絡峰值係數 1.1
 ///   ≈ 0.86 理論峰值 → +3 dB（×1.41）；帶通路徑的實際樣本
 ///   峰值低於包絡峰值，此值留削波觀察項（階段 7 驗）。

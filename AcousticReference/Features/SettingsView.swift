@@ -379,17 +379,35 @@ struct SystemSettingsView: View {
     /// plan 組裝成功後掛 store.pendingImportPlan，由根視圖的
     /// 確認 sheet 接手（本 sheet 關閉後仍能呈現）。
     @State private var showBackupImporter = false
-    @State private var backupImportError = false
+    /// 【五維審計 F-2／專屬規範 S-5】備份錯誤單一通道：
+    /// 同層兩個 .alert(isPresented:) 互相遮蔽（後掛者可
+    /// 令先掛者永不呈現）——匯入/導出錯誤合併為單一
+    /// item 式 alert，以 messageKey 區分文案。
+    @State private var backupAlertKey: String?
     /// 自訂背景（裝機返修批）：選圖與自選色的本地狀態。
     @State private var backgroundPhotoItem: PhotosPickerItem?
     /// 選圖讀取／解碼失敗的提示（審計修復）：此前靜默無反應，
     /// 用戶無從分辨未選中還是失敗。
     @State private var backgroundPhotoError = false
     @State private var customColor: Color = Color(hex: 0x0A84FF)
-    /// 備份導出：暫存檔 URL 與分享表呈現狀態（點按即生成最新
-    /// 快照並呈現，見 backupGroup 註解）。
-    @State private var backupExportURL: URL?
-    @State private var showExportShare = false
+    /// 備份導出（返修批9 重構）：item 式呈現＋失敗彈錯。
+    /// 舊版 isPresented＋可選 URL 雙狀態在按鈕 action 內
+    /// 同幀寫入、sheet 掛在按鈕本體，實機點按無反應
+    /// （Laurent 點名「导出备份没有效果」）；改根層
+    /// .sheet(item:) 單一狀態驅動，生成失敗不再靜默。
+    @State private var exportShareItem: ExportShareItem?
+
+    /// 滑桿 draft（返修批9・拖動卡頓）：拖動期間只寫本地
+    /// draft（僅設定頁本地重繪），向全域狀態節流提交
+    /// （50 ms）＋放手終提交。舊版逐幀直寫 AppStore／
+    /// 節拍器 VM 的 @Published——全 App 玻璃面隨拖動逐
+    /// 幀重採樣重繪，實機拖動卡頓（Laurent 點名）。
+    @State private var glassDraft: Double = 50
+    @State private var glassEditing = false
+    @State private var glassLastCommit: TimeInterval = 0
+    @State private var bluetoothDraft: Double = 0
+    @State private var bluetoothEditing = false
+    @State private var bluetoothLastCommit: TimeInterval = 0
 
     var body: some View {
         let theme = store.resolvedTheme(system: colorScheme)
@@ -433,15 +451,45 @@ struct SystemSettingsView: View {
                         store.pendingImportPlan = plan
                     }
                 case .failure:
-                    backupImportError = true
+                    backupAlertKey = "备份文件无法识别，请确认选择的是网页版导出的备份"
                 }
-            case .failure:
-                backupImportError = true
+            case .failure(let error):
+                // 【邏輯補查・中】取消選檔亦走 .failure
+                // （CancellationError）：舊版一律映射為損壞
+                // 錯誤，「取消也報錯」。取消直接返回、零提示。
+                if error is CancellationError { return }
+                backupAlertKey = "备份文件无法识别，请确认选择的是网页版导出的备份"
             }
         }
-        .alert(L10n.t("备份文件无法识别，请确认选择的是网页版导出的备份"),
-               isPresented: $backupImportError) {
+        // 【返修批9】導出分享表改根層 item 式呈現（見
+        // exportShareItem 註解）；生成失敗彈錯，不靜默。
+        .sheet(item: $exportShareItem) { item in
+            ShareSheet(items: [item.url])
+        }
+        .alert(L10n.t(backupAlertKey ?? ""),
+               isPresented: Binding(
+                   get: { backupAlertKey != nil },
+                   set: { if !$0 { backupAlertKey = nil } })) {
             Button(L10n.t("关闭"), role: .cancel) {}
+        }
+        // 【邏輯補查・低】選圖失敗提示由 PhotosPicker 掛載
+        // 改掛本頁根層：舊掛點只存在於自訂外觀段內，讀圖
+        // 在途時切離自訂 → 旗標無處呈現、切回時陳舊補彈。
+        // 根層掛載令其與當下介面狀態無關、即時呈現。
+        .alert(L10n.t("图片读取失败，请重新选择"),
+               isPresented: $backgroundPhotoError) {
+            Button(L10n.t("关闭"), role: .cancel) {}
+        }
+        .onAppear {
+            glassDraft = Double(store.glassOpacity)
+            bluetoothDraft = Double(
+                metronomeViewModel.settings.bluetoothCompMs)
+        }
+        .onChange(of: store.glassOpacity) { _, v in
+            if !glassEditing { glassDraft = Double(v) }
+        }
+        .onChange(of: metronomeViewModel.settings.bluetoothCompMs) { _, v in
+            if !bluetoothEditing { bluetoothDraft = Double(v) }
         }
     }
 
@@ -463,14 +511,16 @@ struct SystemSettingsView: View {
             .padding(.vertical, 12)
             .buttonStyle(GlassPressButtonStyle())
             Divider()
-            // 導出改單擊（審計修復）：此前兩段式——首次點按只
-            // 生成暫存檔並把按鈕換成 ShareLink、須再點一次；
-            // 且生成後再改任何設定，導出的仍是舊快照。改點按
-            // 當下生成最新快照並直接呈現系統分享表。
+            // 導出單擊呈現（返修批9 再修）：批6 改單擊後實機
+            // 仍無反應——sheet 掛按鈕本體＋isPresented/可選
+            // URL 雙狀態同幀寫入的呈現競態。改根層 item 式
+            // 呈現（見 exportShareItem），點按當下生成最新
+            // 快照；生成失敗彈錯，不再石沉大海。
             Button {
                 if let url = BackupExporter.writeTempFile(store: store) {
-                    backupExportURL = url
-                    showExportShare = true
+                    exportShareItem = ExportShareItem(url: url)
+                } else {
+                    backupAlertKey = "导出失败，请重试"
                 }
             } label: {
                 Text(L10n.t("导出备份"))
@@ -480,11 +530,6 @@ struct SystemSettingsView: View {
             // 【返修批7・E13】命中高 ≈18→≈42（透明 padding）。
             .padding(.vertical, 12)
             .buttonStyle(GlassPressButtonStyle())
-            .sheet(isPresented: $showExportShare) {
-                if let backupExportURL {
-                    ShareSheet(items: [backupExportURL])
-                }
-            }
         }
     }
 
@@ -527,13 +572,26 @@ struct SystemSettingsView: View {
                     .font(.system(size: 12.5))
                     .foregroundStyle(theme.textMuted)
                 Spacer()
-                Text("\(store.glassOpacity)%")
+                Text("\(Int(glassDraft.rounded()))%")
                     .font(.system(size: 12.5, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(theme.textPrimary)
             }
-            Slider(value: glassBinding, in: 8...96, step: 1)
-                .tint(theme.accent)
+            // 【返修批9】換液態玻璃滑塊＋draft 節流提交：
+            // 數值與拇指逐幀跟指（本地 draft），全域玻璃
+            // 以 20 Hz 節流跟隨、放手終提交——拖動不再卡
+            // 頓（根因見 glassDraft 註解）。滑塊自身軌道
+            // 以 draft 值預覽，濃淡即時可見。
+            GlassSlider(value: $glassDraft, range: 8...96, step: 1,
+                        theme: theme,
+                        glassOpacity: Int(glassDraft.rounded()),
+                        accessibilityText: "\(Int(glassDraft.rounded()))%") { editing in
+                glassEditing = editing
+                if !editing { commitGlassDraft(final: true) }
+            }
+            .onChange(of: glassDraft) { _, _ in
+                if glassEditing { commitGlassDraft(final: false) }
+            }
             HStack {
                 Text(L10n.t("透明"))
                 Spacer()
@@ -625,16 +683,19 @@ struct SystemSettingsView: View {
                     if let data = try? await item.loadTransferable(
                         type: Data.self),
                        let processed = Self.processBackgroundImage(data) {
-                        store.setCustomBackgroundImage(processed)
+                        // 【邏輯補查・低】讀取在途競態：用戶
+                        // 已切離自訂外觀時只存圖、不搶改主題
+                        // （仍在自訂則走原路徑含切換語義）。
+                        if store.themePreference == .custom {
+                            store.setCustomBackgroundImage(processed)
+                        } else {
+                            store.storeCustomBackgroundImageData(processed)
+                        }
                     } else {
                         backgroundPhotoError = true
                     }
                     backgroundPhotoItem = nil
                 }
-            }
-            .alert(L10n.t("图片读取失败，请重新选择"),
-                   isPresented: $backgroundPhotoError) {
-                Button(L10n.t("关闭"), role: .cancel) {}
             }
         }
 
@@ -684,9 +745,27 @@ struct SystemSettingsView: View {
         return resized.jpegData(compressionQuality: 0.8)
     }
 
-    private var glassBinding: Binding<Double> {
-        Binding(get: { Double(store.glassOpacity) },
-                set: { store.glassOpacity = Int($0.rounded()) })
+    // MARK: 滑桿節流提交（返修批9・拖動卡頓修復）
+
+    /// 拖動期每 50 ms 最多提交一次全域狀態，放手終提交
+    /// 保證落值精確。提交仍走既有 @Published 通道（persist
+    /// 冪等守衛＋節拍器設定防抖寫盤不變）。
+    private func commitGlassDraft(final: Bool) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard final || now - glassLastCommit >= 0.05 else { return }
+        glassLastCommit = now
+        let v = Int(glassDraft.rounded())
+        if store.glassOpacity != v { store.glassOpacity = v }
+    }
+
+    private func commitBluetoothDraft(final: Bool) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard final || now - bluetoothLastCommit >= 0.05 else { return }
+        bluetoothLastCommit = now
+        let v = Int(bluetoothDraft.rounded())
+        if metronomeViewModel.settings.bluetoothCompMs != v {
+            metronomeViewModel.settings.bluetoothCompMs = v
+        }
     }
 
     // MARK: 震動／音效
@@ -734,21 +813,25 @@ struct SystemSettingsView: View {
                           title: L10n.t("蓝牙延迟补偿"),
                           sub: L10n.t("用蓝牙耳机时把节拍画面延后，与声音对齐"))
             HStack(spacing: 10) {
-                Slider(value: bluetoothBinding, in: 0...300, step: 10)
-                    .tint(theme.accent)
-                Text("\(metronomeViewModel.settings.bluetoothCompMs) ms")
+                // 【返修批9】同不透明度：液態玻璃滑塊＋
+                // draft 節流提交（舊版逐幀直寫節拍器 VM
+                // 設定，整頁連同玻璃逐幀重繪、拖動卡頓）。
+                GlassSlider(value: $bluetoothDraft, range: 0...300, step: 10,
+                            theme: theme, glassOpacity: store.glassOpacity,
+                            accessibilityText: "\(Int(bluetoothDraft.rounded())) ms") { editing in
+                    bluetoothEditing = editing
+                    if !editing { commitBluetoothDraft(final: true) }
+                }
+                .onChange(of: bluetoothDraft) { _, _ in
+                    if bluetoothEditing { commitBluetoothDraft(final: false) }
+                }
+                Text("\(Int(bluetoothDraft.rounded())) ms")
                     .font(.system(size: 12.5, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(theme.textPrimary)
                     .frame(minWidth: 58)
             }
         }
-    }
-
-    private var bluetoothBinding: Binding<Double> {
-        Binding(
-            get: { Double(metronomeViewModel.settings.bluetoothCompMs) },
-            set: { metronomeViewModel.settings.bluetoothCompMs = Int($0.rounded()) })
     }
 
     // MARK: 屏幕常亮（資訊列：母本無開關、原生自動行為）
@@ -760,6 +843,14 @@ struct SystemSettingsView: View {
                           sub: L10n.t("校音或节拍器运行时自动保持屏幕常亮，无需手动设置"))
         }
     }
+}
+
+/// 導出分享表的 item 包裝（返修批9）：根層 .sheet(item:)
+/// 單一狀態驅動，消除舊版 isPresented＋可選 URL 雙狀態
+/// 同幀寫入的呈現競態（實機點按無反應的修復）。
+private struct ExportShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
 }
 
 /// 系統分享表包裝（備份導出單擊化，審計修復）：點按導出即

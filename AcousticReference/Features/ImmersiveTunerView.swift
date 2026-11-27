@@ -21,6 +21,7 @@ struct ImmersiveTunerView: View {
     @ObservedObject var engine: AudioEngine
     @ObservedObject var store: AppStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     /// 沉浸主題：母本恆暗；pit 偏好沿 pit（見類註解）。
     private var theme: TunerTheme {
@@ -30,6 +31,23 @@ struct ImmersiveTunerView: View {
     var body: some View {
         let theme = theme
         GeometryReader { geo in
+            // 【返修批7・E6】四邊內縮隨 safeAreaInsets：島側
+            // max(26, 內縮＋12) ≈71、無內縮邊維持 26/14。
+            let padL = max(26, geo.safeAreaInsets.leading + 12)
+            let padR = max(26, geo.safeAreaInsets.trailing + 12)
+            // 【五維審計 F4／專屬規範 §C.1】主顯示寬高雙向
+            // 聯動：舊版只以高定寬（h×320/190），SE 橫屏
+            // 錶盤寬 416.8 超出顯示槽 366.2、左緣幾貼螢幕
+            // 邊且右緣壓讀數列。改高＝min(0.66×內容高,
+            // 槽寬×190/320)，槽寬＝內容寬−間距 22−讀數列
+            // 寬；等比 320:190 恆守、任何機型不壓列。
+            // 【專屬規範 §C.2】讀數列寬 clamp(200, 0.34W,
+            // 300)：下限 200 防極窄屏讀數列被壓至不可讀
+            // （槽寬聯動已保錶盤不壓列，此為列本身地板）。
+            let readoutW = min(300, max(200, geo.size.width * 0.34))
+            let slotW = geo.size.width - padL - padR - 22 - readoutW
+            let displayH = min(geo.size.height * 0.66,
+                               max(0, slotW) * 190.0 / 320.0)
             ZStack {
                 background(theme: theme)
                     .ignoresSafeArea()
@@ -38,21 +56,16 @@ struct ImmersiveTunerView: View {
                     topBar(theme: theme)
 
                     HStack(spacing: 22) {
-                        displayContent(theme: theme, height: geo.size.height * 0.66)
+                        displayContent(theme: theme, height: displayH)
                             .frame(maxWidth: .infinity)
 
                         readoutColumn(theme: theme)
-                            .frame(width: min(300, geo.size.width * 0.34))
+                            .frame(width: readoutW)
                     }
                     .frame(maxHeight: .infinity)
                 }
-                // 【返修批7・E6】四邊內縮改隨 safeAreaInsets：
-                // 舊固定水平 26 在橫屏靈動島側（內縮 ≈59）
-                // 不足，頂列膠囊左段可落入島體範圍；改每邊
-                // max(原值, 內縮＋12)，島側自動讓出 ≈71，
-                // 無內縮邊維持原 26/14、視覺不變。
-                .padding(.leading, max(26, geo.safeAreaInsets.leading + 12))
-                .padding(.trailing, max(26, geo.safeAreaInsets.trailing + 12))
+                .padding(.leading, padL)
+                .padding(.trailing, padR)
                 .padding(.top, max(14, geo.safeAreaInsets.top + 8))
                 .padding(.bottom, max(14, geo.safeAreaInsets.bottom + 8))
             }
@@ -143,7 +156,11 @@ struct ImmersiveTunerView: View {
                     .frame(height: 32)
                     .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
             }
-            .buttonStyle(.plain)
+            // 【五維審計・設計項8】頂列兩鈕原 .plain＋非
+            // interactive 玻璃：全 App 唯一零按壓回饋的玻璃
+            // 鈕。改 GlassPressButtonStyle 與全域一致（果凍
+            // 按壓＋高光位移）。
+            .buttonStyle(GlassPressButtonStyle())
 
             Button {
                 dismiss()
@@ -156,7 +173,7 @@ struct ImmersiveTunerView: View {
                     .frame(height: 32)
                     .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassPressButtonStyle())
             .accessibilityLabel(L10n.t("退出全屏"))
         }
     }
@@ -211,7 +228,10 @@ struct ImmersiveTunerView: View {
                 .monospacedDigit()
                 .foregroundStyle(render.isInTune ? theme.okText : .white)
 
-            Text(render.frequencyText)
+            // 【全邏輯複查・低／S-1】無訊號時沉浸頁頻率行
+            // 同步顯示「—」（主頁數據卡同式），不留 0.0 Hz
+            // 假讀數；提示行併入下方單槽（見該處註）。
+            Text(viewModel.noSignal ? "—" : render.frequencyText)
                 .font(.system(size: 16, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(.white.opacity(0.65))
@@ -228,14 +248,39 @@ struct ImmersiveTunerView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.6))
 
+            // 【全邏輯複查・低】異常提示改單槽輪替（與主頁
+            // §A.2 同紀律）：權限＞錯誤＞無訊號，至多一項。
+            // 舊版三者可疊加（權限文字+鈕 ≈60＋錯誤 ≈23＋
+            // 無訊號 ≈20），SE 橫屏可用高 ≈305 與常態內容
+            // ≈221 合計臨界溢出；單槽後增量 ≤60、恆入頁。
             if engine.permissionDenied {
                 Text(L10n.t("麦克风权限被拒绝，请到系统设置开启"))
-                    .font(.footnote)
+                    .font(.system(size: 12.5))
                     .foregroundStyle(theme.clipWarning)
-            }
-            if let error = engine.lastError {
+                // 【五維審計 F-6】沉浸頁原只有文字、無恢復
+                // 入口（主頁批7 D4 已有）：同補「前往设置」
+                // 膠囊鈕，沉浸態被拒權限不必先退出。
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        openURL(url)
+                    }
+                } label: {
+                    Text(L10n.t("前往设置"))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 13)
+                        .frame(height: 32)
+                        .glassBackground(in: Capsule(), theme: theme,
+                                         glassOpacity: store.glassOpacity)
+                }
+                .buttonStyle(GlassPressButtonStyle())
+            } else if let error = engine.lastError {
                 Text(L10n.t(error))
-                    .font(.footnote)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(theme.clipWarning)
+            } else if viewModel.noSignal {
+                Text(L10n.t("未收到讯号 · 检查麦克风"))
+                    .font(.system(size: 12.5))
                     .foregroundStyle(theme.clipWarning)
             }
         }

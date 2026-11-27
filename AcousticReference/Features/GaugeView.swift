@@ -118,7 +118,12 @@ struct GaugeView: View {
     // MARK: - 繪製（母本 paintGauge 順序：band→devArc→ticks→trail2→trail1→ghost→needle）
 
     private func drawGauge(in ctx: inout GraphicsContext) {
-        let tol = tolerance
+        // 【全邏輯複查・低】容差帶取樣鉗制：tol 為用戶
+        // 任意值（設定層可 >50），arcPath 的 point() 不
+        // 鉗 cents，tol >50 時色帶兩端會繞過錶盤 ±50
+        // 端點與刻度弧錯位（偏差弧與針本有鉗制、此處
+        // 補齊）；帶寬語義不變（≥50 即全弧）。
+        let tol = min(50, max(0, tolerance))
         let clamped = min(50, max(-50, cents))
 
         // 容差帶。

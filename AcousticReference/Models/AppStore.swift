@@ -121,7 +121,12 @@ private struct AppStateFile: Codable {
     var metronomeUserPresets: [MetronomePreset] = []
     var appMode: String = AppMode.tuner.rawValue
     var guzhengFavMigrationDone: Bool = false
-    var tunerDisplayMode: TunerDisplayMode = .strobe
+    /// 【返修批9】預設顯示模式改指針的一次性遷移旗標：
+    /// 舊檔缺欄＝未遷移，載入時把 tunerDisplayMode 強制
+    /// 改為 .needle 一次（Laurent：頻閃有些人看不懂）；
+    /// 遷移後用戶手動改回頻閃會被尊重。
+    var displayModeV9Migrated: Bool = false
+    var tunerDisplayMode: TunerDisplayMode = .needle
     var themePreference: AppTheme = .system
     // 階段 5 新增欄（缺欄退母本預設，舊檔無痛遷移）：
     /// 顯示語言（母本 state.lang，預設 zh-TW）。
@@ -152,6 +157,7 @@ private struct AppStateFile: Codable {
         case favoriteInstrumentIds, customInstruments, droneTimbre
         case droneFollow, metronomeSettings, metronomeUserPresets
         case appMode, guzhengFavMigrationDone, tunerDisplayMode
+        case displayModeV9Migrated
         case themePreference
         case language, glassOpacity, primaryInstrumentId
         case autoMicOnEnter, metronomeDefault
@@ -182,10 +188,16 @@ private struct AppStateFile: Codable {
         droneFollow = c.tolerantDecodeIfPresent(Bool.self, forKey: .droneFollow) ?? false
         metronomeSettings = c.tolerantDecodeIfPresent(MetronomeSettings.self, forKey: .metronomeSettings)
             ?? MetronomeSettings()
-        metronomeUserPresets = c.tolerantDecodeIfPresent([MetronomePreset].self, forKey: .metronomeUserPresets) ?? []
+        // 【全邏輯複查・低】用戶預置改逐筆容錯（與自訂樂
+        // 器 C13 同式）：舊版整陣列解碼，一筆格式漂移即
+        // 全陣列歸零且被 init 末尾 persist 永久化。
+        metronomeUserPresets = c.tolerantDecodeIfPresent(
+            [TolerantElement<MetronomePreset>].self, forKey: .metronomeUserPresets
+        )?.compactMap(\.value) ?? []
         appMode = c.tolerantDecodeIfPresent(String.self, forKey: .appMode) ?? AppMode.tuner.rawValue
         guzhengFavMigrationDone = c.tolerantDecodeIfPresent(Bool.self, forKey: .guzhengFavMigrationDone) ?? false
-        tunerDisplayMode = c.tolerantDecodeIfPresent(TunerDisplayMode.self, forKey: .tunerDisplayMode) ?? .strobe
+        displayModeV9Migrated = c.tolerantDecodeIfPresent(Bool.self, forKey: .displayModeV9Migrated) ?? false
+        tunerDisplayMode = c.tolerantDecodeIfPresent(TunerDisplayMode.self, forKey: .tunerDisplayMode) ?? .needle
         themePreference = c.tolerantDecodeIfPresent(AppTheme.self, forKey: .themePreference) ?? .system
         language = c.tolerantDecodeIfPresent(AppLanguage.self, forKey: .language) ?? .zhTW
         glassOpacity = min(96, max(8, c.tolerantDecodeIfPresent(Int.self, forKey: .glassOpacity) ?? 50))
@@ -228,7 +240,9 @@ final class AppStore: ObservableObject {
     @Published var metronomeUserPresets: [MetronomePreset] = [] { didSet { persist() } }
     @Published var appMode: AppMode = .tuner { didSet { persist() } }
     /// 調音主顯示模式（頻閃／指針）：純顯示偏好，引擎不感知。
-    @Published var tunerDisplayMode: TunerDisplayMode = .strobe { didSet { persist() } }
+    /// 【返修批9】預設改指針（Laurent：頻閃有些人看不懂）；
+    /// 頻閃保留為可選模式，設定不變。
+    @Published var tunerDisplayMode: TunerDisplayMode = .needle { didSet { persist() } }
     /// 外觀主題偏好（補強段）：system／light／dark／pit 四態。
     @Published var themePreference: AppTheme = .system { didSet { persist() } }
     /// 顯示語言（階段 5）：唯一真源；ContentView 的 onChange
@@ -379,6 +393,14 @@ final class AppStore: ObservableObject {
         themePreference = .custom
     }
 
+    /// 【邏輯補查】只存圖不切主題：選圖讀取在途時用戶
+    /// 已切離自訂外觀的競態收尾——圖存底（kind 同步），
+    /// 用戶日後切回自訂即見此圖，不反向搶改其主題選擇。
+    func storeCustomBackgroundImageData(_ data: Data) {
+        customBgData = data
+        bgKind = "image"
+    }
+
     func clearCustomBackground() {
         bgKind = ""
         bgColorHex = ""
@@ -443,7 +465,15 @@ final class AppStore: ObservableObject {
 
     /// 古箏調號（母本 state.guzhengKey，預設 "D"；母本不入 profile，
     /// 重開即回 D，原生版同）。
-    @Published var guzhengKey = "D"
+    @Published var guzhengKey = "D" {
+        didSet {
+            // 【全邏輯複查・低】調號不落盤，但小組件快照
+            // 的調號標籤依賴它：變更時單獨刷新快照，否則
+            // 小組件長期顯示舊「1 = X」直到無關的落盤變
+            // 更連帶刷新。
+            if guzhengKey != oldValue { publishWidgetSnapshot() }
+        }
+    }
 
     /// 演奏態附加模式（補強段採納，母本無）：調音頁開關——開啟
     /// 時隱藏輔助列（收藏／A4／目標音／Drone）、主顯示區放大。
@@ -452,6 +482,8 @@ final class AppStore: ObservableObject {
     @Published var performanceMode = false
 
     private var guzhengFavMigrationDone = false
+    /// 【返修批9】預設改指針的一次性遷移旗標（見 AppStateFile）。
+    private var displayModeV9Migrated = false
     private var loading = true
     /// persist 冪等守衛（返修批 5）：與上次已寫盤內容相同則跳過
     /// 寫入；背景圖分檔的已寫值追蹤（舊版內嵌圖以空 Data 為
@@ -479,6 +511,39 @@ final class AppStore: ObservableObject {
     static var customBgFileURL: URL {
         stateFileURL.deletingLastPathComponent()
             .appendingPathComponent("custom-bg.bin")
+    }
+
+    /// 匯入前快照位置（專屬規範 S-4）。
+    static var preImportFileURL: URL {
+        stateFileURL.deletingLastPathComponent()
+            .appendingPathComponent("state-pre-import.json")
+    }
+
+    /// 匯入前快照的背景圖分檔位置（專屬規範 S-4）。
+    static var preImportBgFileURL: URL {
+        stateFileURL.deletingLastPathComponent()
+            .appendingPathComponent("state-pre-import-bg.bin")
+    }
+
+    /// 匯入前快照（專屬規範 S-4）：把現行 state 檔複製一
+    /// 份（恆留 1 份、覆寫舊份）。persist 為 didSet 同步
+    /// 落盤，磁碟態即現行態。還原入口待 init 賦值段抽為
+    /// applySnapshot 後補（定版待行），快照先行落地。
+    func savePreImportSnapshot() {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: Self.stateFileURL.path) else { return }
+        try? fm.removeItem(at: Self.preImportFileURL)
+        try? fm.copyItem(at: Self.stateFileURL, to: Self.preImportFileURL)
+        // 【全邏輯複查・中】背景圖分檔一併存底：state
+        // JSON 內 customBgData 恆為 nil（返修批 5 分檔），
+        // 只複製 JSON 的回復底本先天缺背景圖——匯入帶新
+        // 圖時舊圖在套用當下即被覆寫銷毀。無圖時清掉舊
+        // 存底，避免還原時撿回已不存在的圖。
+        try? fm.removeItem(at: Self.preImportBgFileURL)
+        if fm.fileExists(atPath: Self.customBgFileURL.path) {
+            try? fm.copyItem(at: Self.customBgFileURL,
+                             to: Self.preImportBgFileURL)
+        }
     }
 
     // MARK: - 載入與遷移
@@ -520,22 +585,34 @@ final class AppStore: ObservableObject {
         bgColorHex = snapshot.bgColor
         customBgData = resolvedBgData
         guzhengFavMigrationDone = snapshot.guzhengFavMigrationDone
+        displayModeV9Migrated = snapshot.displayModeV9Migrated
         // 首幀前同步語言進 L10n（其後由 ContentView onChange 維護）。
         L10n.setLanguage(snapshot.language)
 
         // 收藏／選中樂器健全化：剔除無法解析的 id；收藏為空時回母本
         // 預設 [INSTRUMENTS[0], piano, violin]（createDefaultProfile）。
-        var favorites = snapshot.favoriteInstrumentIds.filter { instrument(id: $0) != nil }
-        if favorites.isEmpty {
-            favorites = ["alto_sax", "piano", "violin"].filter { instrument(id: $0) != nil }
-        }
-        favoriteInstrumentIds = favorites
-        selectedInstrumentId = instrument(id: snapshot.selectedInstrumentId) != nil
-            ? snapshot.selectedInstrumentId
-            : InstrumentCatalog.builtins[0].id
-        // 主樂器健全化：指向已刪除的自訂樂器時退回目前選中樂器。
-        if instrument(id: primaryInstrumentId) == nil {
-            primaryInstrumentId = selectedInstrumentId
+        // 【全邏輯複查・低】目錄降級（instruments.json 載入
+        // 失敗、僅剩兜底樂器）時跳過健全化：否則一次性的
+        // 資源故障會把收藏修剪到只剩可解析者、並被 init
+        // 末尾 persist 永久寫回。降級態保留存檔原值，運
+        // 行期各處以 instrument(id:) ?? builtins[0] 兜底
+        // 不崩；目錄恢復後下次啟動照常健全化。
+        if InstrumentCatalog.isDegraded {
+            favoriteInstrumentIds = snapshot.favoriteInstrumentIds
+            selectedInstrumentId = snapshot.selectedInstrumentId
+        } else {
+            var favorites = snapshot.favoriteInstrumentIds.filter { instrument(id: $0) != nil }
+            if favorites.isEmpty {
+                favorites = ["alto_sax", "piano", "violin"].filter { instrument(id: $0) != nil }
+            }
+            favoriteInstrumentIds = favorites
+            selectedInstrumentId = instrument(id: snapshot.selectedInstrumentId) != nil
+                ? snapshot.selectedInstrumentId
+                : InstrumentCatalog.builtins[0].id
+            // 主樂器健全化：指向已刪除的自訂樂器時退回目前選中樂器。
+            if instrument(id: primaryInstrumentId) == nil {
+                primaryInstrumentId = selectedInstrumentId
+            }
         }
 
         // 古箏收藏遷移（母本行 6550，旗標 laurent_fav_guzheng_removed_v1）：
@@ -546,6 +623,15 @@ final class AppStore: ObservableObject {
                 favoriteInstrumentIds.removeAll { $0 == "guzheng" }
             }
             guzhengFavMigrationDone = true
+        }
+
+        // 【返修批9】預設顯示模式改指針的一次性遷移：
+        // 未遷移過的存檔（即批9 之前所有安裝）首次載入
+        // 強制切到指針一次；遷移後用戶手動改回頻閃會被
+        // 尊重（旗標已立、不再干預）。
+        if !displayModeV9Migrated {
+            tunerDisplayMode = .needle
+            displayModeV9Migrated = true
         }
 
         // 背景圖已寫值追蹤（返修批 5）：內嵌舊值以空 Data 哨兵
@@ -634,6 +720,7 @@ final class AppStore: ObservableObject {
         snapshot.metronomeUserPresets = metronomeUserPresets
         snapshot.appMode = appMode.rawValue
         snapshot.guzhengFavMigrationDone = guzhengFavMigrationDone
+        snapshot.displayModeV9Migrated = displayModeV9Migrated
         snapshot.tunerDisplayMode = tunerDisplayMode
         snapshot.themePreference = themePreference
         snapshot.language = language

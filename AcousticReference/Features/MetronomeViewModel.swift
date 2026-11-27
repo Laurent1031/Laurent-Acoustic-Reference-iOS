@@ -279,7 +279,11 @@ final class MetronomeViewModel: ObservableObject {
     /// 漸速引擎步進回報（不取消漸速、不清預置）。
     private func applyRemoteBpm(_ bpm: Int) {
         guard bpm != settings.bpm else { return }
-        settings.bpm = bpm
+        // 【全邏輯複查・低】回寫加鉗制：舊版直寫，漸速
+        // 目標在附點模式可達 301–307，運行中關附點後
+        // finishRamp 經此回寫會令非附點態出現越界 BPM。
+        // 經 clampedBpm（拍號感知上限）單一真源收斂。
+        settings.bpm = settings.clampedBpm(bpm)
         syncBpmRender()
     }
 
@@ -372,6 +376,12 @@ final class MetronomeViewModel: ObservableObject {
     func setSubdivision(_ value: Int) {
         guard value != settings.subdivision else { return }
         settings.subdivision = value
+        // 【全邏輯複查・低】播放中改細分同步歸零拍位：
+        // 舊版不呼叫 resetBeatIndex，殘留 subIndex 令新
+        // 小節首拍被細分 tick 頂替（與 setSignature／
+        // setGrouping 的 reset 路徑齊平；核心 reset 現
+        // 已連 subIndex 一併歸零）。
+        if isPlaying { engine.resetBeatIndex() }
         activePresetId = nil
         HapticsEngine.shared.tap(milliseconds: 6)
         UISoundEngine.shared.play(.tick)
@@ -572,11 +582,15 @@ final class MetronomeViewModel: ObservableObject {
     func applyPreset(_ preset: MetronomePreset) {
         engine.cancelRamp()
         rampState = engine.rampSnapshot()
-        setBpmRaw(preset.bpm)
         settings.beatsPerBar = preset.beats
         settings.beatUnit = preset.noteUnit
         settings.subdivision = preset.subdivision
         settings.timbre = preset.timbre
+        // 【全邏輯複查・低】BPM 套用移到拍號之後：舊版先
+        // setBpmRaw，其鉗制讀的是套用前拍號的 bpmMaxNow
+        // ——附點預置（301–307）在非附點態套用會被靜默
+        // 夾至 300。先立拍號、再套 BPM，鉗制按新拍號算。
+        setBpmRaw(preset.bpm)
         // 與 setSignature 同路徑（審計修復）：優先套用該拍號的
         // 分組記憶推導重音；此前直接寫預設重音，手動切同拍號
         // 與套預置切同拍號的重音結果不一致。播放中拍位歸零
@@ -616,7 +630,10 @@ final class MetronomeViewModel: ObservableObject {
             activePresetId = userPresets[idx].id
         } else {
             let preset = MetronomePreset(
-                id: "mp\(Int(Date().timeIntervalSince1970 * 1000))",
+                // 【全邏輯複查・低】id 改 UUID：舊版毫秒時
+                // 間戳在同毫秒兩次保存時會重複，令
+                // activePreset 的 first(where:) 命中不定。
+                id: "mp-\(UUID().uuidString)",
                 name: collapsed, bpm: settings.bpm,
                 beats: settings.beatsPerBar, noteUnit: settings.beatUnit,
                 subdivision: settings.subdivision, timbre: settings.timbre,
@@ -671,8 +688,9 @@ final class MetronomeViewModel: ObservableObject {
         }
     }
 
-    /// 自訂漸速（母本驗證：from/to ∈ [40,208]、to≠from、
-    /// bars 1–32、step 1–20）。成功回 true。
+    /// 自訂漸速（驗證：from/to ∈ [20, bpmMaxNow]、to≠from、
+    /// bars 1–32、step 1–20；母本原驗證範圍 [40,208] 已隨
+    /// BPM 20–300 擴展與附點上限取代，見函數內註）。成功回 true。
     func startCustomRamp(from: Int, to: Int, bars: Int, step: Int) -> Bool {
         // 上限隨附點計拍（審計修復）：附點模式 BPM 可達 307，
         // 舊驗證寫死 300 令 301–307 的合法目標被拒。
@@ -709,7 +727,12 @@ final class MetronomeViewModel: ObservableObject {
             timeSignature: settings.currentSignatureKey,
             beat: beat,
             beatsInBar: beatsInBar,
-            isCountIn: isCountIn)
+            isCountIn: isCountIn,
+            // 【邏輯補查】標籤在 App 側本地化後隨狀態下發，
+            // 擴展不再寫死簡體（語言與桌面小組件一致）。
+            titleText: L10n.t("节拍器"),
+            countInText: L10n.t("预备拍"),
+            beatText: String(format: L10n.t("第 %d 拍"), beat))
     }
 
     private func handleBeat(_ event: BeatVisualEvent) {
@@ -726,7 +749,11 @@ final class MetronomeViewModel: ObservableObject {
                                  beat: event.beatIndex + 1,
                                  beatsInBar: event.beatsInBar,
                                  isCountIn: event.isCountIn))
-        let beatMs = 60000.0 / Double(event.bpm) * (settings.isDottedBeat ? 3.0 : 1.0)
+        // 【全邏輯複查・低】附點不放大脈衝時長：舊版 ×3
+        // 與引擎不變量矛盾（附點只改細分數與拍數、主拍
+        // 名義間隔恆 60000/BPM），包絡被系統性放大撞
+        // 950 ms 上限、衰減段遭下拍截斷。改按主拍間隔。
+        let beatMs = 60000.0 / Double(event.bpm)
         pulse = PulseState(start: ProcessInfo.processInfo.systemUptime,
                            durationMs: min(950, max(180, beatMs * 0.92)),
                            level: event.level, isCountIn: event.isCountIn,
