@@ -128,60 +128,60 @@ struct TargetChipItem: Identifiable, Equatable {
 /// 到達率（分析 hop ≈ 94 Hz）更新。省電：引擎未運行、或（無音高且
 /// 針已回正 |cents| ≤ 0.02 且無定格針且未在滾動）時暫停 link，
 /// 新 reading 達條件時自動喚醒；畫面離開時 invalidate。
+/// 高頻渲染狀態（返修批4・效能隔離）：音高分析每幀（≈94 Hz）
+/// 與顯示時鐘（120 Hz）寫入的全部顯示值集中於此獨立
+/// ObservableObject。調音頁的靜態外殼（樂器卡、晶片列、
+/// Drone 膠囊）只觀察 AppStore／DroneEngine／ViewModel
+/// （皆低頻），高速顯示區（錶盤／頻閃／音名／數據卡／
+/// 軌跡）才觀察本對象——舊架構下 ViewModel 的每一次
+/// @Published 寫入都讓整頁幾十個玻璃面跟著重算（每秒
+/// 近 200 次），是指針卡頓、頻閃不絲滑與手機發燙的共
+/// 同根因。隔離後整頁重算只剩顯示區本身（Canvas＋文
+/// 字），與 MetronomeView 的 DialRenderState 同法。
 @MainActor
-final class TunerViewModel: ObservableObject {
-    // MARK: - 發佈狀態（錶盤）
-
-    @Published private(set) var needleCents: Double = 0
-    @Published private(set) var trail1Cents: Double = 0
-    @Published private(set) var trail2Cents: Double = 0
-    @Published private(set) var ghostCents: Double?
-    @Published private(set) var ghostOpacity: Double = 0
-    @Published private(set) var isInTune = false
-
-    // MARK: - 發佈狀態（頻閃主顯示）
-
-    /// 頻閃相位錨點：StrobeView 以 strobeRate 自 strobeAnchorDate
-    /// 外推至顯示時刻。錨點隨每幀 reading 更新（≈94 Hz），與
-    /// 針值同源同幀，兩種顯示模式的判讀永遠一致。
-    @Published private(set) var strobePhase: Double = 0
-    @Published private(set) var strobeRate: Double = 0
-    @Published private(set) var strobeConfidence: Double = 0
-    @Published private(set) var strobeAnchorDate: Date = Date()
-
-    // MARK: - 發佈狀態（讀數）
-
-    @Published private(set) var noteText = "--"
-    @Published private(set) var octaveText = ""
-    @Published private(set) var hasNote = false
-    @Published private(set) var noteLocked = false
-    @Published private(set) var solfegeText = "本调 --"
-    @Published private(set) var writtenText = "--"
-    @Published private(set) var concertText = "--"
-    @Published private(set) var frequencyText = "0.0 Hz"
-    @Published private(set) var displayCents: Double = 0
-    @Published private(set) var stabilityBadgeText = "轻点定格"
-    @Published private(set) var stabilityFrozen = false
-
-    // MARK: - 發佈狀態（削波警示，補強段）
-
-    /// 削波警示旗標：輸入峰值達 −1 dBFS 即亮，峰值回落至
-    /// −6 dBFS 以下持續 1.5 s 後滅（遲滯＋保持，防邊界閃爍）。
-    /// 門檻為本段自訂（母本無削波警示）：−1 dBFS 是「已非常
-    /// 接近數位滿格、波形頂部大概率已被削平」的實務警戒線，
-    /// 真削波（0 dBFS）才亮會漏掉臨界過載；−6 dBFS 釋放線與
-    /// 1.5 s 保持則確保警示可讀、不隨每幀峰值跳動。
-    @Published private(set) var clipWarning = false
-    private var clipLastAboveRelease: TimeInterval = -.infinity
-    private static let clipEnterPeak = 0.8913   // −1 dBFS
-    private static let clipReleasePeak = 0.5012 // −6 dBFS
-    private static let clipHoldSeconds = 1.5
+final class TunerRenderState: ObservableObject {
+    // 錶盤（顯示值：由顯示時鐘以 120 Hz 向目標插值，見
+    // TunerViewModel.displayTick；分析幀只寫目標）。
+    @Published var needleCents: Double = 0
+    @Published var trail1Cents: Double = 0
+    @Published var trail2Cents: Double = 0
+    @Published var ghostCents: Double?
+    @Published var ghostOpacity: Double = 0
+    @Published var isInTune = false
+    // 頻閃主顯示（相位錨點＋角速度，StrobeView 顯示幀外推）。
+    @Published var strobePhase: Double = 0
+    @Published var strobeRate: Double = 0
+    @Published var strobeConfidence: Double = 0
+    @Published var strobeAnchorDate: Date = Date()
+    // 讀數。
+    @Published var noteText = "--"
+    @Published var octaveText = ""
+    @Published var hasNote = false
+    @Published var noteLocked = false
+    @Published var solfegeText = "本调 --"
+    @Published var writtenText = "--"
+    @Published var concertText = "--"
+    @Published var frequencyText = "0.0 Hz"
+    @Published var displayCents: Double = 0
+    @Published var stabilityBadgeText = "轻点定格"
+    @Published var stabilityFrozen = false
+    // 削波警示。
+    @Published var clipWarning = false
 
     /// 音分文字（母本 paintCentsTexts 格式：正數帶 +、一位小數、" ¢"）。
     var centsDisplayText: String {
         let body = String(format: "%.1f", displayCents)
         return (displayCents > 0 ? "+" + body : body) + " ¢"
     }
+}
+
+@MainActor
+final class TunerViewModel: ObservableObject {
+    /// 高頻渲染狀態（返修批4）：見 TunerRenderState 類註解。
+    /// 本類只保留低頻狀態（lockedTargetNote 等）；每幀寫
+    /// 入一律走 render，視圖層的高速顯示區直接觀察 render。
+    let render = TunerRenderState()
+
 
     // MARK: - 鎖定目標音（母本 state.lockedTargetNote，僅執行期）
 
@@ -209,6 +209,17 @@ final class TunerViewModel: ObservableObject {
     private var followSince: TimeInterval?
 
     private var lastReading: PitchReading?
+    /// 針／尾跡的分析幀目標（返修批4）：ingest 只寫目標，
+    /// 顯示值（render.needleCents 等）由 displayTick 以顯示
+    /// 幀率指數趨近（τ 針 22 ms／尾跡 50／85 ms）——分析
+    /// 幀率 ≈94 Hz 且到達間隔不勻，直接驅動針值就是「一段
+    /// 段跳」；顯示幀插值後針在 120 Hz 連續滑動。
+    private var needleTarget = 0.0
+    private var trail1Target = 0.0
+    private var trail2Target = 0.0
+    private var lastTickTime: TimeInterval?
+    /// 靜默幀連續標誌（返修批4・省電早退）。
+    private var lastWasQuiescent = false
     private var hadValidPitch = false
     private var lastStableCents: Double = 0
     private var ghostUntil: TimeInterval = 0
@@ -327,10 +338,27 @@ final class TunerViewModel: ObservableObject {
 
     private func ingest(_ reading: PitchReading) {
         lastReading = reading
-        needleCents = reading.cents
-        trail1Cents = reading.trail1Cents
-        trail2Cents = reading.trail2Cents
         let now = ProcessInfo.processInfo.systemUptime
+        // 【返修批4・靜默幀早退】麥克風開著、無音高、無定格
+        // 針、頻閃可信度已落底、針已回正、無削波警示時，本幀
+        // 與上一幀都沒有任何可顯示的變化：跳過全部寫入（否則
+        // 分析管線在靜默中仍以 ≈94 Hz 空轉發布，持續產熱）。
+        // 第一幀靜默仍走完整路徑（把針目標歸零、讓針滑回中
+        // 央）；其後連續靜默才早退。代價：靜默期間音高軌跡
+        // 停止推進（樣本不新增），有意為之的省電取捨。
+        let quiescent = !reading.hasPitch && !hadValidPitch
+            && render.ghostCents == nil
+            && reading.strobe.confidence == 0
+            && render.strobeConfidence == 0
+            && abs(render.needleCents) < 0.02
+            && !render.clipWarning
+        if quiescent, lastWasQuiescent {
+            return
+        }
+        lastWasQuiescent = quiescent
+        needleTarget = reading.cents
+        trail1Target = reading.trail1Cents
+        trail2Target = reading.trail2Cents
 
         // 削波警示狀態機（與音高有效性無關：過載幀常被檢測
         // 回絕，峰值仍須計入——detector 在回絕前已算峰值）。
@@ -338,19 +366,19 @@ final class TunerViewModel: ObservableObject {
             clipLastAboveRelease = now
         }
         if reading.peak >= Self.clipEnterPeak {
-            clipWarning = true
-        } else if clipWarning, now - clipLastAboveRelease > Self.clipHoldSeconds {
-            clipWarning = false
+            render.clipWarning = true
+        } else if render.clipWarning, now - clipLastAboveRelease > Self.clipHoldSeconds {
+            render.clipWarning = false
         }
 
         // 頻閃錨點（兩種模式都更新，切換即時生效）：分析時刻
         // （uptime）換算為牆鐘錨點，供 StrobeView 的 TimelineView
         // 以 context.date 外推。
         let strobe = reading.strobe
-        strobePhase = strobe.phase
-        strobeRate = strobe.angularRate
-        strobeConfidence = strobe.confidence
-        strobeAnchorDate = Date().addingTimeInterval(-(now - strobe.time))
+        render.strobePhase = strobe.phase
+        render.strobeRate = strobe.angularRate
+        render.strobeConfidence = strobe.confidence
+        render.strobeAnchorDate = Date().addingTimeInterval(-(now - strobe.time))
 
         if reading.hasPitch, let targetMidi = reading.targetMidi {
             hadValidPitch = true
@@ -358,7 +386,7 @@ final class TunerViewModel: ObservableObject {
 
             updateNoteDisplay(targetMidi: targetMidi)
 
-            frequencyText = String(format: "%.1f Hz", reading.smoothedFrequency)
+            render.frequencyText = String(format: "%.1f Hz", reading.smoothedFrequency)
             centsRoll.update(target: reading.cents, now: now)
 
             // #12 音高跟隨（母本行 9614）：droneFollow 開時，偵測音
@@ -391,15 +419,15 @@ final class TunerViewModel: ObservableObject {
             // 上升沿輕震（母本 haptic(14)）、鎖定上升沿震動圖案
             // [8,35,16]（母本 lock 的 vibrate 呼叫點）；總開關在
             // HapticsEngine 內部門控（settings.hapticsOn 同步）。
-            let wasInTune = isInTune
-            isInTune = reading.isInTune
+            let wasInTune = render.isInTune
+            render.isInTune = reading.isInTune
             if reading.isInTune {
                 if drivesSideEffects, !wasInTune {
                     HapticsEngine.shared.tap(milliseconds: 14)
                 }
                 if let since = inTuneSince {
-                    if now - since >= 0.650, !noteLocked {
-                        noteLocked = true
+                    if now - since >= 0.650, !render.noteLocked {
+                        render.noteLocked = true
                         if drivesSideEffects {
                             // 階段 6：鎖定棘輪專屬圖樣（形制沿母本
                             // [8, 35, 16]，數值見 HapticPatternTable）。
@@ -413,18 +441,18 @@ final class TunerViewModel: ObservableObject {
                 }
             } else {
                 inTuneSince = nil
-                noteLocked = false
+                render.noteLocked = false
             }
 
             stability.push(t: now, cents: reading.cents)
         } else {
-            isInTune = false
+            render.isInTune = false
             inTuneSince = nil
-            noteLocked = false
+            render.noteLocked = false
 
             // #13：氣息停止 → 定格針凍結最後穩定值 1.5 s（母本行 9706）。
             if hadValidPitch {
-                ghostCents = lastStableCents
+                render.ghostCents = lastStableCents
                 ghostUntil = now + 1.5
                 hadValidPitch = false
             }
@@ -444,16 +472,16 @@ final class TunerViewModel: ObservableObject {
     /// 取記譜 pitch class（母本行 9610）。
     private func updateNoteDisplay(targetMidi: Int) {
         let writtenMidi = targetMidi - engine.range.transposition
-        writtenText = PitchMath.noteName(midi: writtenMidi)
-        concertText = PitchMath.noteName(midi: targetMidi)
+        render.writtenText = PitchMath.noteName(midi: writtenMidi)
+        render.concertText = PitchMath.noteName(midi: targetMidi)
         let writtenPc = ((writtenMidi % 12) + 12) % 12
-        solfegeText = "本调 " + Self.solfegeMap[writtenPc]
+        render.solfegeText = "本调 " + Self.solfegeMap[writtenPc]
 
         let displayed = store.pitchMode == .written ? writtenMidi : targetMidi
         let pc = ((displayed % 12) + 12) % 12
-        noteText = PitchMath.noteNames[pc]
-        octaveText = String(Int(floor(Double(displayed) / 12.0)) - 1)
-        hasNote = true
+        render.noteText = PitchMath.noteNames[pc]
+        render.octaveText = String(Int(floor(Double(displayed) / 12.0)) - 1)
+        render.hasNote = true
     }
 
     // MARK: - 鎖定目標音（母本 renderTargetStrip 晶片處理，行 8557）
@@ -596,30 +624,65 @@ final class TunerViewModel: ObservableObject {
     private var needsMotion: Bool {
         guard engine.isRunning else { return false }
         if lastReading?.hasPitch == true { return true }
-        if abs(needleCents) > 0.02 { return true }
-        if ghostCents != nil { return true }
+        if abs(render.needleCents) > 0.02 { return true }
+        if abs(needleTarget - render.needleCents) > 0.02 { return true }
+        if abs(trail1Target - render.trail1Cents) > 0.02 { return true }
+        if abs(trail2Target - render.trail2Cents) > 0.02 { return true }
+        if render.ghostCents != nil { return true }
         if centsRoll.active { return true }
         return false
     }
 
     func displayTick(now: TimeInterval) {
-        centsRoll.tick(now: now)
-        displayCents = centsRoll.value
+        // 針／尾跡顯示幀插值（返修批4）：向分析幀目標指數
+        // 趨近，dt 以 link 時間戳計（夾 1–50 ms）；|Δ| <
+        // 0.01 直接貼合，避免無窮小抖動反覆發布。
+        let dt: TimeInterval
+        if let last = lastTickTime {
+            dt = min(0.05, max(0.001, now - last))
+        } else {
+            dt = 1.0 / 120.0
+        }
+        lastTickTime = now
+        Self.approach(&render.needleCents, to: needleTarget, tau: 0.022, dt: dt)
+        Self.approach(&render.trail1Cents, to: trail1Target, tau: 0.05, dt: dt)
+        Self.approach(&render.trail2Cents, to: trail2Target, tau: 0.085, dt: dt)
 
-        if ghostCents != nil {
+        centsRoll.tick(now: now)
+        // 【返修批4】值不變不寫入（同 approach 註解）：穩態下
+        // 音分滾動不活動，displayCents 恆定，不應每顯示幀發布。
+        if render.displayCents != centsRoll.value {
+            render.displayCents = centsRoll.value
+        }
+
+        if render.ghostCents != nil {
             if now < ghostUntil {
                 let remain = ghostUntil - now
                 let fade = remain < 0.4 ? remain / 0.4 : 1
-                ghostOpacity = 0.35 * fade
+                let opacity = 0.35 * fade
+                if render.ghostOpacity != opacity {
+                    render.ghostOpacity = opacity
+                }
             } else {
-                ghostCents = nil
-                ghostOpacity = 0
+                render.ghostCents = nil
+                render.ghostOpacity = 0
             }
         }
 
         if !needsMotion {
             pauseDisplayLink()
         }
+    }
+
+    /// 一階指數趨近（顯示幀插值用）：x += (to − x)·(1 − e^(−dt/τ))。
+    private static func approach(_ x: inout Double, to target: Double,
+                                 tau: Double, dt: TimeInterval) {
+        // 【返修批4】已貼合即不寫入：@Published 每寫一次即發布
+        // 一次，穩態下每顯示幀的重寫會讓顯示區白白重算 120 次／秒。
+        guard x != target else { return }
+        let k = 1 - exp(-dt / tau)
+        x += (target - x) * k
+        if abs(target - x) < 0.01 { x = target }
     }
 
     private func ensureDisplayLink() {
@@ -650,10 +713,10 @@ final class TunerViewModel: ObservableObject {
 
     func toggleFreeze() {
         stability.frozen.toggle()
-        stabilityFrozen = stability.frozen
+        render.stabilityFrozen = stability.frozen
         refreshBadgeText()
         // 母本行 9268：定格 uiSound("switch")、解凍 uiSound("tick")。
-        UISoundEngine.shared.play(stabilityFrozen ? .switch : .tick)
+        UISoundEngine.shared.play(render.stabilityFrozen ? .switch : .tick)
     }
 
     /// 母本 updateTraceBadge（行 9243）四態文字。以 L10n 片段
@@ -663,49 +726,59 @@ final class TunerViewModel: ObservableObject {
     /// 顯示端查表）。
     private func refreshBadgeText() {
         let stats = stability.stats
+        let text: String
         if stability.frozen {
             if let stats {
                 let mean = stats.mean
                 let meanText = (mean >= 0 ? "+" : "") + String(format: "%.1f", mean)
-                stabilityBadgeText = "⏸ " + L10n.t("已定格") + " · " + L10n.t("稳定度")
+                text = "⏸ " + L10n.t("已定格") + " · " + L10n.t("稳定度")
                     + " \(stats.stability)% (\(meanText)¢)"
             } else {
-                stabilityBadgeText = "⏸ " + L10n.t("已定格") + " · " + L10n.t("轻点继续")
+                text = "⏸ " + L10n.t("已定格") + " · " + L10n.t("轻点继续")
             }
         } else if engine.isRunning, let stats {
-            stabilityBadgeText = L10n.t("稳定度") + " \(stats.stability)% · " + L10n.t("轻点定格")
+            text = L10n.t("稳定度") + " \(stats.stability)% · " + L10n.t("轻点定格")
         } else {
-            stabilityBadgeText = L10n.t("轻点定格")
+            text = L10n.t("轻点定格")
+        }
+        // 【返修批4】值不變不寫入：@Published 每寫一次即發布
+        // 一次，舊版每分析幀都重寫同一串徽章文字。
+        if render.stabilityBadgeText != text {
+            render.stabilityBadgeText = text
         }
     }
 
     // MARK: - 重置（母本 resetTunerReadout）
 
     private func resetReadout() {
-        noteText = "--"
-        octaveText = ""
-        hasNote = false
-        noteLocked = false
-        isInTune = false
-        solfegeText = "本调 --"
-        writtenText = "--"
-        concertText = "--"
-        frequencyText = "0.0 Hz"
+        needleTarget = render.needleCents
+        trail1Target = render.trail1Cents
+        trail2Target = render.trail2Cents
+        lastWasQuiescent = false
+        render.noteText = "--"
+        render.octaveText = ""
+        render.hasNote = false
+        render.noteLocked = false
+        render.isInTune = false
+        render.solfegeText = "本调 --"
+        render.writtenText = "--"
+        render.concertText = "--"
+        render.frequencyText = "0.0 Hz"
         centsRoll.reset()
-        displayCents = 0
+        render.displayCents = 0
         // 頻閃：引擎停止 → 角速度與可信度歸零（相位保留凍結，
         // StrobeView 在 micActive=false 時恆暫停）。
-        strobeRate = 0
-        strobeConfidence = 0
+        render.strobeRate = 0
+        render.strobeConfidence = 0
         // 削波警示隨停止熄滅（無輸入即無過載可言）。
-        clipWarning = false
+        render.clipWarning = false
         clipLastAboveRelease = -.infinity
         inTuneSince = nil
         hadValidPitch = false
         // 母本 reset 不清 ghost（靠 1.5 s 自然到期）；原生版停止時一併
         // 清除，避免 link 已停而淡出停在半途（視覺等價，註明差異）。
-        ghostCents = nil
-        ghostOpacity = 0
+        render.ghostCents = nil
+        render.ghostOpacity = 0
         stability.reset()
         refreshBadgeText()
     }

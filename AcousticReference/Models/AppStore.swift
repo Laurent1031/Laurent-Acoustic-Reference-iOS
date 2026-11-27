@@ -295,18 +295,20 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// 背景亮度判定（母本：色彩 hexLuminance > 0.62 → 淺；
-    /// 圖片走亮度分析）。無背景可判時回深色側（保守，與
-    /// 母本 custom 未設背景的深色底一致）。
+    /// 背景亮度判定（返修批4：相對亮度 > 0.18 → 淺色底深字，
+    /// 否則深色底白字；0.18 為黑白字對比交叉點。舊閾值 0.62
+    /// 配線性加權把中灰誤判深色，實機白字糊在灰底上）。
+    /// 無背景可判時回深色側（保守，與母本 custom 未設背景
+    /// 的深色底一致）。
     var customBackgroundIsLight: Bool {
         switch bgKind {
         case "color":
             guard let hex = Self.parseHexColor(bgColorHex) else { return false }
-            return Self.hexLuminance(hex) > 0.62
+            return Self.hexLuminance(hex) > 0.18
         case "image":
             guard let customBgData,
                   let lum = Self.imageLuminance(customBgData) else { return false }
-            return lum > 0.62
+            return lum > 0.18
         default:
             return false
         }
@@ -360,15 +362,30 @@ final class AppStore: ObservableObject {
         return value
     }
 
-    /// 母本 hexLuminance 同式（線性加權）。
+    /// 【返修批4】sRGB 相對亮度（WCAG 式，分段線性化後加權）：
+    /// 舊版母本式對 sRGB 原值直接線性加權（#969BA3 式的中灰
+    /// 算出 0.61、判深色底白字），實機灰底上白字對比只有
+    /// 約 2.8:1——截圖的整頁糊字即由此來。正確的相對亮度
+    /// 是對線性化通道加權（同色中灰約 0.33），且黑字與白字
+    /// 的對比交叉點在 L ≈ 0.179：L 高於此用深字、低於此用
+    /// 白字，任何底色都取對比更好的一側。閾值 0.18 即該
+    /// 交叉點（非母本 0.62；母本式為錯誤近似，此處以可讀
+    /// 性保證為準覆寫，見返修批4 文件）。
     static func hexLuminance(_ hex: UInt32) -> Double {
-        let r = Double((hex >> 16) & 0xFF)
-        let g = Double((hex >> 8) & 0xFF)
-        let b = Double(hex & 0xFF)
-        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+        let r = Self.linearize(Double((hex >> 16) & 0xFF) / 255)
+        let g = Self.linearize(Double((hex >> 8) & 0xFF) / 255)
+        let b = Self.linearize(Double(hex & 0xFF) / 255)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 
-    /// 圖片平均亮度：縮繪至 16×16 後逐像素同式加權平均。
+    /// sRGB 通道線性化（WCAG 分段式）。
+    private static func linearize(_ c: Double) -> Double {
+        c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+    }
+
+    /// 圖片平均亮度：縮繪至 16×16，逐像素線性化後平均
+    /// 再加權（平均線性值，而非平均 sRGB 後再線性化，
+    /// 否則亮暗相抵的高對比照片會被誤判中灰）。
     static func imageLuminance(_ data: Data) -> Double? {
         guard let image = UIImage(data: data), let cg = image.cgImage
         else { return nil }
@@ -380,13 +397,14 @@ final class AppStore: ObservableObject {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
         else { return nil }
         ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 16, height: 16))
-        var sum = 0.0
+        var rSum = 0.0, gSum = 0.0, bSum = 0.0
         for i in stride(from: 0, to: pixels.count, by: 4) {
-            sum += 0.2126 * Double(pixels[i])
-                 + 0.7152 * Double(pixels[i + 1])
-                 + 0.0722 * Double(pixels[i + 2])
+            rSum += Self.linearize(Double(pixels[i]) / 255)
+            gSum += Self.linearize(Double(pixels[i + 1]) / 255)
+            bSum += Self.linearize(Double(pixels[i + 2]) / 255)
         }
-        return sum / Double(16 * 16) / 255
+        let n = Double(16 * 16)
+        return 0.2126 * rSum / n + 0.7152 * gSum / n + 0.0722 * bSum / n
     }
 
     // MARK: - 僅執行期狀態（母本 state 層，不落盤）

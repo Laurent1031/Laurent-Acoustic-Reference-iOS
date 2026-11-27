@@ -15,6 +15,9 @@ import SwiftUI
 /// screen，0.22 s 過渡）為母本標誌行為，原生照搬。
 struct ImmersiveTunerView: View {
     @ObservedObject var viewModel: TunerViewModel
+    /// 高頻渲染狀態（返修批4）：本頁直接觀察 render（針／頻閃／
+    /// 讀數），不再經 ViewModel 訂閱——沉浸頁本身即高速顯示區。
+    @ObservedObject var render: TunerRenderState
     @ObservedObject var engine: AudioEngine
     @ObservedObject var store: AppStore
     @Environment(\.dismiss) private var dismiss
@@ -68,7 +71,7 @@ struct ImmersiveTunerView: View {
     /// 低亮版，避免夜視被綠光擊穿（原生適配註明）。
     @ViewBuilder
     private func background(theme: TunerTheme) -> some View {
-        if viewModel.isInTune {
+        if render.isInTune {
             RadialGradient(
                 colors: theme.isPit
                     ? [Color(hex: 0x5A1408), Color(hex: 0x2A0803)]
@@ -76,7 +79,7 @@ struct ImmersiveTunerView: View {
                 center: UnitPoint(x: 0.5, y: 0.85),
                 startRadius: 0, endRadius: 620
             )
-            .animation(.easeInOut(duration: 0.22), value: viewModel.isInTune)
+            .animation(.easeInOut(duration: 0.22), value: render.isInTune)
         } else if theme.isPit {
             theme.background
         } else {
@@ -157,24 +160,24 @@ struct ImmersiveTunerView: View {
     private func displayContent(theme: TunerTheme, height: CGFloat) -> some View {
         if store.tunerDisplayMode == .strobe {
             StrobeView(
-                phase: viewModel.strobePhase,
-                rate: viewModel.strobeRate,
-                anchorDate: viewModel.strobeAnchorDate,
-                confidence: viewModel.strobeConfidence,
+                phase: render.strobePhase,
+                rate: render.strobeRate,
+                anchorDate: render.strobeAnchorDate,
+                confidence: render.strobeConfidence,
                 micActive: engine.isRunning,
-                inTune: viewModel.isInTune,
+                inTune: render.isInTune,
                 theme: theme
             )
             .frame(height: height)
         } else {
             GaugeView(
-                cents: viewModel.needleCents,
-                trail1Cents: viewModel.trail1Cents,
-                trail2Cents: viewModel.trail2Cents,
-                ghostCents: viewModel.ghostCents,
-                ghostOpacity: viewModel.ghostOpacity,
+                cents: render.needleCents,
+                trail1Cents: render.trail1Cents,
+                trail2Cents: render.trail2Cents,
+                ghostCents: render.ghostCents,
+                ghostOpacity: render.ghostOpacity,
                 micActive: engine.isRunning,
-                inTune: viewModel.isInTune,
+                inTune: render.isInTune,
                 tolerance: engine.settings.toleranceCents,
                 theme: theme
             )
@@ -187,21 +190,21 @@ struct ImmersiveTunerView: View {
     private func readoutColumn(theme: TunerTheme) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(viewModel.noteText)
+                Text(render.noteText)
                     .font(.system(size: 76, weight: .bold, design: .rounded))
-                    .foregroundStyle(viewModel.isInTune ? theme.okText : .white)
-                    .opacity(viewModel.hasNote ? 1 : 0.4)
-                Text(viewModel.octaveText)
+                    .foregroundStyle(render.isInTune ? theme.okText : .white)
+                    .opacity(render.hasNote ? 1 : 0.4)
+                Text(render.octaveText)
                     .font(.system(size: 30, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.75))
             }
 
-            Text(viewModel.centsDisplayText)
+            Text(render.centsDisplayText)
                 .font(.system(size: 30, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(viewModel.isInTune ? theme.okText : .white)
+                .foregroundStyle(render.isInTune ? theme.okText : .white)
 
-            Text(viewModel.frequencyText)
+            Text(render.frequencyText)
                 .font(.system(size: 16, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(.white.opacity(0.65))
@@ -209,12 +212,12 @@ struct ImmersiveTunerView: View {
             Divider()
                 .overlay(Color.white.opacity(0.18))
 
-            Text(L10n.t(viewModel.solfegeText))
+            Text(L10n.t(render.solfegeText))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
             Text(store.pitchMode == .written
-                 ? L10n.t("实音 ") + viewModel.concertText
-                 : L10n.t("记谱 ") + viewModel.writtenText)
+                 ? L10n.t("实音 ") + render.concertText
+                 : L10n.t("记谱 ") + render.writtenText)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.6))
 

@@ -25,10 +25,6 @@ struct TunerView: View {
     /// 還原由 ImmersiveTunerView.onDisappear 統一負責。
     @State private var showImmersive = false
 
-    // 舞台左右滑（母本 wireStageSwipe）：主顯示區的推入動畫
-    // 執行期值（自 ±14pt／0.35 透明回彈至原位，240 ms）。
-    @State private var stageNudgeX: CGFloat = 0
-    @State private var stageNudgeOpacity: Double = 1
 
     // 收藏拖曳排序（母本 wireFavChipDrag）：拖動中的晶片 id、
     // 水平位移、同列讓位狀態；frames 為長按拾起瞬間的快照
@@ -104,41 +100,9 @@ struct TunerView: View {
                     }
                     .frame(height: 26)
 
-                    // 主顯示區（頻閃主模式段）：頻閃（預設主
-                    // 模式）與錶盤（輔助）共用同一高度預算。
-                    ZStack {
-                        displayContent(theme: theme, gaugeHeight: gaugeHeight)
-                    }
-                    .overlay {
-                        if viewModel.clipWarning {
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .strokeBorder(theme.clipWarning, lineWidth: 2)
-                                .allowsHitTesting(false)
-                        }
-                    }
-                    .overlay(alignment: .bottomLeading) {
-                        if viewModel.clipWarning {
-                            HStack(spacing: 4) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 9, weight: .bold))
-                                Text(L10n.t("削波"))
-                                    .font(.system(size: 10.5, weight: .bold))
-                            }
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(theme.clipWarning, in: Capsule())
-                            .padding(6)
-                            .allowsHitTesting(false)
-                            .accessibilityLabel(L10n.t("输入削波警示"))
-                        }
-                    }
+                    TunerLiveDisplay(render: viewModel.render, engine: engine, store: store, theme: theme, gaugeHeight: gaugeHeight)
 
-                    noteRow(theme: theme, noteSize: noteSize, octaveSize: octaveSize)
-
-                    if store.tunerSettings.temperament == .just && justStripExpanded {
-                        justTonicStrip(theme: theme)
-                    }
+                    TunerNoteRow(render: viewModel.render, viewModel: viewModel, store: store, theme: theme, noteSize: noteSize, octaveSize: octaveSize, justStripExpanded: $justStripExpanded)
 
                     statusHint(theme: theme)
 
@@ -146,7 +110,7 @@ struct TunerView: View {
                         targetStrip(theme: theme)
                     }
 
-                    dataCard(theme: theme)
+                    TunerDataCard(render: viewModel.render, viewModel: viewModel, engine: engine, store: store, theme: theme)
 
                     Spacer(minLength: 0)
 
@@ -167,7 +131,7 @@ struct TunerView: View {
                 .presentationBackground { theme.background }
         }
         .fullScreenCover(isPresented: $showImmersive) {
-            ImmersiveTunerView(viewModel: viewModel, engine: engine, store: store)
+            ImmersiveTunerView(viewModel: viewModel, render: viewModel.render, engine: engine, store: store)
                 .presentationBackground(.black)
         }
         // 沉浸中被切離調音模式（深連結／外部路徑）：立即關閉
@@ -186,87 +150,6 @@ struct TunerView: View {
             }
         )
         .onDisappear { viewModel.viewDidDisappear() }
-    }
-
-    // MARK: - 主顯示內容（頻閃／指針＋舞台滑動）
-
-    /// 主顯示本體：舞台左右滑手勢（母本 wireStageSwipe，行
-    /// 6857）以 simultaneousGesture 掛在本體上——|dx| ≥ 52 且
-    /// |dy| ≤ 36 時步進切換收藏樂器（左滑下一個、右滑上一個），
-    /// 並播母本的推入回彈動畫（自 dir 側 14pt／0.35 透明以
-    /// cubic-bezier(0.22,1,0.36,1) 240 ms 回位）。右上角的模式
-    /// 切換鈕是 ZStack 的另一子層、不在本體命中路徑內，點按
-    /// 不會武裝滑動（母本同：手勢只認 .tuner-stage 本體）。
-    @ViewBuilder
-    private func displayContent(theme: TunerTheme, gaugeHeight: CGFloat) -> some View {
-        Group {
-            if store.tunerDisplayMode == .strobe {
-                StrobeView(
-                    phase: viewModel.strobePhase,
-                    rate: viewModel.strobeRate,
-                    anchorDate: viewModel.strobeAnchorDate,
-                    confidence: viewModel.strobeConfidence,
-                    micActive: engine.isRunning,
-                    inTune: viewModel.isInTune,
-                    theme: theme
-                )
-            } else {
-                GaugeView(
-                    cents: viewModel.needleCents,
-                    trail1Cents: viewModel.trail1Cents,
-                    trail2Cents: viewModel.trail2Cents,
-                    ghostCents: viewModel.ghostCents,
-                    ghostOpacity: viewModel.ghostOpacity,
-                    micActive: engine.isRunning,
-                    inTune: viewModel.isInTune,
-                    tolerance: engine.settings.toleranceCents,
-                    theme: theme
-                )
-            }
-        }
-        .frame(height: gaugeHeight)
-        .offset(x: stageNudgeX)
-        .opacity(stageNudgeOpacity)
-        .simultaneousGesture(stageSwipeGesture)
-    }
-
-    private var stageSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 12)
-            .onEnded { value in
-                let dx = value.translation.width
-                let dy = value.translation.height
-                guard abs(dx) >= 52, abs(dy) <= 36 else { return }
-                let dir = dx < 0 ? 1 : -1
-                let before = store.selectedInstrumentId
-                store.stepFavoriteInstrument(dir: dir)
-                guard store.selectedInstrumentId != before else { return }
-                // 母本 gaugeWrap.animate：自 ±14pt／0.35 回彈。
-                stageNudgeX = dir > 0 ? 14 : -14
-                stageNudgeOpacity = 0.35
-                withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.24)) {
-                    stageNudgeX = 0
-                    stageNudgeOpacity = 1
-                }
-            }
-    }
-
-    /// 全屏鈕（母本 btnEnterImmersiveManual「全屏」，階段 6）：
-    /// 與演奏態開關並列於主顯示左上角空白角（同列小膠囊，
-    /// 不佔列高）；點按進橫屏沉浸（唯一合法橫屏狀態）。
-    private func immersiveButton(theme: TunerTheme) -> some View {
-        Button {
-            showImmersive = true
-            HapticsEngine.shared.tap(milliseconds: 6)
-        } label: {
-            Text(L10n.t("全屏"))
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(theme.textSecondary)
-                .padding(.horizontal, 9)
-                .frame(height: 26)
-                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-        }
-        .buttonStyle(GlassPressButtonStyle())
-        .accessibilityLabel(L10n.t("进入极简全屏调音"))
     }
 
     // MARK: - Row 1：樂器觸發鈕＋記譜/實音分段（母本行 5231）
@@ -572,102 +455,6 @@ struct TunerView: View {
         }
     }
 
-    // MARK: - Row 3：音名行＋純律主音籤（母本行 5267）
-
-    private func noteRow(theme: TunerTheme, noteSize: CGFloat, octaveSize: CGFloat) -> some View {
-        HStack(alignment: .lastTextBaseline, spacing: 12) {
-            HStack(alignment: .lastTextBaseline, spacing: 2) {
-                Text(viewModel.noteText)
-                    .font(.system(size: noteSize, weight: .bold))
-                    .foregroundStyle(noteColor(theme: theme))
-                    .shadow(
-                        color: (viewModel.isInTune || viewModel.noteLocked)
-                            ? theme.ok.opacity(theme.isDark ? 0.42 : 0.28) : .clear,
-                        radius: theme.isDark ? 11 : 7
-                    )
-                    .animation(.easeOut(duration: 0.18), value: viewModel.isInTune)
-                    .animation(.easeOut(duration: 0.18), value: viewModel.noteLocked)
-
-                Text(viewModel.octaveText)
-                    .font(.system(size: octaveSize, weight: .bold))
-                    .foregroundStyle(theme.textSecondary)
-            }
-
-            // 唱名標籤（母本 .solfege-tag；鎖定時轉 ok 色，母本行 3398）。
-            Text(L10n.t(viewModel.solfegeText))
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(viewModel.noteLocked ? theme.ok : theme.accent)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 3)
-                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-                .overlay {
-                    Capsule().strokeBorder(
-                        (viewModel.noteLocked ? theme.ok : theme.accent).opacity(0.35),
-                        lineWidth: 1
-                    )
-                }
-                .animation(.easeOut(duration: 0.18), value: viewModel.noteLocked)
-
-            // 純律主音籤（母本 #24 justTonicPill）：僅純律時顯示，
-            // 點按展開 12 音快選列；母本 haptic(6)。
-            if store.tunerSettings.temperament == .just {
-                Button {
-                    HapticsEngine.shared.tap(milliseconds: 6)
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        justStripExpanded.toggle()
-                    }
-                } label: {
-                    Text("\(L10n.t("纯律")) · \(PitchMath.noteNames[store.tunerSettings.justTonicPc])")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(theme.accent)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 3)
-                        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-                        .overlay {
-                            Capsule().strokeBorder(theme.accent.opacity(0.35), lineWidth: 1)
-                        }
-                }
-                .buttonStyle(GlassPressButtonStyle())
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    /// 純律主音快選列（母本 justTonicStrip）：12 音晶片，選後
-    /// 收合（母本行 7050）。
-    private func justTonicStrip(theme: TunerTheme) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(0..<12, id: \.self) { pc in
-                    let active = pc == store.tunerSettings.justTonicPc
-                    Button {
-                        viewModel.setJustTonic(pc)
-                        justStripExpanded = false
-                    } label: {
-                        Text(PitchMath.noteNames[pc])
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(theme.textPrimary)
-                            .padding(.horizontal, 10)
-                            .frame(height: 28)
-                            .background {
-                                GlassChipBackground(selected: active, theme: theme,
-                                                    glassOpacity: store.glassOpacity)
-                            }
-                    }
-                    .buttonStyle(GlassPressButtonStyle())
-                }
-            }
-            .padding(.vertical, 1)
-        }
-        .frame(height: 30)
-    }
-
-    private func noteColor(theme: TunerTheme) -> Color {
-        if viewModel.isInTune || viewModel.noteLocked { return theme.okText }
-        if !viewModel.hasNote { return theme.textMuted }
-        return theme.textPrimary
-    }
-
     // MARK: - 狀態提示（固定高度，防重排）
 
     private func statusHint(theme: TunerTheme) -> some View {
@@ -837,157 +624,6 @@ struct TunerView: View {
         .buttonStyle(GlassPressButtonStyle())
     }
 
-    // MARK: - Row 5：數據卡（母本四格：WRITTEN／CONCERT／CENTS／FREQ）
-
-    /// 數據卡（返修批3 重組）：四格讀數＋音高軌跡＋穩定度
-    /// 徽章收進同一張卡——母本即單一 .data-card（軌跡在卡
-    /// 內、徽章疊在軌跡右上）。批2 以前原生只有讀數與徽章、
-    /// 軌跡圖整項缺失（Laurent 點名「下面不是还有那个音高
-    /// 轨迹嘛」）。軌跡高度彈性：吃掉頁面全部剩餘高度（母本
-    /// tall-phone 規則原文：the pitch trace takes every
-    /// spare pixel），原獨立的 Spacer 隨之撤除。
-    private func dataCard(theme: TunerTheme) -> some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                metricBox(theme: theme, label: "WRITTEN " + L10n.t("记谱"), value: viewModel.writtenText)
-                metricBox(theme: theme, label: "CONCERT " + L10n.t("实音"), value: viewModel.concertText)
-                metricBox(
-                    theme: theme, label: "CENTS " + L10n.t("音分"),
-                    value: viewModel.centsDisplayText,
-                    valueColor: viewModel.isInTune ? theme.ok : theme.textPrimary
-                )
-                metricBox(theme: theme, label: "FREQ " + L10n.t("频率"), value: viewModel.frequencyText)
-            }
-
-            PitchTraceView(
-                samples: viewModel.traceSamples,
-                tolerance: engine.settings.toleranceCents,
-                frozen: viewModel.stabilityFrozen,
-                micActive: engine.isRunning,
-                badgeText: viewModel.stabilityBadgeText,
-                theme: theme,
-                onTap: { viewModel.toggleFreeze() })
-                .frame(minHeight: 52, maxHeight: 196)
-                .layoutPriority(1)
-        }
-        .padding(10)
-        .glassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(
-                    theme.isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
-                    lineWidth: 1
-                )
-        }
-    }
-
-    private func metricBox(
-        theme: TunerTheme, label: String, value: String, valueColor: Color? = nil
-    ) -> some View {
-        VStack(spacing: 3) {
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(theme.textMuted)
-                .lineLimit(1)
-            Text(value)
-                .font(.system(size: 15, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(valueColor ?? theme.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 7)
-        .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous),
-                         theme: theme, glassOpacity: store.glassOpacity)
-    }
-
-    private func droneCapsule(theme: TunerTheme) -> some View {
-        HStack(spacing: 0) {
-            Button {
-                viewModel.toggleDrone()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: drone.isPlaying ? "stop.fill" : "play.fill")
-                        .font(.system(size: 11, weight: .bold))
-                    Text(L10n.t(viewModel.droneButtonText))
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                }
-                .foregroundStyle(drone.isPlaying ? theme.ok : theme.textPrimary)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(GlassPressButtonStyle())
-
-            Rectangle()
-                .fill(theme.textMuted.opacity(0.25))
-                .frame(width: 1, height: 22)
-
-            Menu {
-                ForEach(DroneTimbre.allCases, id: \.self) { timbre in
-                    Button {
-                        store.droneTimbre = timbre
-                        // 母本 setDroneTimbre：uiSound("tick")（行 10241）。
-                        UISoundEngine.shared.play(.tick)
-                    } label: {
-                        if timbre == store.droneTimbre {
-                            Label(timbre.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(timbre.displayName)
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text("\(L10n.t("音色")) \(store.droneTimbre.displayName)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 9, weight: .bold))
-                }
-                .foregroundStyle(theme.textPrimary)
-                .padding(.horizontal, 12)
-                .frame(height: 44)
-                .contentShape(Rectangle())
-            }
-
-            Rectangle()
-                .fill(theme.textMuted.opacity(0.25))
-                .frame(width: 1, height: 22)
-
-            Button {
-                viewModel.toggleDroneFollow()
-            } label: {
-                Text(L10n.t("音高跟随"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(store.droneFollow ? theme.textPrimary : theme.textSecondary)
-                    .padding(.horizontal, 11)
-                    .frame(height: 30)
-                    .background {
-                        if store.droneFollow {
-                            Capsule()
-                                .fill(.clear)
-                                .glassEffect(
-                                    .regular.tint(theme.accent.opacity(0.38)).interactive(),
-                                    in: Capsule())
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .frame(height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(GlassPressButtonStyle())
-        }
-        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
-        .overlay {
-            Capsule().strokeBorder(
-                theme.isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.08),
-                lineWidth: 1)
-        }
-    }
-
     // MARK: - 麥克風控制
 
     private func micControls(theme: TunerTheme) -> some View {
@@ -1077,6 +713,283 @@ private struct TargetContentFrameKey: PreferenceKey {
 /// 時 accent 邊框。麥克風關閉時改繪待機波形（緩漂正弦、
 /// accent 28%＋±25¢ 參考線）。槽底：深 rgba(7,10,16,
 /// 0.72)／淺 rgba(15,23,42,0.045)，邊框白／slate 8%。
+
+// MARK: - 高速顯示區（返修批4・渲染隔離）
+
+/// 主顯示區（頻閃／指針＋削波覆蓋＋舞台滑動）：本結構直接
+/// 觀察 render（高頻），外殼 TunerView 只觀察 ViewModel
+/// （現為低頻）與 store——分析幀到達時只重算本區，不再
+/// 整頁重算（舊架構每幀整頁重算是指針卡頓與發燙的根因）。
+struct TunerLiveDisplay: View {
+    @ObservedObject var render: TunerRenderState
+    @ObservedObject var engine: AudioEngine
+    @ObservedObject var store: AppStore
+    let theme: TunerTheme
+    let gaugeHeight: CGFloat
+
+    // 舞台左右滑（母本 wireStageSwipe）：主顯示區的推入動畫
+    // 執行期值（自 ±14pt／0.35 透明回彈至原位，240 ms）。
+    @State private var stageNudgeX: CGFloat = 0
+    @State private var stageNudgeOpacity: Double = 1
+
+    var body: some View {
+        ZStack {
+            Group {
+                if store.tunerDisplayMode == .strobe {
+                    StrobeView(
+                        phase: render.strobePhase,
+                        rate: render.strobeRate,
+                        anchorDate: render.strobeAnchorDate,
+                        confidence: render.strobeConfidence,
+                        micActive: engine.isRunning,
+                        inTune: render.isInTune,
+                        theme: theme
+                    )
+                } else {
+                    GaugeView(
+                        cents: render.needleCents,
+                        trail1Cents: render.trail1Cents,
+                        trail2Cents: render.trail2Cents,
+                        ghostCents: render.ghostCents,
+                        ghostOpacity: render.ghostOpacity,
+                        micActive: engine.isRunning,
+                        inTune: render.isInTune,
+                        tolerance: engine.settings.toleranceCents,
+                        theme: theme
+                    )
+                }
+            }
+            .frame(height: gaugeHeight)
+            .offset(x: stageNudgeX)
+            .opacity(stageNudgeOpacity)
+            .simultaneousGesture(stageSwipeGesture)
+        }
+        .overlay {
+            if render.clipWarning {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(theme.clipWarning, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if render.clipWarning {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 9, weight: .bold))
+                    Text(L10n.t("削波"))
+                        .font(.system(size: 10.5, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(theme.clipWarning, in: Capsule())
+                .padding(6)
+                .allowsHitTesting(false)
+                .accessibilityLabel(L10n.t("输入削波警示"))
+            }
+        }
+    }
+
+    /// 主顯示本體的舞台左右滑手勢（母本 wireStageSwipe，行
+    /// 6857）：|dx| ≥ 52 且 |dy| ≤ 36 時步進切換收藏樂器，
+    /// 並播推入回彈動畫（自 dir 側 14pt／0.35 透明以
+    /// cubic-bezier(0.22,1,0.36,1) 240 ms 回位）。
+    private var stageSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onEnded { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) >= 52, abs(dy) <= 36 else { return }
+                let dir = dx < 0 ? 1 : -1
+                let before = store.selectedInstrumentId
+                store.stepFavoriteInstrument(dir: dir)
+                guard store.selectedInstrumentId != before else { return }
+                stageNudgeX = dir > 0 ? 14 : -14
+                stageNudgeOpacity = 0.35
+                withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.24)) {
+                    stageNudgeX = 0
+                    stageNudgeOpacity = 1
+                }
+            }
+    }
+}
+
+/// 音名行＋純律主音籤（返修批4・渲染隔離）：觀察 render，
+/// 唱名／鎖定／準音色只在本區重算。viewModel 以普通 let
+/// 傳入（只呼叫方法，不訂閱）。
+struct TunerNoteRow: View {
+    @ObservedObject var render: TunerRenderState
+    let viewModel: TunerViewModel
+    @ObservedObject var store: AppStore
+    let theme: TunerTheme
+    let noteSize: CGFloat
+    let octaveSize: CGFloat
+    @Binding var justStripExpanded: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(alignment: .lastTextBaseline, spacing: 12) {
+                HStack(alignment: .lastTextBaseline, spacing: 2) {
+                    Text(render.noteText)
+                        .font(.system(size: noteSize, weight: .bold))
+                        .foregroundStyle(noteColor)
+                        .shadow(
+                            color: (render.isInTune || render.noteLocked)
+                                ? theme.ok.opacity(theme.isDark ? 0.42 : 0.28) : .clear,
+                            radius: theme.isDark ? 11 : 7
+                        )
+                        .animation(.easeOut(duration: 0.18), value: render.isInTune)
+                        .animation(.easeOut(duration: 0.18), value: render.noteLocked)
+
+                    Text(render.octaveText)
+                        .font(.system(size: octaveSize, weight: .bold))
+                        .foregroundStyle(theme.textSecondary)
+                }
+
+            // 唱名標籤（母本 .solfege-tag；鎖定時轉 ok 色，母本行 3398）。
+            Text(L10n.t(render.solfegeText))
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(render.noteLocked ? theme.ok : theme.accent)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+                .overlay {
+                    Capsule().strokeBorder(
+                        (render.noteLocked ? theme.ok : theme.accent).opacity(0.35),
+                        lineWidth: 1
+                    )
+                }
+                .animation(.easeOut(duration: 0.18), value: render.noteLocked)
+
+            // 純律主音籤（母本 #24 justTonicPill）：僅純律時顯示，
+            // 點按展開 12 音快選列；母本 haptic(6)。
+            if store.tunerSettings.temperament == .just {
+                Button {
+                    HapticsEngine.shared.tap(milliseconds: 6)
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        justStripExpanded.toggle()
+                    }
+                } label: {
+                    Text("\(L10n.t("纯律")) · \(PitchMath.noteNames[store.tunerSettings.justTonicPc])")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(theme.accent)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+                        .overlay {
+                            Capsule().strokeBorder(theme.accent.opacity(0.35), lineWidth: 1)
+                        }
+                }
+                .buttonStyle(GlassPressButtonStyle())
+            }
+        }
+        .frame(maxWidth: .infinity)
+
+        if store.tunerSettings.temperament == .just && justStripExpanded {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(0..<12, id: \.self) { pc in
+                        let active = pc == store.tunerSettings.justTonicPc
+                        Button {
+                            viewModel.setJustTonic(pc)
+                            justStripExpanded = false
+                        } label: {
+                            Text(PitchMath.noteNames[pc])
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(theme.textPrimary)
+                                .padding(.horizontal, 10)
+                                .frame(height: 28)
+                                .background {
+                                    GlassChipBackground(selected: active, theme: theme,
+                                                        glassOpacity: store.glassOpacity)
+                                }
+                        }
+                        .buttonStyle(GlassPressButtonStyle())
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .frame(height: 30)
+        }
+    }
+    }
+
+    private var noteColor: Color {
+        if render.isInTune || render.noteLocked { return theme.okText }
+        if !render.hasNote { return theme.textMuted }
+        return theme.textPrimary
+    }
+}
+
+/// 數據卡（返修批4・渲染隔離）：四格讀數＋音高軌跡＋穩定度
+/// 徽章收進同一張卡（母本單一 .data-card）。觀察 render；
+/// 軌跡樣本取自 viewModel（每幀與 render 同步發布，見
+/// TunerViewModel.ingest 註解）。
+struct TunerDataCard: View {
+    @ObservedObject var render: TunerRenderState
+    let viewModel: TunerViewModel
+    @ObservedObject var engine: AudioEngine
+    @ObservedObject var store: AppStore
+    let theme: TunerTheme
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                metricBox(theme: theme, label: "WRITTEN " + L10n.t("记谱"), value: render.writtenText)
+                metricBox(theme: theme, label: "CONCERT " + L10n.t("实音"), value: render.concertText)
+                metricBox(
+                    theme: theme, label: "CENTS " + L10n.t("音分"),
+                    value: render.centsDisplayText,
+                    valueColor: render.isInTune ? theme.ok : theme.textPrimary
+                )
+                metricBox(theme: theme, label: "FREQ " + L10n.t("频率"), value: render.frequencyText)
+            }
+
+            PitchTraceView(
+                samples: viewModel.traceSamples,
+                tolerance: engine.settings.toleranceCents,
+                frozen: render.stabilityFrozen,
+                micActive: engine.isRunning,
+                badgeText: render.stabilityBadgeText,
+                theme: theme,
+                onTap: { viewModel.toggleFreeze() })
+                .frame(minHeight: 52, maxHeight: 196)
+                .layoutPriority(1)
+        }
+        .padding(10)
+        .glassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous), theme: theme, glassOpacity: store.glassOpacity)
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(
+                    theme.isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06),
+                    lineWidth: 1
+                )
+        }
+    }
+
+    private func metricBox(
+        theme: TunerTheme, label: String, value: String, valueColor: Color? = nil
+    ) -> some View {
+        VStack(spacing: 3) {
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(theme.textMuted)
+                .lineLimit(1)
+            Text(value)
+                .font(.system(size: 15, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(valueColor ?? theme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 7)
+        .glassBackground(in: RoundedRectangle(cornerRadius: 12, style: .continuous),
+                         theme: theme, glassOpacity: store.glassOpacity)
+    }
+}
+
+
 struct PitchTraceView: View {
     let samples: [(t: TimeInterval, cents: Double?)]
     let tolerance: Double

@@ -182,33 +182,51 @@ struct TunerTheme {
         }
     }
 
-    /// 自訂背景層（母本 bgGradientFor／wpLayer 等價）：
-    /// 純色 = 165° 線性漸層（+26 → 原色 → −54）＋左上
-    /// 徑向高光（+46 淡出）；圖片 = 等比填滿裁切。
+    /// 自訂背景層（母本 bgGradientFor／wpLayer 等價，返修批4
+    /// 可讀性重做）：
+    /// 純色 = 165° 線性漸層（+16 → 原色 → −26，舊 −54 把底
+    /// 部壓得過暗、與判定用亮度脫節）＋左上徑向高光（+32
+    /// 淡出），再疊可讀性罩層：深底（白字）加黑 0.16、淺底
+    /// （深字）加白 0.16——把中灰等死角底色推離對比交叉點，
+    /// 任選底色字都不糊。
+    /// 圖片 = 等比填滿＋放大 1.08 裁邊（防模糊邊緣透底）＋
+    /// 高斯模糊 22＋降飽和 0.82，再按基底壓罩層（深底黑
+    /// 0.38／淺底白 0.42）：照片只留氛圍，不再與文字搶
+    /// 注意力（Laurent 點名「背景要模糊，不能造成閱讀障礙」）。
     @ViewBuilder
     private func customBackgroundView(_ bg: CustomBackground) -> some View {
         switch bg {
         case .color(let hex):
             ZStack {
                 LinearGradient(
-                    colors: [Self.shade(hex, 26), Color(hex: hex),
-                             Self.shade(hex, -54)],
+                    colors: [Self.shade(hex, 16), Color(hex: hex),
+                             Self.shade(hex, -26)],
                     startPoint: UnitPoint(x: 0.08, y: 0),
                     endPoint: UnitPoint(x: 0.62, y: 1))
                 RadialGradient(
-                    colors: [Self.shade(hex, 46).opacity(0.85),
-                             Self.shade(hex, 46).opacity(0)],
+                    colors: [Self.shade(hex, 32).opacity(0.7),
+                             Self.shade(hex, 32).opacity(0)],
                     center: UnitPoint(x: 0.18, y: 0),
                     startRadius: 0, endRadius: 460)
+                // 可讀性罩層：把底色整體推向字色相反側。
+                (isDark ? Color.black.opacity(0.16)
+                        : Color.white.opacity(0.16))
             }
         case .image(let data):
             if let uiImage = UIImage(data: data) {
-                GeometryReader { geo in
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
+                ZStack {
+                    GeometryReader { geo in
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                            .scaleEffect(1.08)
+                            .saturation(0.82)
+                            .blur(radius: 22)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .clipped()
+                    }
+                    (isDark ? Color.black.opacity(0.38)
+                            : Color.white.opacity(0.42))
                 }
             } else {
                 Color.black
@@ -311,7 +329,7 @@ extension TunerTheme {
 /// 趨近實色、拉低趨近清透，全程不離折射本體。
 /// interactive 不加於本背景層：按壓形變作用在控件本體
 /// （GlassPressButtonStyle／鏡片），不加在襯底。
-struct GlassSurface<S: Shape>: View {
+struct GlassSurface<S: InsettableShape>: View {
     let shape: S
     let theme: TunerTheme
     let glassOpacity: Int
@@ -320,6 +338,19 @@ struct GlassSurface<S: Shape>: View {
         shape
             .fill(.clear)
             .glassEffect(theme.glass(glassOpacity), in: shape)
+            .overlay {
+                // 【返修批4】自訂背景下才補髮絲描邊：純色／照片
+                // 底上系統玻璃無可折射的內容、邊緣融進背景
+                // （Laurent 截圖：晶片與卡面邊框全糊）。描邊
+                // 只給輪廓，不加覆蓋層（批1 的白覆蓋教訓）；
+                // 主題底色下玻璃本體自帶邊緣光暈，不補描邊。
+                if theme.customBackground != nil {
+                    shape.strokeBorder(
+                        theme.isDark ? Color.white.opacity(0.14)
+                                     : Color.black.opacity(0.12),
+                        lineWidth: 1)
+                }
+            }
     }
 }
 
@@ -327,8 +358,8 @@ extension View {
     /// `.background(.ultraThinMaterial, in:)` 的玻璃不透明度
     /// 等價入口：全 App 玻璃背景一律經此，設定值即時驅動、
     /// 兩頁＋彈窗一致。
-    func glassBackground<S: Shape>(in shape: S, theme: TunerTheme,
-                                   glassOpacity: Int) -> some View {
+    func glassBackground<S: InsettableShape>(in shape: S, theme: TunerTheme,
+                                             glassOpacity: Int) -> some View {
         background {
             GlassSurface(shape: shape, theme: theme, glassOpacity: glassOpacity)
         }
