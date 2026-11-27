@@ -90,17 +90,23 @@ struct TunerView: View {
             // 版面實高：樂器卡 40／工具列 26／音名行 noteSize
             // ×1.21／提示 18／麥克風鈕 45.5／數據卡（上下內距
             // 20＋四格 47＋列距 8＋軌跡 traceHeight）。
-            var fixedExcl: CGFloat = 40 + 26 + noteSize * 1.21 + 18 + 45.5
-                + (20 + 47 + 8 + traceHeight)
-            var gaps = 7 // 演奏態：8 列 − 1
-            if !performance {
-                let dotsH: CGFloat = store.favoriteInstrumentIds.count >= 2 ? 8 : 0
-                fixedExcl += 34 /* 收藏列 */ + dotsH + 34 /* 目標列 */ + 44 /* Drone */
-                gaps = dotsH > 0 ? 11 : 10
-            }
-            if justStripExpanded && store.tunerSettings.temperament == .just {
-                fixedExcl += 38 // 純律主音快選列 30＋列距 8
-            }
+            // 【返修批7 CI修復】ViewBuilder 閉包內不得出現賦值陳述
+            // （其值 () 無法 conform to View）：以立即執行閉包
+            // 算出固定列總高與列距數，數值與舊版逐列實高完全一致。
+            let (fixedExcl, gaps): (CGFloat, Int) = {
+                var fixedExcl: CGFloat = 40 + 26 + noteSize * 1.21 + 18 + 45.5
+                    + (20 + 47 + 8 + traceHeight)
+                var gaps = 7 // 演奏態：8 列 − 1
+                if !performance {
+                    let dotsH: CGFloat = store.favoriteInstrumentIds.count >= 2 ? 8 : 0
+                    fixedExcl += 34 /* 收藏列 */ + dotsH + 34 /* 目標列 */ + 44 /* Drone */
+                    gaps = dotsH > 0 ? 11 : 10
+                }
+                if justStripExpanded && store.tunerSettings.temperament == .just {
+                    fixedExcl += 38 // 純律主音快選列 30＋列距 8
+                }
+                return (fixedExcl, gaps)
+            }()
             let chrome = fixedExcl + CGFloat(gaps) * rowSpacing
                 + 6 + (compact ? 8 : 10)
             let gaugeHeight = min(naturalGauge, max(80, availH - chrome))

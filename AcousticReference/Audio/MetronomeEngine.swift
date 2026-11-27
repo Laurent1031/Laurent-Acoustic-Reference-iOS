@@ -735,7 +735,7 @@ final class MetronomeEngine: ObservableObject {
         unregisterConfigurationChangeObserver()
         guard let engine = avEngine else { return }
         configurationChangeToken = NotificationCenter.default.addObserver(
-            forName: AVAudioEngine.configurationChangeNotification,
+            forName: .AVAudioEngineConfigurationChange,
             object: engine, queue: nil) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.isPlaying,
