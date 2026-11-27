@@ -264,6 +264,9 @@ struct TunerView: View {
                 }
             }
             .coordinateSpace(.named("favBar"))
+            // 拖曳排序進行中鎖住捲動（返修批 5）：拾起後捲動與
+            // 拖曳不再互搶；未拾起時捲動完全自由（見晶片手勢）。
+            .scrollDisabled(favDragId != nil)
 
             a4Stepper(theme: theme)
         }
@@ -304,7 +307,15 @@ struct TunerView: View {
                 guard Date() >= favSuppressTapUntil else { return }
                 store.selectInstrument(id: inst.id)
             }
-            .gesture(favDragGesture(for: inst))
+            // 返修批 5：改 simultaneousGesture。此前以獨佔
+            // .gesture 掛長按＋拖曳序列，SwiftUI 手勢仲裁令
+            // ScrollView 必須等此手勢失敗才捲動——慢速拖動時
+            // 長按先成立、拖曳把捲動整個吃掉，實機表現為
+            // 「收藏列滑不了、後段晶片按不到」。改並行後：
+            // 快速滑動長按自動落空、捲動即時跟手；原地按住
+            // 200 ms 拾起後由 favoritesRow 的 scrollDisabled
+            // 鎖住捲動專心排序。
+            .simultaneousGesture(favDragGesture(for: inst))
     }
 
     /// 同列讓位位移（母本 layout()：被跨越的同列晶片以

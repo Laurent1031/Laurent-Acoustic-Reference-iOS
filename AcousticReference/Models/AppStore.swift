@@ -421,6 +421,11 @@ final class AppStore: ObservableObject {
 
     private var guzhengFavMigrationDone = false
     private var loading = true
+    /// persist 冪等守衛（返修批 5）：與上次已寫盤內容相同則跳過
+    /// 寫入；背景圖分檔的已寫值追蹤（舊版內嵌圖以空 Data 為
+    /// 哨兵值，強制首輪 persist 遷移寫檔）。
+    private var lastPersistedData: Data? = nil
+    private var lastBgDataWritten: Data? = nil
 
     // MARK: - 檔案位置
 
@@ -431,6 +436,19 @@ final class AppStore: ObservableObject {
         return base.appendingPathComponent("AcousticReference/state-v1.json")
     }
 
+    /// 自訂背景圖分檔（返修批 5）：背景圖 Data 不再內嵌 state
+    /// JSON——persist() 在每次任一屬性變更時全量編碼＋原子寫盤，
+    /// 內嵌 MB 級圖檔（base64）令每次設定變更都在主線程付出
+    /// 百毫秒級編碼＋寫盤成本，是「語言選擇沒反應／反應很慢／
+    /// 其他設定也是這樣」的系統性根因。圖檔分離後 state JSON
+    /// 回到 KB 級，persist 成本可忽略；圖檔僅在其自身變更時
+    /// 寫入／刪除。舊版內嵌值於載入時沿用、首輪 persist 自動
+    /// 遷移到分檔。
+    static var customBgFileURL: URL {
+        stateFileURL.deletingLastPathComponent()
+            .appendingPathComponent("custom-bg.bin")
+    }
+
     // MARK: - 載入與遷移
 
     init() {
@@ -439,6 +457,17 @@ final class AppStore: ObservableObject {
             snapshot = loaded
         } else {
             snapshot = Self.migratedSnapshot()
+        }
+        // 背景圖解析（返修批 5）：新版在分檔 custom-bg.bin；舊版
+        // 內嵌於快照者沿用其值，首輪 persist 自動遷移寫檔。
+        let resolvedBgData: Data?
+        if let inline = snapshot.customBgData {
+            resolvedBgData = inline
+        } else if let bin = try? Data(contentsOf: Self.customBgFileURL),
+                  !bin.isEmpty {
+            resolvedBgData = bin
+        } else {
+            resolvedBgData = nil
         }
         tunerSettings = snapshot.tunerSettings
         pitchMode = snapshot.pitchMode
@@ -457,7 +486,7 @@ final class AppStore: ObservableObject {
         metronomeDefault = snapshot.metronomeDefault
         bgKind = snapshot.bgKind
         bgColorHex = snapshot.bgColor
-        customBgData = snapshot.customBgData
+        customBgData = resolvedBgData
         guzhengFavMigrationDone = snapshot.guzhengFavMigrationDone
         // 首幀前同步語言進 L10n（其後由 ContentView onChange 維護）。
         L10n.setLanguage(snapshot.language)
@@ -486,6 +515,10 @@ final class AppStore: ObservableObject {
             }
             guzhengFavMigrationDone = true
         }
+
+        // 背景圖已寫值追蹤（返修批 5）：內嵌舊值以空 Data 哨兵
+        // 強制首輪 persist 遷移；分檔載入者即其現值；無圖 nil。
+        lastBgDataWritten = snapshot.customBgData != nil ? Data() : resolvedBgData
 
         loading = false
         persist()
@@ -546,12 +579,30 @@ final class AppStore: ObservableObject {
         snapshot.metronomeDefault = metronomeDefault
         snapshot.bgKind = bgKind
         snapshot.bgColor = bgColorHex
-        snapshot.customBgData = customBgData
+        // 背景圖不內嵌（返修批 5）：快照恆寫 nil，圖檔走分檔。
+        snapshot.customBgData = nil
+        // 背景圖分檔：僅在圖檔本身變更時寫入／刪除。
+        if customBgData != lastBgDataWritten {
+            let bgURL = Self.customBgFileURL
+            if let customBgData {
+                try? FileManager.default.createDirectory(
+                    at: bgURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true)
+                try? customBgData.write(to: bgURL, options: [.atomic])
+            } else {
+                try? FileManager.default.removeItem(at: bgURL)
+            }
+            lastBgDataWritten = customBgData
+        }
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        let url = Self.stateFileURL
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: [.atomic])
+        // 冪等守衛：內容未變不重寫盤（didSet 連發時的常見情形）。
+        if data != lastPersistedData {
+            let url = Self.stateFileURL
+            try? FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: url, options: [.atomic])
+            lastPersistedData = data
+        }
         publishWidgetSnapshot()
     }
 
