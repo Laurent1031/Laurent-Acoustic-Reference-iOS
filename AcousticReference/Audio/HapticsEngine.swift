@@ -146,9 +146,15 @@ final class HapticsEngine: @unchecked Sendable {
                     try engine?.start()
                     engineStopped = false
                 } catch {
-                    engine = nil
-                    players = [:]
-                    engineStopped = false
+                    // 【返修批13】啟動失敗不作廢引擎與 player
+                    // 池：App 在後台時系統停機且拒絕啟動（節
+                    // 拍器後台逐拍呼叫都會走到這裡），舊制每
+                    // 拍把整套狀態丟棄、下拍從零重建，既白
+                    // 付成本、回前台首拍又要現建 player。保
+                    // 留對象與池、維持 engineStopped 標記，
+                    // 下一拍直接再試啟動；引擎真損壞由
+                    // playSpecs 播放失敗路徑作廢處理。
+                    return
                 }
             }
             if engine != nil { return }
@@ -325,6 +331,12 @@ final class HapticsEngine: @unchecked Sendable {
                     let player = try self.nextPlayer(key: key, events: events, engine: engine)
                     try player.start(atTime: startTime)
                 } catch {
+                    // 【返修批13】引擎處於系統停機態（後台）
+                    // 時的播放失敗不作廢狀態：保留引擎與池
+                    // 待下一拍重試啟動（見 ensureEngine 批
+                    // 13 註）。非停機態的失敗維持批 8 裁決：
+                    // 整引擎作廢、下一個呼叫從零重建。
+                    if self.engineStopped { return }
                     self.engine = nil
                     self.players = [:]
                 }

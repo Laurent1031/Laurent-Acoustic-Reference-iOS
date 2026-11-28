@@ -753,7 +753,8 @@ final class MetronomeViewModel: ObservableObject {
             // 擴展不再寫死簡體（語言與桌面小組件一致）。
             titleText: L10n.t("节拍器"),
             countInText: L10n.t("预备拍"),
-            beatText: String(format: L10n.t("第 %d 拍"), beat))
+            beatText: String(format: L10n.t("第 %d 拍"), beat),
+            tempoText: MetronomeSettings.tempoTerm(bpm))
     }
 
     private func handleBeat(_ event: BeatVisualEvent) {

@@ -313,6 +313,16 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {
                 metronomeViewModel.flushPersist()
+                // 【返修批13】節拍器運行中進後台：主動喚醒
+                // 一次震動引擎。系統在 App 進後台時會停掉
+                // Core Haptics 引擎（Apple 文件明載），此後
+                // 節拍排程在後台逐拍呼叫都會再嘗試重啟
+                // （HapticsEngine 後台啟動失敗不作廢引擎與
+                // player 池，見該檔批 13 註）；後台能否真
+                // 正出震由系統決定，App 側把可做的做滿。
+                if metronomeViewModel.isPlaying {
+                    HapticsEngine.shared.warmUp()
+                }
             } else {
                 // 【返修批7・D4】回前台：先對齊麥克風權限狀態
                 // （用戶可能在系統設定改過，App 內提示須跟上），
@@ -449,7 +459,9 @@ struct ContentView: View {
                     set: { newMode in
                         guard newMode != store.appMode else { return }
                         store.appMode = newMode
-                        HapticsEngine.shared.tap(milliseconds: 6)
+                        // 【返修批13】切換觸感已收歸
+                        // SegmentedSwitch 組件統一發，此處
+                        // 不再自帶震動防雙響。
                     }),
                 theme: theme, glassOpacity: store.glassOpacity,
                 fontSize: 13, height: 32)

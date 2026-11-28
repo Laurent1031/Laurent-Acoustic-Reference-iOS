@@ -339,15 +339,18 @@ extension TunerTheme {
         }
     }
 
-    /// 分段切換的選中膠囊底色（返修批12，Laurent 參考圖
-    /// watchOS 式「選中背景變化」）：深色＝近黑、淺色＝
-    /// 白、樂池＝深紅黑；恆比軌道深一階，選中格以底色＋
-    /// accent 前景雙重區分。
-    var segmentedPillFill: Color {
+    /// 分段切換的選中膠囊：液態玻璃本體（返修批13）。
+    /// 批 12 的扁平填充被 Laurent 指「液态感不见了」——
+    /// 改回真玻璃（.regular＋深 tint）：折射、邊緣高光、
+    /// 虹彩都在；「選中背景變化」（批 12 參考圖要求）由
+    /// tint 的深度給出（深色壓黑、淺色提白、樂池壓深
+    /// 紅），「顏色變化」由 accent 前景給出，兩者並存。
+    var segmentedPillGlass: Glass {
         switch kind {
-        case .light: return .white
-        case .dark: return Color.black.opacity(0.55)
-        case .pit: return Color(red: 12 / 255, green: 3 / 255, blue: 3 / 255).opacity(0.8)
+        case .light: return .regular.tint(.white.opacity(0.5))
+        case .dark: return .regular.tint(.black.opacity(0.4))
+        case .pit: return .regular.tint(
+            Color(red: 16 / 255, green: 4 / 255, blue: 4 / 255).opacity(0.55))
         }
     }
 
@@ -672,22 +675,36 @@ struct SegmentedSwitch<Option: Hashable>: View {
                 .background {
                     if active {
                         Capsule()
-                            .fill(theme.segmentedPillFill)
+                            .fill(.clear)
+                            .glassEffect(theme.segmentedPillGlass,
+                                         in: Capsule())
+                            .overlay {
+                                Capsule().strokeBorder(
+                                    theme.glassPressedStrokeGradient(true),
+                                    lineWidth: 1)
+                            }
                             .shadow(color: .black.opacity(0.18),
                                     radius: 3, y: 1)
-                            .padding(.vertical, 2)
-                            .padding(.horizontal, 2)
+                            .padding(.vertical, 1)
+                            .padding(.horizontal, 1)
                             .matchedGeometryEffect(id: "segPill",
                                                    in: pillNS)
                     }
                 }
             }
         }
-        .padding(3)
+        .padding(2)
         .animation(AppMotion.lens, value: selection)
         .background {
             GlassSurface(shape: Capsule(), theme: theme,
                          glassOpacity: glassOpacity)
+        }
+        // 【返修批13】切換觸感收歸組件統一發（tap 4ms）：
+        // 批 12 只有頂欄模式靠 Binding 側自帶 6ms、其餘
+        // 分段全無回饋；統一後所有分段切換同手感，模式
+        // Binding 內的舊震動已移除防雙響。
+        .onChange(of: selection) { _, _ in
+            HapticsEngine.shared.tap(milliseconds: 4)
         }
     }
 }

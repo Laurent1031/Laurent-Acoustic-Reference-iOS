@@ -94,33 +94,26 @@ struct InstrumentLibraryView: View {
 
     // MARK: - 分類分段（母本 instCatSeg；橫滑膠囊）
 
+    /// 【返修批13】分類列換裝全 App 統一的 SegmentedSwitch
+    /// （Laurent 裝批 12 後指樂器庫「这里没变」）：五分類
+    /// 等分全寬、選中＝液態玻璃膠囊＋accent 前景、切換有
+    /// 統一觸感，與記譜／實音等所有分段完全同制。五分類
+    /// 名最長四字，等分寬綽綽有餘，不再需要橫滑。
     private func categorySegment(theme: TunerTheme) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
-                ForEach(InstrumentCatalog.categories) { entry in
-                    Button {
-                        tab = entry.category
-                        // 母本：搜尋中點分類 = 瀏覽該分類，清查詢。
-                        if !searchQuery.isEmpty { searchQuery = "" }
-                    } label: {
-                        Text(L10n.localizedName(entry.name))
-                            .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundStyle(tab == entry.category ? theme.textPrimary : theme.textSecondary)
-                            .padding(.horizontal, 12)
-                            .frame(height: 30)
-                            .background {
-                                GlassChipBackground(selected: tab == entry.category,
-                                                    theme: theme,
-                                                    glassOpacity: store.glassOpacity,
-                                                    bareUnselected: true)
-                            }
-                    }
-                    .buttonStyle(GlassPressButtonStyle())
-                }
-            }
-            .padding(3)
-        }
-        .glassBackground(in: Capsule(), theme: theme, glassOpacity: store.glassOpacity)
+        SegmentedSwitch(
+            options: InstrumentCatalog.categories.map {
+                (option: $0.category,
+                 title: L10n.localizedName($0.name), symbol: nil)
+            },
+            selection: Binding(
+                get: { tab },
+                set: { newTab in
+                    tab = newTab
+                    // 母本：搜尋中點分類 = 瀏覽該分類，清查詢。
+                    if !searchQuery.isEmpty { searchQuery = "" }
+                }),
+            theme: theme, glassOpacity: store.glassOpacity,
+            fontSize: 12, height: 30)
     }
 
     // MARK: - 搜尋（母本 instSearchInput）

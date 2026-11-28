@@ -27,6 +27,10 @@ struct MetronomeActivityAttributes: ActivityAttributes {
         var countInText: String = "预备拍"
         /// 「第 N 拍」整串（App 側按語言格式組裝）。
         var beatText: String = ""
+        /// 速度詞（GRAVE／LARGO／…，返修批13 靈動島優
+        /// 化）：App 側以 MetronomeSettings.tempoTerm 組
+        /// 裝隨狀態下發，靈動島展開態與鎖屏面顯示。
+        var tempoText: String = ""
     }
 
     /// 音色顯示名（建立時定格；運行中改音色不重建活動——

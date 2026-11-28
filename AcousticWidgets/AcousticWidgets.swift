@@ -215,7 +215,9 @@ struct MetronomeLiveActivityWidget: Widget {
                         Text("\(context.state.bpm)")
                             .font(.system(size: 34, weight: .bold, design: .rounded))
                             .monospacedDigit()
-                        Text("BPM · \(context.state.timeSignature)")
+                        Text(context.state.tempoText.isEmpty
+                             ? "BPM · \(context.state.timeSignature)"
+                             : "BPM · \(context.state.timeSignature) · \(context.state.tempoText)")
                             .font(.system(size: 13, weight: .semibold))
                             .opacity(0.65)
                     }
@@ -233,7 +235,9 @@ struct MetronomeLiveActivityWidget: Widget {
                         Text("\(context.state.bpm)")
                             .font(.system(size: 26, weight: .bold, design: .rounded))
                             .monospacedDigit()
-                        Text("BPM")
+                        Text(context.state.tempoText.isEmpty
+                             ? "BPM"
+                             : "BPM · \(context.state.tempoText)")
                             .font(.system(size: 10, weight: .semibold))
                             .opacity(0.6)
                     }
