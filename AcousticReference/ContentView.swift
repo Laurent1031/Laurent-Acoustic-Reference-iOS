@@ -55,8 +55,9 @@ struct ContentView: View {
     @State private var splashRevealed = false
     @State private var brandMarkFrame: CGRect = .zero
     /// 背景按壓亮斑（返修批3 補回母本 #pageGlow；返修
-    /// 批9 多指化）：逐指一個亮斑，狀態由窗口級被動觸
-    /// 控追蹤維護（GlowTouchTracker），多指互不干擾。
+    /// 批14 邏輯重做為母本單斑事件語義，見 GlowSpotModel
+    /// 註）：狀態由窗口級被動觸控追蹤維護
+    /// （GlowTouchTracker）。
     /// 【返修批10】亮斑狀態隔離：原以 ContentView 的
     /// @State 持有，手指每移動一幀（最高 120 Hz）整棵根
     /// 視圖樹跟著重算——實機「亮斑特別卡頓」的根因。改由
@@ -118,48 +119,53 @@ struct ContentView: View {
         // handleDeepLink 處推斷逾時（ContentView.swift:239）。
         // 拆為 content／withSheets／return 三段各自推斷
         // （編譯器建議的拆分法；行為、版面皆不變）。
-        let content = VStack(spacing: 0) {
-            topBar(theme: theme)
-
-            ZStack {
-                TunerView(engine: engine, store: store, drone: droneEngine)
-                    .opacity(mode == .tuner ? 1 : 0)
-                    .allowsHitTesting(mode == .tuner)
-                    .accessibilityHidden(mode != .tuner)
-                MetronomeView(engine: metronomeEngine,
-                              viewModel: metronomeViewModel,
-                              store: store)
-                    .opacity(mode == .metronome ? 1 : 0)
-                    .allowsHitTesting(mode == .metronome)
-                    .accessibilityHidden(mode != .metronome)
-            }
-            // 【專屬系統・動效】模式切換交叉淡化（AppMotion
-            // 令牌）：舊版 opacity 硬切無過渡。
-            .animation(AppMotion.pageFade, value: mode)
-        }
-        // 【裝機返修】根層背景：頂欄區與狀態欄區一律鋪當前
-        // 主題背景（延伸至全部安全區）。此前根 VStack 無背景，
-        // 頂欄區透出的是跟隨 preferredColorScheme 的窗口底色，
-        // 與頁面主題不一致時（如深色頁面＋淺色方案）頂部會
-        // 留一條異色帶（Laurent 實機回報：切演奏態時上面留
-        // 一條白）。頁面各自的背景保留（同色疊加無副作用）。
-        .background {
+        // 【返修批14・亮斑邏輯重做】根層改三層結構（母本
+        // #pageGlow 的 z-index 語義）：主題背景 → 亮斑層 →
+        // 內容（頂欄＋雙頁）。批 9/10 把亮斑放在內容之上的
+        // overlay 以 screen 混合，自述與母本「視覺等價」——
+        // 不成立：母本亮斑在內容之下（z-index 1、僅高於頁
+        // 面背景），光從玻璃背後透上來、玻璃「接住」光、
+        // 不透明元素（文字／圖標）遮擋光；置頂則是一團光
+        // 糊在所有元素之上、與玻璃零交互（Laurent 點名
+        // 「逻辑不对」）。當年置下的障礙是雙頁各自的不透
+        // 明全屏底色——本批一併移除（根層底色本就同色全
+        // 覆蓋、頁內填色純屬重複，見兩頁批 14 註），亮斑
+        // 回到背景之上、內容之下：頂欄與雙頁的玻璃都從
+        // 背後受光，與母本逐項一致。
+        let content = ZStack {
+            // 【裝機返修】根層背景：頂欄區與狀態欄區一律鋪
+            // 當前主題背景（延伸至全部安全區）。此前根
+            // VStack 無背景，頂欄區透出跟隨
+            // preferredColorScheme 的窗口底色，與頁面主題
+            // 不一致時頂部留異色帶（Laurent 實機回報：切
+            // 演奏態時上面留一條白）。
             theme.background.ignoresSafeArea()
-        }
-        // 背景按壓亮斑層（母本 #pageGlow）：置於內容之上以
-        // screen 混合呈現「光」而非遮擋（母本在內容之下，
-        // 原生頁面背景不透明、置下不可見，故改置上＋混合
-        // 模式，視覺等價）；不參與命中測試。
-        // 【返修批9】觸控改窗口級被動追蹤（多指）：舊版根
-        // 層單一 DragGesture 只跟一根手指、第一指抬起即
-        // 整體熄光，多指必卡（Laurent 點名）；且全域拖動
-        // 手勢與頁內一切拖動競爭，一併撤除。
-        .overlay {
+
             PageGlowView(model: glowModel, theme: theme)
+
+            VStack(spacing: 0) {
+                topBar(theme: theme)
+
+                ZStack {
+                    TunerView(engine: engine, store: store, drone: droneEngine)
+                        .opacity(mode == .tuner ? 1 : 0)
+                        .allowsHitTesting(mode == .tuner)
+                        .accessibilityHidden(mode != .tuner)
+                    MetronomeView(engine: metronomeEngine,
+                                  viewModel: metronomeViewModel,
+                                  store: store)
+                        .opacity(mode == .metronome ? 1 : 0)
+                        .allowsHitTesting(mode == .metronome)
+                        .accessibilityHidden(mode != .metronome)
+                }
+                // 【專屬系統・動效】模式切換交叉淡化（AppMotion
+                // 令牌）：舊版 opacity 硬切無過渡。
+                .animation(AppMotion.pageFade, value: mode)
+            }
         }
         .background {
-            GlowTouchTracker { touches in
-                glowModel.update(touches)
+            GlowTouchTracker { event in
+                glowModel.handle(event)
             }
         }
         .overlay(alignment: .bottom) {
@@ -497,9 +503,6 @@ struct ContentView: View {
     /// 直讀 VM 脈衝值，120 Hz 脈衝令 App 外殼整殼重算。
     /// isPlaying／文字／主題為低頻值輸入、由外殼重算時
     /// 帶入；脈衝幀只重繪膠囊本身。
-    /// 多指亮斑狀態維護（返修批9）：按著的指逐幀更新位
-    /// 置；剛離開的指轉衰減態、0.35 s 後移除，其餘指完
-    /// 全不受影響。
     private func capsule(theme: TunerTheme) -> some View {
         MetronomeCapsuleView(
             isPlaying: metronomeViewModel.isPlaying,
@@ -623,66 +626,79 @@ private struct MetronomeCapsuleView: View {
     }
 }
 
-/// 亮斑一指份（返修批9 多指化）：id 為 UITouch 物件身
-/// 份、同指存續期間穩定；fading 為離手衰減態。
-struct GlowSpot: Identifiable {
-    let id: Int
+/// 亮斑觸控事件（返修批14）：識別器逐事件回報（不再是
+/// 活躍觸點快照），與母本的 pointerdown／pointermove／
+/// pointerup 監聽逐項對應。
+enum GlowTouchEvent {
+    case began(CGPoint)
+    case moved(CGPoint)
+    case ended
+}
+
+/// 亮斑狀態（返修批14・單斑）：母本 #pageGlow 是單一元
+/// 素——全頁只有一團光。fading 為離手衰減態。
+struct GlowSpot {
     var point: CGPoint
     var fading: Bool
 }
 
-/// 亮斑狀態模型（返修批10・卡頓修復）：獨立於根視圖的
-/// 狀態持有者——觸摸更新只令 PageGlowView 重繪（幾團徑
-/// 向漸層圓），不再觸發 ContentView 整樹重算。發布帶
-/// 變更守衛：落點與狀態皆未變的事件（多指中靜止指的
-/// 重複回報）不發布。離手移除的 0.35 s 延時在本模型內
-/// 自行收尾，語義與舊 updateGlowSpots 逐項一致。隔離
-/// 設計同 AppStore：@MainActor（全部呼叫點皆在主線程
-/// ——手勢識別器回調＋main 佇列延時）；批10 首版曾試
-/// 不加隔離，CI run #59 證偽：asyncAfter 閉包捕獲非隔
-/// 離 self 觸 Swift 6「sending 'self' risks causing
-/// data races」，故定版加回 @MainActor。
+/// 亮斑狀態模型（返修批10 隔離＋返修批14 邏輯重做）：
+/// 獨立於根視圖的狀態持有者——觸摸更新只令 PageGlowView
+/// 重繪，不觸發 ContentView 整樹重算（批 10 卡頓修復，
+/// 保留）。發布帶變更守衛：落點與狀態未變的事件不發布。
+///
+/// 【批 14 邏輯重做】批 9 的「逐指一斑」是發明、非母本
+/// 邏輯：母本只有一團光，事件語義為——pointerdown（任
+/// 一指）→ 光移至該點並亮起；pointermove（任一指、亮
+/// 起期間）→ 光跟隨該指；pointerup／cancel（任一指）
+/// → 熄滅。本模型逐項照此：began 定點亮起（衰減中再
+/// 按＝原地復亮＋移點）、moved 僅亮起期間跟隨、ended
+/// 轉衰減並於 0.35 s 後移除（與母本 0.3 s 淡出銜接）。
+/// 隔離設計同 AppStore：@MainActor（呼叫點皆在主線
+/// 程——識別器回調＋main 佇列延時；批 10 CI run #59
+/// 證偽無隔離版的資料競態，故保留）。
 @MainActor
 final class GlowSpotModel: ObservableObject {
-    @Published private(set) var spots: [GlowSpot] = []
+    @Published private(set) var spot: GlowSpot?
 
-    func update(_ touches: [(id: Int, point: CGPoint)]) {
-        var next = spots
-        var changed = false
-        for touch in touches {
-            if let i = next.firstIndex(where: { $0.id == touch.id }) {
-                if next[i].point != touch.point || next[i].fading {
-                    next[i].point = touch.point
-                    next[i].fading = false
-                    changed = true
+    func handle(_ event: GlowTouchEvent) {
+        switch event {
+        case .began(let point):
+            if var current = spot {
+                if current.point != point || current.fading {
+                    current.point = point
+                    current.fading = false
+                    spot = current
                 }
             } else {
-                next.append(GlowSpot(id: touch.id, point: touch.point,
-                                     fading: false))
-                changed = true
+                spot = GlowSpot(point: point, fading: false)
             }
-        }
-        let activeIds = Set(touches.map { $0.id })
-        for i in next.indices
-        where !next[i].fading && !activeIds.contains(next[i].id) {
-            next[i].fading = true
-            changed = true
-            let id = next[i].id
+        case .moved(let point):
+            guard var current = spot, !current.fading,
+                  current.point != point else { return }
+            current.point = point
+            spot = current
+        case .ended:
+            guard var current = spot, !current.fading else { return }
+            current.fading = true
+            spot = current
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 [weak self] in
-                self?.spots.removeAll { $0.id == id && $0.fading }
+                guard let self, self.spot?.fading == true else { return }
+                self.spot = nil
             }
         }
-        if changed { spots = next }
     }
 }
 
 /// 背景按壓亮斑（母本 #pageGlow，行 1960–1980／12352–12398）：
-/// 每指一團 340×340 徑向光、1:1 跟隨。深色 screen 混合
-/// （中心 rgba(130,175,255,0.15) → 白 0.05 @42% → 透
-/// 明 @70%）；淺色 normal（白 0.55 → 0.12 → 透明）。
-/// 亮起 0.12 s、熄滅 0.3 s（單指視圖 onAppear 淡入、
-/// fading 淡出，位置永不動畫——跟隨必須 1:1）。
+/// 單團 340×340 徑向光、1:1 跟隨（返修批14 回母本單斑
+/// 語義）。深色 screen 混合（中心 rgba(130,175,255,0.15)
+/// → 白 0.05 @42% → 透明 @70%）；淺色 normal（白 0.55
+/// → 0.12 → 透明）。亮起 0.12 s、熄滅 0.3 s（視圖
+/// onAppear 淡入、fading 淡出，位置永不動畫——跟隨必
+/// 須 1:1）。本層位於根層背景之上、內容之下（批 14）：
+/// 光從玻璃背後透上來，不透明元素遮擋之。
 struct PageGlowView: View {
     /// 【返修批10】改觀察獨立模型（見 GlowSpotModel）：
     /// 觸摸幀只重繪本層。
@@ -691,7 +707,7 @@ struct PageGlowView: View {
 
     var body: some View {
         ZStack {
-            ForEach(model.spots) { spot in
+            if let spot = model.spot {
                 GlowSpotView(spot: spot, theme: theme)
             }
         }
@@ -727,12 +743,12 @@ private struct GlowSpotView: View {
     }
 }
 
-/// 多指觸控追蹤（返修批9）：被動觀察全窗觸控——自訂手
-/// 勢識別器掛在窗口上、永不進入 recognized 狀態、不取
-/// 消不延遲任何既有手勢，逐指回報當前落點（窗口座標，
-/// 與根層全局座標一致）。
+/// 觸控追蹤（返修批9 窗口級被動觀察＋返修批14 事件
+/// 化）：自訂手勢識別器掛在窗口上、永不進入 recognized
+/// 狀態、不取消不延遲任何既有手勢，逐事件回報觸控
+/// （窗口座標，與根層全局座標一致）。
 private struct GlowTouchTracker: UIViewRepresentable {
-    var onUpdate: ([(id: Int, point: CGPoint)]) -> Void
+    var onUpdate: (GlowTouchEvent) -> Void
 
     /// 【CI 修復・run #55】自訂 Coordinator 類別在場時
     /// 框架的預設 makeCoordinator（Coordinator == Void
@@ -762,7 +778,7 @@ private struct GlowTouchTracker: UIViewRepresentable {
     }
 
     final class Coordinator {
-        var onUpdate: ([(id: Int, point: CGPoint)]) -> Void = { _ in }
+        var onUpdate: (GlowTouchEvent) -> Void = { _ in }
         private var recognizer: GlowTouchRecognizer?
         private weak var window: UIWindow?
 
@@ -776,8 +792,8 @@ private struct GlowTouchTracker: UIViewRepresentable {
             recognizer.cancelsTouchesInView = false
             recognizer.delaysTouchesBegan = false
             recognizer.delaysTouchesEnded = false
-            recognizer.onUpdate = { [weak self] touches in
-                self?.onUpdate(touches)
+            recognizer.onEvent = { [weak self] event in
+                self?.onUpdate(event)
             }
             window.addGestureRecognizer(recognizer)
             self.recognizer = recognizer
@@ -803,37 +819,37 @@ private final class GlowAnchorView: UIView {
     }
 }
 
+/// 【返修批14】改逐事件回報（母本 pointer 事件語義）：
+/// 批 9 的「活躍觸點快照＋逐指建斑」令多指同按出現多
+/// 團光、且任一指靜止也恆亮——母本只有一團光：按下定
+/// 點亮起、移動跟隨、任一指離手即熄。同批多指事件以
+/// timestamp 排序逐個回報（最後一個事件定點，與母本
+/// 後到事件覆寫同一元素的行為一致）。
 private final class GlowTouchRecognizer: UIGestureRecognizer {
-    var onUpdate: (([(id: Int, point: CGPoint)]) -> Void)?
+    var onEvent: ((GlowTouchEvent) -> Void)?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesBegan(touches, with: event)
-        report(event)
+        for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
+            onEvent?(.began(touch.location(in: view)))
+        }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesMoved(touches, with: event)
-        report(event)
+        for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
+            onEvent?(.moved(touch.location(in: view)))
+        }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesEnded(touches, with: event)
-        report(event)
+        if !touches.isEmpty { onEvent?(.ended) }
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesCancelled(touches, with: event)
-        report(event)
-    }
-
-    private func report(_ event: UIEvent) {
-        guard let view else { return }
-        let active = (event.allTouches ?? []).filter {
-            $0.phase == .began || $0.phase == .moved || $0.phase == .stationary
-        }
-        onUpdate?(active.map {
-            (id: ObjectIdentifier($0).hashValue, point: $0.location(in: view))
-        })
+        if !touches.isEmpty { onEvent?(.ended) }
     }
 }
 

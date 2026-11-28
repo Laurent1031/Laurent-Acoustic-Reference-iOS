@@ -59,8 +59,9 @@ struct MetronomeView: View {
             let compact = geo.size.height < 660
 
             ZStack {
-                theme.background.ignoresSafeArea()
-
+                // 【返修批14】本頁的全屏底色填層移除：理由
+                // 同 TunerView 批 14 註（根層同色全覆蓋＋亮
+                // 斑層須在底色之上、內容之下）。
                 VStack(spacing: compact ? 5 : 9) {
                     hintRow(theme: theme, compact: compact)
                     controlRow(theme: theme, compact: compact)

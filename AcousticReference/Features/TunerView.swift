@@ -149,8 +149,12 @@ struct TunerView: View {
             let gaugeHeight = min(naturalGauge, max(48, availH - chrome))
 
             ZStack {
-                theme.background.ignoresSafeArea()
-
+                // 【返修批14】本頁的全屏底色填層移除：根層
+                // （ContentView）已同色全覆蓋，且亮斑層須位
+                // 於底色之上、本頁內容之下（母本 #pageGlow
+                // 語義）——頁內再鋪不透明底色會把亮斑整層
+                // 遮死（批 9/10 因此被迫把亮斑置頂、邏輯
+                // 錯誤，見 ContentView 批 14 註）。
                 VStack(spacing: rowSpacing) {
                     headerRow(theme: theme)
 
