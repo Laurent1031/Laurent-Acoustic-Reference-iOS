@@ -434,20 +434,26 @@ struct ContentView: View {
             }
             .frame(height: 36)
 
-            GlassSegmentedControl(
-                options: [
-                    (option: AppMode.tuner, title: L10n.t("调音"), symbol: "tuningfork"),
-                    (option: AppMode.metronome, title: L10n.t("节拍"), symbol: "metronome"),
-                ],
-                selection: Binding(
-                    get: { store.appMode },
-                    set: { newMode in
-                        guard newMode != store.appMode else { return }
-                        store.appMode = newMode
-                        HapticsEngine.shared.tap(milliseconds: 6)
-                    }),
-                theme: theme, glassOpacity: store.glassOpacity,
-                fontSize: 13, height: 32, equalWidth: true)
+            // 【返修批11・全原生化】Laurent 定版「全部都要
+            // 苹果原生生态」：主模式切換改系統原生分段
+            // Picker（iOS 27 液態玻璃鏡片由系統提供，位
+            // 置／拖動／形變皆系統保證），自製 GlassSeg-
+            // mentedControl 全 App 退役（其鏡片定位在批
+            // 10 實機全體右移約半格，見 TunerTheme 註）。
+            Picker("", selection: Binding(
+                get: { store.appMode },
+                set: { newMode in
+                    guard newMode != store.appMode else { return }
+                    store.appMode = newMode
+                    HapticsEngine.shared.tap(milliseconds: 6)
+                })) {
+                Label(L10n.t("调音"), systemImage: "tuningfork")
+                    .tag(AppMode.tuner)
+                Label(L10n.t("节拍"), systemImage: "metronome")
+                    .tag(AppMode.metronome)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
         }
         .padding(.horizontal, 16)
         .padding(.top, 6)

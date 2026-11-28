@@ -72,15 +72,18 @@ private struct SettingsChips<Option: Hashable>: View {
     @Binding var selection: Option
 
     var body: some View {
-        // 【裝機返修】改液態玻璃鏡片切換（GlassSegmentedControl，
-        // 全 App 選項控件統一）；等寬分配沿舊版形制。
-        GlassSegmentedControl(
-            options: options.map {
-                (option: $0.value, title: $0.label, symbol: nil)
-            },
-            selection: $selection,
-            theme: theme, glassOpacity: glassOpacity,
-            fontSize: 12.5, height: 30, equalWidth: true)
+        // 【返修批11・全原生化】改系統原生分段 Picker
+        // （iOS 27 系統液態玻璃鏡片），自製 GlassSeg-
+        // mentedControl 退役（批10 實機鏡片定位全體右
+        // 移約半格，見 TunerTheme 註）。等寬分配由系
+        // 統分段控件原生提供。
+        Picker("", selection: $selection) {
+            ForEach(options, id: \.value) { item in
+                Text(item.label).tag(item.value)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
     }
 }
 
@@ -124,9 +127,9 @@ struct PreferencesView: View {
 
     /// 容差選項（審計修復）：固定三檔之外，草稿值若為匯入等
     /// 路徑帶入的任意值（如網頁版常見的 2.5），動態插入一檔
-    /// 令鏡片與選中態如實對應生效值——此前 GlassSegmentedControl
-    /// 找不到匹配時回退第一格，顯示「严苛 ±1.5¢」而實際生效
-    /// 2.5，顯示與生效不一致（數據本身不丟）。
+    /// 令選中態如實對應生效值——此前分段控件找不到匹配時
+    /// 回退第一格，顯示「严苛 ±1.5¢」而實際生效 2.5，顯示
+    /// 與生效不一致（數據本身不丟）。
     private var toleranceOptions: [(Double, String)] {
         var options: [(Double, String)] = [
             (1.5, L10n.t("严苛 ±1.5¢")),
@@ -582,18 +585,18 @@ struct SystemSettingsView: View {
                     .monospacedDigit()
                     .foregroundStyle(theme.textPrimary)
             }
-            // 【返修批9】換液態玻璃滑塊＋draft 節流提交：
-            // 數值與拇指逐幀跟指（本地 draft），全域玻璃
-            // 以 20 Hz 節流跟隨、放手終提交——拖動不再卡
-            // 頓（根因見 glassDraft 註解）。滑塊自身軌道
-            // 以 draft 值預覽，濃淡即時可見。
-            GlassSlider(value: $glassDraft, range: 8...96, step: 1,
-                        theme: theme,
-                        glassOpacity: Int(glassDraft.rounded()),
-                        accessibilityText: "\(Int(glassDraft.rounded()))%") { editing in
+            // 【返修批9】draft 節流提交：數值逐幀跟指（本地
+            // draft），全域玻璃以 20 Hz 節流跟隨、放手終提
+            // 交——拖動不再卡頓（根因見 glassDraft 註解）。
+            // 【返修批11・全原生化】滑塊改系統原生 Slider
+            // （iOS 27 玻璃拇指由系統提供），自製 Glass-
+            // Slider 退役；draft／節流接線原樣保留。
+            Slider(value: $glassDraft, in: 8...96, step: 1) { editing in
                 glassEditing = editing
                 if !editing { commitGlassDraft(final: true) }
             }
+            .tint(theme.accent)
+            .accessibilityValue("\(Int(glassDraft.rounded()))%")
             .onChange(of: glassDraft) { _, _ in
                 if glassEditing { commitGlassDraft(final: false) }
             }
@@ -818,15 +821,16 @@ struct SystemSettingsView: View {
                           title: L10n.t("蓝牙延迟补偿"),
                           sub: L10n.t("用蓝牙耳机时把节拍画面延后，与声音对齐"))
             HStack(spacing: 10) {
-                // 【返修批9】同不透明度：液態玻璃滑塊＋
-                // draft 節流提交（舊版逐幀直寫節拍器 VM
-                // 設定，整頁連同玻璃逐幀重繪、拖動卡頓）。
-                GlassSlider(value: $bluetoothDraft, range: 0...300, step: 10,
-                            theme: theme, glassOpacity: store.glassOpacity,
-                            accessibilityText: "\(Int(bluetoothDraft.rounded())) ms") { editing in
+                // 【返修批9】同不透明度：draft 節流提交（舊
+                // 版逐幀直寫節拍器 VM 設定，整頁連同玻璃逐
+                // 幀重繪、拖動卡頓）。
+                // 【返修批11・全原生化】改系統原生 Slider。
+                Slider(value: $bluetoothDraft, in: 0...300, step: 10) { editing in
                     bluetoothEditing = editing
                     if !editing { commitBluetoothDraft(final: true) }
                 }
+                .tint(theme.accent)
+                .accessibilityValue("\(Int(bluetoothDraft.rounded())) ms")
                 .onChange(of: bluetoothDraft) { _, _ in
                     if bluetoothEditing { commitBluetoothDraft(final: false) }
                 }

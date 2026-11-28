@@ -355,15 +355,16 @@ extension TunerTheme {
     /// 內容承載，不再靠染色硬撐。
     func glass(_ opacity: Int, interactive: Bool = false) -> Glass {
         let t = min(1, max(0, (Double(opacity) - 8) / 88))
-        // 【返修批10】透明優先（Laurent 裝機點名「要的是
-        // 特別的透明」、批9 實機大面仍讀作扁平灰）：本體
-        // 由 .regular 改 .clear 變體（與鏡片同源，幾乎無
-        // 漫射霧面），tint 曲線同步壓低 0.05+0.37t →
-        // 0.02+0.22t——玻璃感改由折射本體＋描邊／高光／
-        // 虹彩三層光學（GlassSurface）與頁底環境光承載，
-        // 不再靠染色。預設 50 → tint ≈0.125；8 → 0.02 趨
-        // 近純水晶；96 → 0.24＋底填充 0.22 仍可讀。
-        let base = Glass.clear.tint(glassTintBase.opacity(0.02 + 0.22 * t))
+        // 【返修批11・折射恢復】批10 的透明優先過頭：本
+        // 體改 .clear＋tint 壓至 0.02+0.22t 後，實機玻
+        // 璃本體幾乎消失、折射隨之不見（Laurent 點名
+        // 「折射也不见了」）。定版：本體回 .regular（系
+        // 統玻璃的折射與漫射本體），tint 曲線以批9 他
+        // 認可「有一部分」的 0.05+0.37t 為錨、略降至
+        // 0.04+0.30t（預設 50 → ≈0.183）；批10 的描邊
+        // ／穹光／內影立體層保留。透明與折射的平衡點
+        // 在此，不再往 .clear 方向調。
+        let base = Glass.regular.tint(glassTintBase.opacity(0.04 + 0.30 * t))
         return interactive ? base.interactive() : base
     }
 
@@ -471,11 +472,11 @@ extension TunerTheme {
     }
 
     /// 不透明度底填充 alpha：與 glass() 的 tint 共同受
-    /// 「玻璃不透明度」驅動。【返修批10】0.34t → 0.22t
-    /// （透明優先，見 glass() 註）。
+    /// 「玻璃不透明度」驅動。【返修批11】0.22t → 0.30t
+    /// （隨 glass() 折射恢復同步回升，見 glass() 註）。
     func glassBaseFillAlpha(_ opacity: Int) -> Double {
         let t = min(1, max(0, (Double(opacity) - 8) / 88))
-        return 0.22 * t
+        return 0.30 * t
     }
 }
 
@@ -602,213 +603,20 @@ extension View {
     }
 }
 
-// MARK: - 液態玻璃切換效果（裝機返修批・Laurent 指定）
+// MARK: - 自製分段／滑桿控件（返修批11 全面退役）
 
-/// 液態玻璃分段控件（返修批3・嚴格 iOS 27 標準重做）：
-/// 整控件置於 GlassEffectContainer 內，選中鏡片為無 tint
-/// 的系統真玻璃（theme.lensGlass、.interactive()）＋
-/// glassEffectID——切換時玻璃本體在格位間液態 morph（邊
-/// 緣折射由系統按 iOS 27 規範算出）。拖動手勢掛整控件
-/// （任一格起手皆可拖，批2 已驗證的命中方式）：鏡片 1:1
-/// 跟指、越格心即切換；速度感知各向異性拉伸疊加形變
-/// （快拖拉長至 +13%、縱向回縮），放手 spring 歸位、拉
-/// 伸回彈——形變不依賴命中鏡片本體，整控件拖動皆有。
-/// 批2 的白 tint 鏡片（深 0.26／淺 0.85）在實機是不透
-/// 明扁平灰膠囊，Laurent 點名「不是真液態玻璃、不是透
-/// 明」——本版去 tint、去重陰影，鏡片幾何嚴格內縮於軌
-/// 道（寬 segW−4、高 height−2、上下置中；批2 鏡片與軌
-/// 道同高＋陰影外擴，設定頁實機凸出軌道）。選中字
-/// textPrimary 粗體、未選中 textSecondary，全主題字色
-/// （不讀裝置外觀，sheet 內亦成立）。版面恆等分，呼叫
-/// 端須給定寬度。
-struct GlassSegmentedControl<Option: Hashable>: View {
-    let options: [(option: Option, title: String, symbol: String?)]
-    @Binding var selection: Option
-    let theme: TunerTheme
-    let glassOpacity: Int
-    var fontSize: CGFloat = 13
-    var height: CGFloat = 30
-    /// 舊參數保留相容（版面恆等分，見類註解）。
-    var equalWidth: Bool = false
-    @Namespace private var glassNS
-    @State private var dragX: CGFloat?
-    @State private var pressing = false
-    @State private var stretch: CGFloat = 0
-    @State private var lastDragX: CGFloat?
-    @State private var lastDragT: TimeInterval = 0
+/// 【返修批11・全原生化】GlassSegmentedControl 與 GlassSlider 已刪：
+/// Laurent 定版「全部都要苹果原生生态」——分段一律系統原生
+/// Picker(.segmented)、滑桿一律系統原生 Slider（iOS 27 玻璃鏡片／
+/// 拇指由系統提供、位置與形變由系統保證）。批10 自製鏡片曾因
+/// GlassEffectContainer 佈局語義令定位原點漂移、實機全體右移約
+/// 半格，屬自製控件的結構性風險，不再自製同類控件。
 
-    private var selectedIndex: Int {
-        options.firstIndex { $0.option == selection } ?? 0
-    }
-
-    var body: some View {
-        GeometryReader { geo in
-            let count = max(1, options.count)
-            let segW = (geo.size.width - 6) / CGFloat(count)
-            let selCenter = 3 + segW * (CGFloat(selectedIndex) + 0.5)
-            let lensCenter = dragX.map {
-                min(max($0, 3 + segW / 2), geo.size.width - 3 - segW / 2)
-            } ?? selCenter
-            ZStack(alignment: .leading) {
-                // 【返修批10・選中文字重影修復】GlassEffect
-                // Container 只包鏡片本體，標籤列移到容器之
-                // 外（鏡片之上）：批9 標籤與鏡片同處容器
-                // 內，鏡片折射取樣把身後的選中標籤一併採
-                // 入，實機選中文字呈「本體＋折射鬼影」上
-                // 下錯位雙影（Laurent 截圖三處分段皆然）。
-                // 標籤離開玻璃背景層後不再被取樣，雙影消
-                // 除；morph 只作用於容器內的鏡片，不受影響。
-                GlassEffectContainer(spacing: 0) {
-                    ZStack(alignment: .leading) {
-                        // 鏡片：無 tint 真玻璃（.clear，見
-                        // theme.lensGlass）＋glassEffectID
-                        // morph；幾何內縮（寬 segW−4、高
-                        // height−2、垂直置中）。拖動形變：
-                        // 系統 .interactive() 本體形變＋速度
-                        // 拉伸疊加（批10 改水滴形變，見
-                        // segDrag）。
-                        Capsule()
-                            .fill(.clear)
-                            .frame(width: segW - 4, height: height - 2)
-                            .glassEffect(theme.lensGlass, in: Capsule())
-                            .glassEffectID("lens", in: glassNS)
-                            // 【返修批9】鏡片補漸變高光描邊
-                            // （規範一/三）：.clear 鏡片本體
-                            // 在深色軌道上邊緣定義不足；1px
-                            // 非對稱描邊給鏡面邊，拖動中
-                            // （pressing）提亮＝激活態內部冷光。
-                            .overlay {
-                                Capsule().strokeBorder(
-                                    theme.glassPressedStrokeGradient(pressing),
-                                    lineWidth: 1)
-                            }
-                            .scaleEffect(x: 1 + stretch, y: 1 - stretch * 0.35)
-                            .offset(x: lensCenter - (segW - 4) / 2, y: 0)
-                            .animation(pressing ? nil
-                                       : AppMotion.lens,
-                                       value: lensCenter)
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
-                }
-                HStack(spacing: 0) {
-                        ForEach(options, id: \.option) { item in
-                            let active = selection == item.option
-                            HStack(spacing: 5) {
-                                if let symbol = item.symbol {
-                                    Image(systemName: symbol)
-                                        .font(.system(size: fontSize - 1,
-                                                      weight: .semibold))
-                                }
-                                Text(item.title)
-                                    .font(.system(size: fontSize,
-                                                  weight: active ? .bold : .medium))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
-                            }
-                            .foregroundStyle(active ? theme.textPrimary
-                                                    : theme.textSecondary)
-                            .frame(width: segW, height: height)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if selection != item.option {
-                                    selection = item.option
-                                    HapticsEngine.shared.tap(milliseconds: 4)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 3)
-                    .padding(.vertical, 3)
-            }
-            .contentShape(Capsule())
-            .gesture(segDrag(segW: segW, count: count))
-        }
-        .frame(height: height + 6)
-        .background {
-            GlassSurface(shape: Capsule(), theme: theme,
-                         glassOpacity: glassOpacity)
-        }
-        .accessibilityElement()
-        .accessibilityLabel(options[selectedIndex].title)
-        .accessibilityAdjustableAction { direction in
-            let next: Int
-            switch direction {
-            case .increment:
-                next = min(selectedIndex + 1, options.count - 1)
-            case .decrement:
-                next = max(selectedIndex - 1, 0)
-            @unknown default:
-                return
-            }
-            if options[next].option != selection {
-                selection = options[next].option
-            }
-        }
-        // 【五維審計 F-4／專屬規範 S-6】手勢被系統取消
-        // （來電/系統手勢搶占）時 onEnded 不送達：視圖
-        // 消失時歸零按壓/拖曳態，防鏡片動畫恆 nil、
-        // 偏移凍結。
-        .onDisappear {
-            pressing = false
-            dragX = nil
-            stretch = 0
-            lastDragX = nil
-            lastDragT = 0
-        }
-    }
-
-    /// 整控件拖動（坐標為控件局部系，location.x 即軌道
-    /// 座標）：鏡片 1:1 跟指、越格心即切換＋輕觸感。
-    /// 【返修批10・水滴形變】Laurent 點名鏡片拖動要「像
-    /// 拖動水滴一樣、有形變」：速度拉伸上限 +13%→+22%
-    /// （縱向回縮 −0.35 倍率不變），且拉伸值經低阻尼
-    /// spring（0.22/0.55）平滑跟隨——形變滯後於手指、
-    /// 帶過衝晃動，即表面張力的黏滯感；放手以果凍彈簧
-    /// （AppMotion.jelly）歸零，形變流體回彈。玻璃本體
-    /// 的形變/折射由 .interactive()＋glassEffectID
-    /// morph 在切換與歸位時給出（系統 iOS 27 行為）。
-    private func segDrag(segW: CGFloat, count: Int) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
-            .onChanged { value in
-                pressing = true
-                dragX = value.location.x
-                let now = value.time.timeIntervalSince1970
-                if let lx = lastDragX, now > lastDragT {
-                    let v = abs(value.location.x - lx) / CGFloat(now - lastDragT)
-                    let target = min(0.22, v / 3400)
-                    if abs(target - stretch) > 0.005 {
-                        withAnimation(.spring(response: 0.22,
-                                              dampingFraction: 0.55)) {
-                            stretch = target
-                        }
-                    }
-                }
-                lastDragX = value.location.x
-                lastDragT = now
-                let idx = min(max(Int((value.location.x - 3) / segW), 0),
-                              count - 1)
-                if options[idx].option != selection {
-                    selection = options[idx].option
-                    HapticsEngine.shared.tap(milliseconds: 4)
-                }
-            }
-            .onEnded { _ in
-                pressing = false
-                lastDragX = nil
-                // 【返修批10】歸位動畫改果凍彈簧（低阻尼
-                // 帶過衝）：鏡片與形變如水滴脫手後晃動收回。
-                withAnimation(AppMotion.jelly) {
-                    dragX = nil
-                    stretch = 0
-                }
-            }
-    }
-}
 
 /// 捲動列晶片的玻璃選中態（收藏／目標／速度預置等橫滑列
 /// 內的晶片無法跨項拖動，鏡片改以逐片同款亮玻璃呈現，
 /// 與分段鏡片同語言；返修批2 起廢 accent 藍 tint 與藍
-/// 描邊，理由同 GlassSegmentedControl）。
+/// 描邊，理由同分段鏡片的去 tint 裁決）。
 struct GlassChipBackground: View {
     let selected: Bool
     let theme: TunerTheme
@@ -840,156 +648,6 @@ struct GlassChipBackground: View {
     }
 }
 
-/// 液態玻璃滑塊（返修批9・Laurent 組件規範「滑塊組
-/// 件」）：玻璃軌＋accent 填充段＋玻璃拇指，拖動時拇
-/// 指果凍形變。值經 Binding 逐幀寫回——呼叫端以
-/// draft＋節流提交隔離全域狀態（見 SettingsView 的
-/// glassDraft／bluetoothDraft），本組件只管呈現與手
-/// 勢幾何。無障礙 adjustable 逐 step 增減（以一次完
-/// 整編輯會話括住離散變更）。
-/// 【返修批10・拇指改蘋果式】Laurent 裝機點名：拇指
-/// 要蘋果系統滑桿的那種、不要圓形——改橫向膠囊
-/// 46×28（iOS 系統玻璃滑桿拇指形制），尺寸同步放大
-/// （舊圓拇指 ∅27 他評「大小不是這麼小」）；拖動形
-/// 變改水滴式：橫向拉伸 1.10＋縱向壓扁 0.90、果凍
-/// 彈簧回彈。
-struct GlassSlider: View {
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let step: Double
-    let theme: TunerTheme
-    let glassOpacity: Int
-    var accessibilityText: String = ""
-    var onEditingChanged: (Bool) -> Void = { _ in }
-
-    @State private var dragging = false
-    /// 【邏輯補查】手勢系統取消的前台回收點（見 body 尾）。
-    @Environment(\.scenePhase) private var scenePhase
-    /// 減少透明度（同 GlassSurface G9 處置）：跳過裝飾層。
-    @Environment(\.accessibilityReduceTransparency)
-    private var reduceTransparency
-
-    /// 【返修批10】蘋果式膠囊拇指尺寸（見類註解）。
-    private let thumbWidth: CGFloat = 46
-    private let thumbHeight: CGFloat = 28
-    private let trackHeight: CGFloat = 34
-
-    private var fraction: Double {
-        let span = range.upperBound - range.lowerBound
-        guard span > 0 else { return 0 }
-        return min(1, max(0, (value - range.lowerBound) / span))
-    }
-
-    var body: some View {
-        GeometryReader { geo in
-            let width = max(geo.size.width, thumbWidth + 1)
-            let thumbX = thumbWidth / 2
-                + (width - thumbWidth) * CGFloat(fraction)
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(theme.glassTintBase.opacity(
-                        theme.glassBaseFillAlpha(glassOpacity)))
-                    .frame(height: 10)
-                    .glassEffect(theme.glass(glassOpacity), in: Capsule())
-                    .overlay {
-                        if !reduceTransparency {
-                            Capsule().strokeBorder(theme.glassStrokeGradient,
-                                                   lineWidth: 1)
-                        }
-                    }
-                Capsule()
-                    .fill(LinearGradient(
-                        colors: [theme.accent.opacity(0.85),
-                                 theme.accent.opacity(0.55)],
-                        startPoint: .leading, endPoint: .trailing))
-                    .frame(width: max(thumbX, 10), height: 10)
-                Capsule()
-                    .fill(.clear)
-                    .frame(width: thumbWidth, height: thumbHeight)
-                    .glassEffect(.clear.interactive(), in: Capsule())
-                    .overlay {
-                        if !reduceTransparency {
-                            Capsule().strokeBorder(
-                                theme.glassPressedStrokeGradient(dragging),
-                                lineWidth: 1)
-                        }
-                    }
-                    .overlay {
-                        if !reduceTransparency {
-                            Capsule().fill(theme.glassRadialHighlight)
-                        }
-                    }
-                    .shadow(color: Color.black.opacity(
-                        theme.isDark ? 0.30 : 0.18),
-                            radius: 5, x: 0, y: 2)
-                    // 【返修批10】拖動水滴形變（見類註解）。
-                    .scaleEffect(x: dragging ? 1.10 : 1,
-                                 y: dragging ? 0.90 : 1)
-                    .animation(AppMotion.jelly, value: dragging)
-                    .position(x: thumbX, y: trackHeight / 2)
-            }
-            .frame(height: trackHeight)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { g in
-                        if !dragging {
-                            dragging = true
-                            onEditingChanged(true)
-                        }
-                        setValue(fromX: g.location.x, width: width)
-                    }
-                    .onEnded { _ in
-                        dragging = false
-                        onEditingChanged(false)
-                    })
-            .accessibilityElement(children: .ignore)
-            .accessibilityValue(accessibilityText)
-            .accessibilityAdjustableAction { direction in
-                onEditingChanged(true)
-                switch direction {
-                case .increment:
-                    value = min(range.upperBound, value + step)
-                case .decrement:
-                    value = max(range.lowerBound, value - step)
-                @unknown default:
-                    break
-                }
-                onEditingChanged(false)
-            }
-        }
-        .frame(height: trackHeight)
-        // 【五維審計 F-3／專屬規範 S-6】手勢被系統取消
-        // 時 onEnded 不送達：消失時回收 editing 態，防
-        // 設定頁 draft 回同步被永久擋下、尾值未提交。
-        .onDisappear {
-            if dragging {
-                dragging = false
-                onEditingChanged(false)
-            }
-        }
-        // 【邏輯補查・低】手勢被系統取消（來電橫幅搶奪等）
-        // 而視圖未消失時，onEnded 與 onDisappear 皆不送
-        // 達、dragging 殘留（拇指維持放大、設定頁 editing
-        // 旗標擋住 draft 回同步）：中斷必經場景離開
-        // active，以回前台為第二回收點，語義同上。
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active, dragging {
-                dragging = false
-                onEditingChanged(false)
-            }
-        }
-    }
-
-    private func setValue(fromX x: CGFloat, width: CGFloat) {
-        let travel = max(width - thumbWidth, 1)
-        let f = min(1, max(0, Double((x - thumbWidth / 2) / travel)))
-        let raw = range.lowerBound + f * (range.upperBound - range.lowerBound)
-        let snapped = (raw / step).rounded() * step
-        let clamped = min(range.upperBound, max(range.lowerBound, snapped))
-        if clamped != value { value = clamped }
-    }
-}
 
 extension Color {
     /// #RRGGBB（ColorPicker 自選色回寫背景用；取 sRGB 三通道）。

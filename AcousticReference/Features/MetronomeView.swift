@@ -3,10 +3,14 @@ import SwiftUI
 /// 節拍器畫面（階段 3）：版面對照 Laurent 實機截圖與母本——
 /// 提示列、預備拍／TAP 列、節拍圓點矩陣、大轉盤（BPM 里程表）＋
 /// 豎直推子、步進鈕、速度預置橫滑列、bento 選項格、START 大鈕。
-/// 【返修批10】選項改頁內玻璃選單（見 panelCard）：批9 的
-/// 系統 Menu 彈出巨型玻璃面板遮擋大半屏、勾在左側，Laurent
-/// 點名「布局很丑」並指示勾放右邊——拍號／細分／音色／預
-/// 設／漸速全改頁內底部浮出玻璃面板，選中勾統一在行右。
+/// 【返修批10】選項改頁內玻璃選單：批9 的系統 Menu 彈出
+/// 巨型玻璃面板遮擋大半屏、勾在左側，Laurent 點名「布
+/// 局很丑」並指示勾放右邊——拍號／細分／音色／預設／漸
+/// 速改頁內底部浮出面板，選中勾統一在行右。
+/// 【返修批11】批10 面板實機再被否決（玻璃疊影、遮擋、
+/// 「又难看又遮挡」），Laurent 定版「我要苹果原生的卡
+/// 片」「全部都要苹果原生生态」：選單改系統原生 sheet
+/// 卡片＋原生 List（見 panelSheet），勾仍在行右。
 struct MetronomeView: View {
     @ObservedObject var engine: MetronomeEngine
     @ObservedObject var viewModel: MetronomeViewModel
@@ -22,12 +26,13 @@ struct MetronomeView: View {
     @State private var showDeletePreset = false
     @State private var showCustomRamp = false
     @State private var showGrouping = false
-    /// 【返修批10】頁內玻璃選單的開啟態（同一時間至多一面）。
+    /// 【返修批11】選單開啟態（原生 sheet(item:) 呈現）。
     @State private var openPanel: MetroPanel?
 
-    /// 頁內選單種類（拍號／細分／音色／預設／漸速）。
-    private enum MetroPanel: Equatable {
+    /// 選單種類（拍號／細分／音色／預設／漸速）。
+    private enum MetroPanel: String, Equatable, Identifiable {
         case signature, subdivision, timbre, preset, ramp
+        var id: String { rawValue }
     }
 
     var body: some View {
@@ -103,25 +108,7 @@ struct MetronomeView: View {
                 .padding(.top, 2)
                 .padding(.bottom, 8)
 
-                // 【返修批10】頁內玻璃選單：底部浮出面板＋
-                // 淡暗幕（點幕或選項即收），取代系統 Menu
-                // 彈出層（見類註解）。
-                if let panel = openPanel {
-                    Color.black.opacity(theme.isDark ? 0.28 : 0.14)
-                        .ignoresSafeArea()
-                        .contentShape(Rectangle())
-                        .onTapGesture { openPanel = nil }
-                        .transition(.opacity)
-                    VStack {
-                        Spacer()
-                        panelCard(panel, theme: theme)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 10)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
             }
-            .animation(AppMotion.capsule, value: openPanel)
         }
         .onChange(of: engine.lastError) { _, error in
             if let error { viewModel.showToast(error) }
@@ -172,6 +159,16 @@ struct MetronomeView: View {
             GroupingSheet(viewModel: viewModel, isPresented: $showGrouping)
                 .preferredColorScheme(store.effectiveForcedColorScheme)
                 .presentationBackground { theme.background }
+        }
+        // 【返修批11・原生卡片】五格選單的系統 sheet（見
+        // panelSheet）：系統材質卡片＋拖動指示器，拍號／
+        // 預設項多給 .large 檔位。
+        .sheet(item: $openPanel) { panel in
+            panelSheet(panel, theme: theme)
+                .preferredColorScheme(store.effectiveForcedColorScheme)
+                .presentationDetents(panel == .signature || panel == .preset
+                                     ? [.medium, .large] : [.medium])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -805,9 +802,9 @@ struct MetronomeView: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 sigTile(theme: theme, compact: compact)
-                // 【返修批10】細分／音色／預設／漸速的選項
-                // 本體移入頁內面板（panelCard），格位只剩
-                // 開關鈕（舊版 Menu 內容閉包全撤）。
+                // 【返修批11】細分／音色／預設／漸速的選項
+                // 本體移入原生 sheet 卡片（panelSheet），
+                // 格位只剩開關鈕。
                 menuTile(theme: theme, compact: compact, title: L10n.t("细分"),
                          value: L10n.t(MetronomeSettings.subdivisionOptions
                             .first { $0.value == viewModel.settings.subdivision }?.label ?? ""),
@@ -846,10 +843,20 @@ struct MetronomeView: View {
         }
     }
 
-    /// 頁內面板開關（同格再點即收；輕震與分段切換同級）。
-    private func togglePanel(_ panel: MetroPanel) {
-        openPanel = openPanel == panel ? nil : panel
+    /// 開啟原生選單卡片（輕震與分段切換同級）。
+    private func presentPanel(_ panel: MetroPanel) {
+        openPanel = panel
         HapticsEngine.shared.tap(milliseconds: 4)
+    }
+
+    /// 關卡後續動作（保存／刪除預設、自訂漸速表單）：
+    /// sheet 收起動畫期間再呈現 alert／sheet 會被系統
+    /// 丟棄，延 0.45 s 待收起完成才觸發。
+    private func closePanel(then action: @escaping () -> Void) {
+        openPanel = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            action()
+        }
     }
 
     /// 漸速 Menu 勾選態（審計修復）：此前 checked 恆 false、
@@ -879,9 +886,9 @@ struct MetronomeView: View {
         let s = viewModel.settings
         let value = "\(s.beatsPerBar)/\(s.beatUnit)" + (s.isDottedBeat ? " ♩." : "")
         return ZStack(alignment: .topTrailing) {
-            // 【返修批10】Menu 改頁內面板開關鈕（見 panelCard）。
+            // 【返修批11】改原生 sheet 卡片開關鈕（見 panelSheet）。
             Button {
-                togglePanel(.signature)
+                presentPanel(.signature)
             } label: {
                 tileLabel(theme: theme, compact: compact, title: L10n.t("拍号"), value: value)
             }
@@ -902,25 +909,25 @@ struct MetronomeView: View {
         }
     }
 
-    /// 【返修批10】格位鈕（舊 Menu 版退役）：點按開／收
-    /// 對應的頁內面板，外觀與舊 label 逐項一致。
+    /// 【返修批11】格位鈕：點按開啟對應的原生選單卡片，
+    /// 外觀與舊 label 逐項一致。
     private func menuTile(theme: TunerTheme, compact: Bool,
                           title: String, value: String,
                           panel: MetroPanel) -> some View {
         Button {
-            togglePanel(panel)
+            presentPanel(panel)
         } label: {
             tileLabel(theme: theme, compact: compact, title: title, value: value)
         }
         .buttonStyle(GlassPressButtonStyle())
     }
 
-    /// 【返修批10】寬列鈕（舊 Menu 版退役），同 menuTile。
+    /// 【返修批11】寬列鈕，同 menuTile。
     private func wideMenuRow(theme: TunerTheme, compact: Bool,
                              title: String, value: String,
                              panel: MetroPanel) -> some View {
         Button {
-            togglePanel(panel)
+            presentPanel(panel)
         } label: {
             HStack {
                 Text(title)
@@ -966,9 +973,9 @@ struct MetronomeView: View {
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    // MARK: - 頁內玻璃選單（返修批10）
+    // MARK: - 原生選單卡片（返修批11）
 
-    /// 面板標題（與格位標題同串）。
+    /// 卡片標題（與格位標題同串）。
     private func panelTitle(_ panel: MetroPanel) -> String {
         switch panel {
         case .signature: return L10n.t("拍号")
@@ -979,107 +986,81 @@ struct MetronomeView: View {
         }
     }
 
-    /// 面板卡：玻璃圓角卡＋標題列（標題＋關閉鈕）＋選項
-    /// 內容。選中勾恆在行右（Laurent 指示），行高 44。
-    private func panelCard(_ panel: MetroPanel, theme: TunerTheme) -> some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(panelTitle(panel))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.textMuted)
-                Spacer()
-                Button {
-                    openPanel = nil
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(theme.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(GlassPressButtonStyle())
-                .accessibilityLabel(L10n.t("关闭"))
+    /// 【返修批11・蘋果原生卡片】系統 sheet 內容：原生
+    /// NavigationStack＋List（系統材質、原生行高與分隔
+    /// 線、insetGrouped 卡片分區），右上「完成」鈕、亦
+    /// 可下滑收起。取代批10 自製玻璃面板——其玻璃把底
+    /// 層內容折射疊進卡內（實機截圖：預設／漸速行與
+    /// START 鈕全疊影），Laurent 點名「又难看又遮挡」，
+    /// 定版全原生生態。
+    private func panelSheet(_ panel: MetroPanel, theme: TunerTheme) -> some View {
+        NavigationStack {
+            List {
+                panelListContent(panel, theme: theme)
             }
-            .padding(.leading, 16)
-            .padding(.trailing, 8)
-            .padding(.top, 10)
-            .padding(.bottom, 2)
-            panelContent(panel, theme: theme)
-                .padding(.bottom, 6)
+            .listStyle(.insetGrouped)
+            .navigationTitle(panelTitle(panel))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.t("完成")) { openPanel = nil }
+                }
+            }
         }
-        .glassBackground(in: RoundedRectangle(cornerRadius: 20, style: .continuous),
-                         theme: theme, glassOpacity: store.glassOpacity)
     }
 
-    /// 選項行：文字左、勾右（選中才顯示，accent 色粗勾）；
-    /// 選中行字重升 semibold。destructive 行走警示色。
-    private func panelRow(theme: TunerTheme, title: String, checked: Bool,
+    /// 原生選項行：文字左、勾右（選中才顯示，accent 色
+    /// 粗勾，與 iOS 設置的選擇列同形）；destructive 行
+    /// 走系統紅。
+    private func sheetRow(theme: TunerTheme, title: String, checked: Bool,
                           destructive: Bool = false,
                           action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Text(title)
-                    .font(.system(size: 15, weight: checked ? .semibold : .regular))
-                    .foregroundStyle(destructive ? theme.clipWarning : theme.textPrimary)
+                    .foregroundStyle(destructive ? Color.red : theme.textPrimary)
                     .lineLimit(1)
                 Spacer()
                 if checked {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(theme.accent)
                 }
             }
-            .padding(.horizontal, 16)
-            .frame(height: 44)
             .contentShape(Rectangle())
         }
-        .buttonStyle(GlassPressButtonStyle())
-    }
-
-    /// 面板分區小標題（預設的內建／自訂）。
-    private func panelSectionHeader(_ title: String, theme: TunerTheme) -> some View {
-        Text(title)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(theme.textMuted)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 2)
     }
 
     @ViewBuilder
-    private func panelContent(_ panel: MetroPanel, theme: TunerTheme) -> some View {
+    private func panelListContent(_ panel: MetroPanel, theme: TunerTheme) -> some View {
         let s = viewModel.settings
         switch panel {
         case .signature:
-            // 拍號 11 項：兩欄格（單欄 12 行過高），格內
-            // 同樣文字左、勾右；末行附點計拍整行。
-            VStack(spacing: 0) {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 0),
-                                    GridItem(.flexible(), spacing: 0)],
-                          spacing: 0) {
-                    ForEach(Array(MetronomeSettings.signatures.enumerated()),
-                            id: \.offset) { _, sig in
-                        panelRow(theme: theme, title: "\(sig.beats)/\(sig.unit)",
-                                 checked: s.beatsPerBar == sig.beats
-                                    && s.beatUnit == sig.unit) {
-                            viewModel.setSignature(beats: sig.beats, unit: sig.unit)
-                            openPanel = nil
-                        }
+            // 拍號 11 項原生單欄列（卡片可上滑至 .large，
+            // 不再用自製兩欄格）；附點計拍獨立分區。
+            Section {
+                ForEach(Array(MetronomeSettings.signatures.enumerated()),
+                        id: \.offset) { _, sig in
+                    sheetRow(theme: theme, title: "\(sig.beats)/\(sig.unit)",
+                             checked: s.beatsPerBar == sig.beats
+                                && s.beatUnit == sig.unit) {
+                        viewModel.setSignature(beats: sig.beats, unit: sig.unit)
+                        openPanel = nil
                     }
                 }
-                Divider().padding(.horizontal, 16)
-                panelRow(theme: theme, title: L10n.t("附点计拍 (♩.)"),
+            }
+            Section {
+                sheetRow(theme: theme, title: L10n.t("附点计拍 (♩.)"),
                          checked: s.dottedBeat) {
                     viewModel.setDottedBeat(!s.dottedBeat)
                     openPanel = nil
                 }
             }
         case .subdivision:
-            VStack(spacing: 0) {
+            Section {
                 ForEach(Array(MetronomeSettings.subdivisionOptions.enumerated()),
                         id: \.offset) { _, option in
-                    panelRow(theme: theme, title: L10n.t(option.label),
+                    sheetRow(theme: theme, title: L10n.t(option.label),
                              checked: s.subdivision == option.value) {
                         viewModel.setSubdivision(option.value)
                         openPanel = nil
@@ -1087,9 +1068,9 @@ struct MetronomeView: View {
                 }
             }
         case .timbre:
-            VStack(spacing: 0) {
+            Section {
                 ForEach(MetronomeTimbre.allCases, id: \.self) { timbre in
-                    panelRow(theme: theme, title: timbre.displayName,
+                    sheetRow(theme: theme, title: timbre.displayName,
                              checked: s.timbre == timbre) {
                         viewModel.setTimbre(timbre)
                         openPanel = nil
@@ -1097,51 +1078,49 @@ struct MetronomeView: View {
                 }
             }
         case .preset:
-            // 預設數量可變（內建＋自訂）：限高捲動。
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    panelSectionHeader(L10n.t("内建"), theme: theme)
-                    ForEach(MetronomePreset.builtins) { preset in
-                        panelRow(theme: theme, title: L10n.t(preset.name),
+            Section(L10n.t("内建")) {
+                ForEach(MetronomePreset.builtins) { preset in
+                    sheetRow(theme: theme, title: L10n.t(preset.name),
+                             checked: viewModel.activePresetId == preset.id) {
+                        viewModel.applyPreset(preset)
+                        openPanel = nil
+                    }
+                }
+            }
+            if !viewModel.userPresets.isEmpty {
+                Section(L10n.t("自订")) {
+                    ForEach(viewModel.userPresets) { preset in
+                        sheetRow(theme: theme, title: preset.name,
                                  checked: viewModel.activePresetId == preset.id) {
                             viewModel.applyPreset(preset)
                             openPanel = nil
                         }
                     }
-                    if !viewModel.userPresets.isEmpty {
-                        panelSectionHeader(L10n.t("自订"), theme: theme)
-                        ForEach(viewModel.userPresets) { preset in
-                            panelRow(theme: theme, title: preset.name,
-                                     checked: viewModel.activePresetId == preset.id) {
-                                viewModel.applyPreset(preset)
-                                openPanel = nil
-                            }
-                        }
-                    }
-                    Divider().padding(.horizontal, 16)
-                    panelRow(theme: theme, title: L10n.t("保存当前为预设"),
-                             checked: false) {
-                        openPanel = nil
-                        showSavePreset = true
-                    }
-                    if let active = viewModel.activePreset, !active.builtin {
-                        panelRow(theme: theme, title: L10n.t("删除当前预设"),
-                                 checked: false, destructive: true) {
-                            openPanel = nil
-                            showDeletePreset = true
-                        }
+                }
+            }
+            Section {
+                sheetRow(theme: theme, title: L10n.t("保存当前为预设"),
+                         checked: false) {
+                    closePanel { showSavePreset = true }
+                }
+                if let active = viewModel.activePreset, !active.builtin {
+                    sheetRow(theme: theme, title: L10n.t("删除当前预设"),
+                             checked: false, destructive: true) {
+                        closePanel { showDeletePreset = true }
                     }
                 }
             }
-            .frame(maxHeight: 330)
         case .ramp:
-            VStack(spacing: 0) {
+            Section {
                 ForEach(RampQuickScheme.all) { scheme in
-                    panelRow(theme: theme, title: L10n.t(scheme.label),
+                    sheetRow(theme: theme, title: L10n.t(scheme.label),
                              checked: rampSchemeChecked(scheme)) {
                         let opensCustom = viewModel.applyRampQuick(scheme)
-                        openPanel = nil
-                        if opensCustom { showCustomRamp = true }
+                        if opensCustom {
+                            closePanel { showCustomRamp = true }
+                        } else {
+                            openPanel = nil
+                        }
                     }
                 }
             }
