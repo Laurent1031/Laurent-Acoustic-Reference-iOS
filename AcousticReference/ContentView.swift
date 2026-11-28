@@ -434,26 +434,25 @@ struct ContentView: View {
             }
             .frame(height: 36)
 
-            // 【返修批11・全原生化】Laurent 定版「全部都要
-            // 苹果原生生态」：主模式切換改系統原生分段
-            // Picker（iOS 27 液態玻璃鏡片由系統提供，位
-            // 置／拖動／形變皆系統保證），自製 GlassSeg-
-            // mentedControl 全 App 退役（其鏡片定位在批
-            // 10 實機全體右移約半格，見 TunerTheme 註）。
-            Picker("", selection: Binding(
-                get: { store.appMode },
-                set: { newMode in
-                    guard newMode != store.appMode else { return }
-                    store.appMode = newMode
-                    HapticsEngine.shared.tap(milliseconds: 6)
-                })) {
-                Label(L10n.t("调音"), systemImage: "tuningfork")
-                    .tag(AppMode.tuner)
-                Label(L10n.t("节拍"), systemImage: "metronome")
-                    .tag(AppMode.metronome)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            // 【返修批12・統一分段】改全 App 統一的 Seg-
+            // mentedSwitch（見 TunerTheme）：批11 的原生
+            // 分段 Picker 在此處與偏好頁實機切換不過去，
+            // Laurent 定版「所有切换都像记谱实音看齐」＋
+            // 選中變色／變底效果（系統分段不提供）。
+            SegmentedSwitch(
+                options: [
+                    (option: AppMode.tuner, title: L10n.t("调音"), symbol: "tuningfork"),
+                    (option: AppMode.metronome, title: L10n.t("节拍"), symbol: "metronome"),
+                ],
+                selection: Binding(
+                    get: { store.appMode },
+                    set: { newMode in
+                        guard newMode != store.appMode else { return }
+                        store.appMode = newMode
+                        HapticsEngine.shared.tap(milliseconds: 6)
+                    }),
+                theme: theme, glassOpacity: store.glassOpacity,
+                fontSize: 13, height: 32)
         }
         .padding(.horizontal, 16)
         .padding(.top, 6)

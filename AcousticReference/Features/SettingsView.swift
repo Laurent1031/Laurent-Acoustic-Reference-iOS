@@ -72,18 +72,19 @@ private struct SettingsChips<Option: Hashable>: View {
     @Binding var selection: Option
 
     var body: some View {
-        // 【返修批11・全原生化】改系統原生分段 Picker
-        // （iOS 27 系統液態玻璃鏡片），自製 GlassSeg-
-        // mentedControl 退役（批10 實機鏡片定位全體右
-        // 移約半格，見 TunerTheme 註）。等寬分配由系
-        // 統分段控件原生提供。
-        Picker("", selection: $selection) {
-            ForEach(options, id: \.value) { item in
-                Text(item.label).tag(item.value)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        // 【返修批12・統一分段】改全 App 統一的 Segmen-
+        // tedSwitch（見 TunerTheme）：批11 的原生分段
+        // Picker 在偏好頁實機全部切換不過去，Laurent
+        // 定版所有切換向調音頁記譜／實音看齊（按鈕式
+        // 切換＋選中變色／變底）。等寬分配由組件的等分
+        // 格位提供。
+        SegmentedSwitch(
+            options: options.map {
+                (option: $0.value, title: $0.label, symbol: nil)
+            },
+            selection: $selection,
+            theme: theme, glassOpacity: glassOpacity,
+            fontSize: 12.5, height: 30)
     }
 }
 

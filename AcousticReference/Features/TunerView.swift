@@ -225,9 +225,16 @@ struct TunerView: View {
         .onChange(of: store.appMode) { _, newMode in
             if newMode != .tuner { showImmersive = false }
             viewModel.setPageVisible(newMode != .metronome)
+            // 【返修批12】收藏拖曳殘留態清除（同 onDisappear
+            // 註）：雙頁保活下切模式不觸發 onDisappear，殘
+            // 留的 favDragId 會令收藏列捲動永久鎖死（實機
+            // 「只能看到三個、其他被遮住」），切模式時一律
+            // 歸零兜底。
+            clearFavDragState()
         }
         .onAppear {
             viewModel.setPageVisible(store.appMode != .metronome)
+            clearFavDragState()
         }
         // 自動開啟麥克風（母本調音頁 pointerdown → ensureMicOn）：
         // autoMicOnEnter 開時點按頁面任意處即啟動；simultaneous
@@ -318,18 +325,22 @@ struct TunerView: View {
 
     /// 記譜／實音分段（母本 pitchModeSeg，行 5243）：切換寫入
     /// profile.pitchMode 並保存（母本行 8320）。
-    /// 【返修批11・全原生化】改系統原生分段 Picker（同
-    /// ContentView 主模式切換註），自製鏡片退役。
+    /// 【返修批12・統一分段】全 App 分段統一 Segmented-
+    /// Switch（見 TunerTheme）：本處是批11 唯二可正常切
+    /// 換的原生 Picker 之一，Laurent 定版全體向本處看齊
+    /// （按鈕式切換＋選中變色／變底）。
     private func pitchModeSegment(theme: TunerTheme) -> some View {
-        Picker("", selection: Binding(
-            get: { store.pitchMode },
-            set: { store.pitchMode = $0 })) {
-            Text(L10n.t("记谱")).tag(PitchMode.written)
-            Text(L10n.t("实音")).tag(PitchMode.concert)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 128)
+        SegmentedSwitch(
+            options: [
+                (option: PitchMode.written, title: L10n.t("记谱"), symbol: nil),
+                (option: PitchMode.concert, title: L10n.t("实音"), symbol: nil),
+            ],
+            selection: Binding(
+                get: { store.pitchMode },
+                set: { store.pitchMode = $0 }),
+            theme: theme, glassOpacity: store.glassOpacity,
+            fontSize: 12.5, height: 30)
+            .frame(width: 128)
     }
 
     // MARK: - 主顯示模式切換（頻閃主模式段新增）
@@ -337,17 +348,19 @@ struct TunerView: View {
     /// 指針／頻閃分段（縮小版）：寫入 store.tunerDisplayMode
     /// 即存即生效；純顯示偏好，不觸碰引擎、判準與觸感。
     /// 【返修批10】次序［指針｜頻閃］（預設在左）。
-    /// 【返修批11・全原生化】改系統原生分段 Picker。
+    /// 【返修批12・統一分段】全 App 統一 SegmentedSwitch。
     private func displayModeToggle(theme: TunerTheme) -> some View {
-        Picker("", selection: Binding(
-            get: { store.tunerDisplayMode },
-            set: { store.tunerDisplayMode = $0 })) {
-            Text(L10n.t("指针")).tag(TunerDisplayMode.needle)
-            Text(L10n.t("频闪")).tag(TunerDisplayMode.strobe)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 124)
+        SegmentedSwitch(
+            options: [
+                (option: TunerDisplayMode.needle, title: L10n.t("指针"), symbol: nil),
+                (option: TunerDisplayMode.strobe, title: L10n.t("频闪"), symbol: nil),
+            ],
+            selection: Binding(
+                get: { store.tunerDisplayMode },
+                set: { store.tunerDisplayMode = $0 }),
+            theme: theme, glassOpacity: store.glassOpacity,
+            fontSize: 12, height: 26)
+            .frame(width: 124)
     }
 
     // MARK: - Row 2：收藏晶片列＋A4 步進器（母本行 5252）
@@ -467,6 +480,17 @@ struct TunerView: View {
               let frame = favDragStartFrames[id] else { return 0 }
         let dir: CGFloat = myFrame.midX < frame.midX ? 1 : -1
         return -dir * (myFrame.width + 6)
+    }
+
+    /// 收藏拖曳狀態歸零（返修批12 抽出共用）：favDragId
+    /// 殘留會令收藏列 .scrollDisabled 恆真、捲動鎖死；
+    /// onDisappear／模式切換／onAppear 三處一律呼叫兜底
+    /// （雙頁保活下 onDisappear 在切模式時不觸發）。
+    private func clearFavDragState() {
+        favDragId = nil
+        favDragTranslation = 0
+        favShifted = [:]
+        favDragStartFrames = [:]
     }
 
     private func favDragGesture(for inst: Instrument) -> some Gesture {

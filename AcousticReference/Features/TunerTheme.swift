@@ -339,6 +339,18 @@ extension TunerTheme {
         }
     }
 
+    /// 分段切換的選中膠囊底色（返修批12，Laurent 參考圖
+    /// watchOS 式「選中背景變化」）：深色＝近黑、淺色＝
+    /// 白、樂池＝深紅黑；恆比軌道深一階，選中格以底色＋
+    /// accent 前景雙重區分。
+    var segmentedPillFill: Color {
+        switch kind {
+        case .light: return .white
+        case .dark: return Color.black.opacity(0.55)
+        case .pit: return Color(red: 12 / 255, green: 3 / 255, blue: 3 / 255).opacity(0.8)
+        }
+    }
+
     /// 全 App 統一的玻璃配方（對齊 iOS 27 系統玻璃）：
     /// tint alpha = 0.05 + 0.37t（t = (不透明度−8)/88，
     /// 預設 50 → ≈0.227；【返修批9】曲線，函數頭舊註曾
@@ -603,14 +615,82 @@ extension View {
     }
 }
 
-// MARK: - 自製分段／滑桿控件（返修批11 全面退役）
+// MARK: - 統一分段切換（返修批12）
 
-/// 【返修批11・全原生化】GlassSegmentedControl 與 GlassSlider 已刪：
-/// Laurent 定版「全部都要苹果原生生态」——分段一律系統原生
-/// Picker(.segmented)、滑桿一律系統原生 Slider（iOS 27 玻璃鏡片／
-/// 拇指由系統提供、位置與形變由系統保證）。批10 自製鏡片曾因
-/// GlassEffectContainer 佈局語義令定位原點漂移、實機全體右移約
-/// 半格，屬自製控件的結構性風險，不再自製同類控件。
+/// 【返修批11】GlassSegmentedControl 與 GlassSlider 已刪
+/// （自製鏡片定位曾因 GlassEffectContainer 佈局語義漂移、
+/// 實機全體右移約半格）；滑桿改系統原生 Slider 保留至今。
+/// 【返修批12】分段改原生 Picker(.segmented) 後實機回報：
+/// 頂欄模式切換與偏好頁全部 chips 切換不過去，僅調音頁兩
+/// 處（記譜／實音、指針／頻閃）可切。Laurent 定版「所有
+/// 切换都像记谱实音看齐」＋點名要 watchOS 式效果（選中
+/// 時顏色變化＋背景變化，系統分段控件不提供 accent 選
+/// 中色）——分段統一改本組件：每格為原生 Button（與全
+/// App 其他可點控件同一命中路徑），選中膠囊以佈局格位
+/// ＋matchedGeometryEffect 滑動（不經任何手算座標，批
+/// 10 的偏移病根結構性不存在），選中底色轉深、圖標與
+/// 文字轉 accent 色（Laurent 參考圖：Apple Watch 的
+/// Library／Collections 切換）。
+struct SegmentedSwitch<Option: Hashable>: View {
+    let options: [(option: Option, title: String, symbol: String?)]
+    @Binding var selection: Option
+    let theme: TunerTheme
+    let glassOpacity: Int
+    var fontSize: CGFloat = 13
+    var height: CGFloat = 30
+    @Namespace private var pillNS
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(options, id: \.option) { item in
+                let active = selection == item.option
+                Button {
+                    if selection != item.option {
+                        selection = item.option
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        if let symbol = item.symbol {
+                            Image(systemName: symbol)
+                                .font(.system(size: fontSize - 1,
+                                              weight: .semibold))
+                        }
+                        Text(item.title)
+                            .font(.system(size: fontSize,
+                                          weight: active ? .semibold : .medium))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .foregroundStyle(active ? theme.accent
+                                            : theme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(active ? [.isSelected] : [])
+                .background {
+                    if active {
+                        Capsule()
+                            .fill(theme.segmentedPillFill)
+                            .shadow(color: .black.opacity(0.18),
+                                    radius: 3, y: 1)
+                            .padding(.vertical, 2)
+                            .padding(.horizontal, 2)
+                            .matchedGeometryEffect(id: "segPill",
+                                                   in: pillNS)
+                    }
+                }
+            }
+        }
+        .padding(3)
+        .animation(AppMotion.lens, value: selection)
+        .background {
+            GlassSurface(shape: Capsule(), theme: theme,
+                         glassOpacity: glassOpacity)
+        }
+    }
+}
 
 
 /// 捲動列晶片的玻璃選中態（收藏／目標／速度預置等橫滑列
